@@ -1,0 +1,12 @@
+state.json
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore log files
+*.log
+
+# Ignore virtual environments
+venv/
+env/
+.python-version

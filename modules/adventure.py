@@ -29,6 +29,16 @@ class Adventure:
         "the Old Museum", "the Lighthouse", "the Planetarium", "the Rooftops",
         "the Antique Arcade", "the Bookshop Maze", "the Railway Depot", 
         "the Tea Pavilion", "the Neon Alley",
+        "the Forgotten Server Farm", "the Catacomb Switchyard", "the Endless Lobby",
+        "the Glass Cathedral", "the Iron Menagerie", "the Holographic Forest",
+        "the Perpetual Carnival", "the Shattered Aqueduct", "the Gilded Boiler Room",
+        "the Abandoned Data Center", "the Fractured Causeway", "the Vaulted Terminal",
+        "the Hall of Expired Passwords", "the Cryogenic Garden", "the Wax Cylinder Library",
+        "the Vanishing Platform", "the Singing Substation", "the Spiral Archives",
+        "the Candlelit Foundry", "the Flooded Crypt", "the Black Glass Bridge",
+        "the Chimera Menagerie", "the Tarnished Observatory", "the Hollow Clocktower",
+        "the Paper Lantern Pier", "the Last Greenhouse", "the Red Circuit Cathedral",
+        "the Forgotten Monorail", "the Smouldering Atrium", "the Binary Bazaar",
     ]
 
     # Story fragments with atmospheric tech-goth flavor
@@ -45,6 +55,24 @@ class Adventure:
         "At {place}, the public address system whispered your question back with an extra word.",
         "Rain pooled in {place} and reflected not the ceiling but a low gray sky.",
         "The map at {place} had a 'you were here' marker that moved if you looked away.",
+        "The chandeliers in {place} flickered in binary, on and off, like a code you almost understood.",
+        "A statue in {place} briefly turned its head to watch you pass.",
+        "The floor of {place} was carpeted with expired access cards.",
+        "Wind in {place} carried voices speaking passwords from decades ago.",
+        "A grandfather clock in {place} ticked backwards; your shadow obeyed it.",
+        "A vending machine in {place} dispensed coins older than the city.",
+        "At {place}, mirrors refused to show anyone standing alone.",
+        "Pigeons in {place} recited error codes instead of cooing.",
+        "The walls of {place} wept condensation that smelled of solder.",
+        "A fountain in {place} sprayed letters instead of water.",
+        "Elevators in {place} opened onto hallways that should not exist.",
+        "Every sign in {place} pointed toward exits that never appeared.",
+        "The sky above {place} displayed old chat logs scrolling endlessly.",
+        "In {place}, all doors locked themselves when you looked directly at them.",
+        "A pile of shoes in {place} was still warm to the touch.",
+        "Lanterns in {place} illuminated scenes from tomorrow’s news.",
+        "A clockwork bird sang in {place}; the song made your teeth ache.",
+        "Even silence in {place} had a background hum, like a server rack dreaming.",
     ]
 
     # Command patterns

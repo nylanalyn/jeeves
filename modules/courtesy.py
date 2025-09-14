@@ -287,14 +287,15 @@ class Courtesy(SimpleCommandModule):
         title = self._normalize_gender_to_title(gender)
         
         if title == "neutral" and gender.lower() not in self.GENDER_MAP:
-            self.safe_say(f"{username}, I'm not familiar with '{gender}'. Using neutral address.")
+            self.safe_reply(connection, event, f"{username}, I recognize {gender} as a neutral preference.")        
         
         self._set_user_profile(username, title=title)
         self.set_state("command_uses", self.get_state("command_uses", 0) + 1)
         self.save_state()
         
         display_title = self.bot.title_for(username)
-        self.safe_say(f"{username}, recorded: {display_title}.")
+        # FIXED: Use safe_reply instead of safe_say
+        self.safe_reply(connection, event, f"{username}, recorded: {display_title}.")
         return True
 
     def _cmd_pronouns(self, connection, event, msg, username, match):
@@ -304,7 +305,8 @@ class Courtesy(SimpleCommandModule):
         self.set_state("command_uses", self.get_state("command_uses", 0) + 1)
         self.save_state()
         
-        self.safe_say(f"{username}, recorded: {pronouns}.")
+        # FIXED: Use safe_reply instead of safe_say
+        self.safe_reply(connection, event, f"{username}, recorded: {pronouns}.")
         return True
 
     def _cmd_whoami(self, connection, event, msg, username, match):
@@ -314,9 +316,11 @@ class Courtesy(SimpleCommandModule):
             title = profile.get("title", "neutral")
             pronouns = profile.get("pronouns", "they/them")
             updated = profile.get("updated_count", 1)
-            self.safe_say(f"{username}, I have you as title={title}, pronouns={pronouns} (updated {updated} times).")
+            # FIXED: Use safe_reply instead of safe_say
+            self.safe_reply(connection, event, f"{username}, I have you as title={title}, pronouns={pronouns} (updated {updated} times).")
         else:
-            self.safe_say(f"{username}, I have no notes on file. Try 'Jeeves, I am [gender]' or '!gender [identity]'.")
+            # FIXED: Use safe_reply instead of safe_say
+            self.safe_reply(connection, event, f"{username}, I have no notes on file. Try 'Jeeves, I am [gender]' or '!gender [identity]'.")
         return True
 
     def _cmd_profile(self, connection, event, msg, username, match):
@@ -326,9 +330,11 @@ class Courtesy(SimpleCommandModule):
         if profile:
             title = profile.get("title", "neutral")
             pronouns = profile.get("pronouns", "they/them")
-            self.safe_say(f"{who}: title={title}, pronouns={pronouns}")
+            # FIXED: Use safe_reply instead of safe_say
+            self.safe_reply(connection, event, f"{who}: title={title}, pronouns={pronouns}")
         else:
-            self.safe_say(f"No profile found for {who}.")
+            # FIXED: Use safe_reply instead of safe_say
+            self.safe_reply(connection, event, f"No profile found for {who}.")
         return True
 
     def _cmd_forget(self, connection, event, msg, username, match):
@@ -340,9 +346,11 @@ class Courtesy(SimpleCommandModule):
             self.set_state("profiles", profiles)
             self.set_state("profiles_deleted", self.get_state("profiles_deleted", 0) + 1)
             self.save_state()
-            self.safe_say(f"{username}, your preferences are removed. I shall address neutrally.")
+            # FIXED: Use safe_reply instead of safe_say
+            self.safe_reply(connection, event, f"{username}, your preferences are removed. I shall address neutrally.")
         else:
-            self.safe_say(f"{username}, there were no preferences on file.")
+            # FIXED: Use safe_reply instead of safe_say
+            self.safe_reply(connection, event, f"{username}, there were no preferences on file.")
         return True
 
     def _cmd_stats(self, connection, event, msg, username, match):
@@ -362,7 +370,8 @@ class Courtesy(SimpleCommandModule):
             top = sorted(pron_stats.items(), key=lambda x: x[1], reverse=True)[:3]
             lines.append("Top pronouns: " + ", ".join(f"{p}({c})" for p, c in top))
         
-        self.safe_say("Courtesy stats: " + "; ".join(lines))
+        # FIXED: Use safe_reply instead of safe_say
+        self.safe_reply(connection, event, "Courtesy stats: " + "; ".join(lines))
         return True
 
     # ---- IRC Events ----

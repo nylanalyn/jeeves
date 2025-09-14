@@ -2,6 +2,7 @@
 # Compact help system with individual command lookups
 import re
 import time
+import sys
 
 def setup(bot):
     return Help(bot)
@@ -157,6 +158,8 @@ class Help:
         """Handle private messages for help requests."""
         msg = event.arguments[0] if event.arguments else ""
         username = event.source.split('!')[0]
+        # DEBUG: Remove this after testing
+        print(f"[help] DEBUG: Got PM from {username}: '{msg}'", file=sys.stderr)
         is_admin = self.bot.is_admin(username)
         
         # Check cooldown

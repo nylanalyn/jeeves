@@ -169,10 +169,21 @@ class ModuleBase(ABC):
             if target:
                 self.bot.say_to(target, text)
             else:
+                # Default to primary channel as fallback
                 self.bot.say(text)
             return True
         except Exception as e:
             self._record_error(f"Failed to send message: {e}")
+            return False
+    
+    def safe_reply(self, connection, event, text: str) -> bool:
+        """Reply to the same channel/user where message came from."""
+        try:
+            target = event.target
+            connection.privmsg(target, text)
+            return True
+        except Exception as e:
+            self._record_error(f"Failed to reply: {e}")
             return False
 
     def safe_privmsg(self, username: str, text: str) -> bool:
@@ -387,6 +398,6 @@ class ResponseModule(ModuleBase):
                     if callable(response):
                         response = response(msg, username)
                     if response:
-                        self.safe_say(response)
+                        self.safe_reply(connection, event, response)
                         return True
         return False

@@ -1,5 +1,5 @@
 # modules/flirt.py
-# Enhanced polite flirt handling without base class dependency
+# Enhanced polite flirt handling - FIXED room targeting
 import re
 import time
 import random
@@ -9,7 +9,7 @@ def setup(bot):
 
 class Flirt:
     name = "flirt"
-    version = "2.0.0"
+    version = "2.0.1"
     
     # Configuration
     GLOBAL_COOLDOWN = 30.0  # seconds between any flirt responses
@@ -220,6 +220,7 @@ class Flirt:
             if pattern.search(msg):
                 reply = self._choose_reply(intent, username)
                 self._mark_response(username, intent)
+                # FIXED: Reply to the room where the message came from
                 connection.privmsg(room, f"{username}, {reply}")
                 return True
 

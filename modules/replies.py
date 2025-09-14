@@ -1,5 +1,5 @@
 # modules/replies.py
-# Enhanced question-answering without base class dependency
+# Enhanced question-answering - Already correctly targets rooms
 import re
 import random
 

@@ -1,5 +1,5 @@
 # modules/chatter.py
-# Enhanced daily/weekly scheduled messages + contextual responses without base dependency
+# Enhanced daily/weekly scheduled messages + contextual responses - FIXED room targeting
 import random
 import re
 import schedule
@@ -14,7 +14,7 @@ def setup(bot):
 
 class Chatter:
     name = "chatter"
-    version = "2.0.0"
+    version = "2.0.1"
     
     # Enhanced pattern matching for better detection
     ANIMAL_WORDS = re.compile(r"\b(?:duck|ducks|cat|cats|kitten|kittens|puppy|puppies|dog|dogs|rabbit|rabbits|bird|birds|fish|hamster|guinea\s+pig)\b", re.IGNORECASE)
@@ -211,7 +211,8 @@ class Chatter:
         # Select and send message
         message = self._format_line(random.choice(self.DAILY_LINES))
         try:
-            self.bot.connection.privmsg(self.bot.primary_channel, message)
+            # FIXED: Send to primary channel only (scheduled messages are global)
+            self.bot.say(message)
         except Exception as e:
             print(f"[chatter] error sending daily message: {e}", file=sys.stderr)
         
@@ -236,7 +237,8 @@ class Chatter:
         # Select and send message
         message = self._format_line(random.choice(self.WEEKLY_LINES))
         try:
-            self.bot.connection.privmsg(self.bot.primary_channel, message)
+            # FIXED: Send to primary channel only (scheduled messages are global)
+            self.bot.say(message)
         except Exception as e:
             print(f"[chatter] error sending weekly message: {e}", file=sys.stderr)
         
@@ -250,7 +252,7 @@ class Chatter:
         self._schedule_weekly_message()
 
     # ---- Contextual Response Handlers ----
-    def _handle_animal_mention(self, msg: str, username: str) -> bool:
+    def _handle_animal_mention(self, connection, event, msg: str, username: str) -> bool:
         """Handle animal mentions with monthly cooldown per room."""
         month_key = datetime.now(UTC).strftime("%Y-%m")
         last_animal_month = self.st.get("last_animals")
@@ -261,19 +263,21 @@ class Chatter:
             
             response = random.choice(self.ANIMAL_RESPONSES)
             try:
-                self.bot.connection.privmsg(self.bot.primary_channel, response)
+                # FIXED: Reply to the room where the message came from
+                connection.privmsg(event.target, response)
             except Exception as e:
                 print(f"[chatter] error sending animal response: {e}", file=sys.stderr)
             return True
         return False
 
-    def _handle_contextual_response(self, pattern, responses, response_type, username, msg):
+    def _handle_contextual_response(self, connection, event, pattern, responses, response_type, username, msg):
         """Handle contextual responses with cooldown checking."""
         if pattern.search(msg) and self._can_respond(response_type):
             self._mark_response(response_type)
             response = self._format_line(random.choice(responses), username)
             try:
-                self.bot.connection.privmsg(self.bot.primary_channel, response)
+                # FIXED: Reply to the room where the message came from
+                connection.privmsg(event.target, response)
             except Exception as e:
                 print(f"[chatter] error sending {response_type} response: {e}", file=sys.stderr)
             return True
@@ -311,19 +315,19 @@ class Chatter:
 
         # Handle animal mentions (special case with monthly cooldown)
         if self.ANIMAL_WORDS.search(msg):
-            return self._handle_animal_mention(msg, username)
+            return self._handle_animal_mention(connection, event, msg, username)
 
-        # Handle other contextual responses
-        if self._handle_contextual_response(self.WEATHER_WORDS, self.WEATHER_RESPONSES, "weather", username, msg):
+        # Handle other contextual responses - FIXED: all now pass connection and event
+        if self._handle_contextual_response(connection, event, self.WEATHER_WORDS, self.WEATHER_RESPONSES, "weather", username, msg):
             return True
             
-        if self._handle_contextual_response(self.TECH_WORDS, self.TECH_RESPONSES, "tech", username, msg):
+        if self._handle_contextual_response(connection, event, self.TECH_WORDS, self.TECH_RESPONSES, "tech", username, msg):
             return True
             
-        if self._handle_contextual_response(self.FOOD_WORDS, self.FOOD_RESPONSES, "food", username, msg):
+        if self._handle_contextual_response(connection, event, self.FOOD_WORDS, self.FOOD_RESPONSES, "food", username, msg):
             return True
             
-        if self._handle_contextual_response(self.GREETING_WORDS, self.GREETING_RESPONSES, "greeting", username, msg):
+        if self._handle_contextual_response(connection, event, self.GREETING_WORDS, self.GREETING_RESPONSES, "greeting", username, msg):
             return True
 
         return False

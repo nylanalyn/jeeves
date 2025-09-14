@@ -1,5 +1,5 @@
 # modules/roadtrip.py
-# Enhanced surprise roadtrips without base class dependency
+# Enhanced surprise roadtrips - Already correctly targets rooms
 import random
 import re
 import time

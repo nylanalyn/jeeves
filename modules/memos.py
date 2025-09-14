@@ -1,5 +1,5 @@
 # modules/memos.py
-# Memo delivery with butler flair — with per-user memo cap
+# Memo delivery with butler flair — with per-user memo cap - Already correctly targets rooms
 
 import re
 from datetime import datetime, timezone
@@ -157,4 +157,3 @@ class Memos:
 
         self._set_bucket(key, remainder)
         return True
-

@@ -471,6 +471,36 @@ class Jeeves(SingleServerIRCBot):
     def on_pong(self, connection, event):
         self.conn_manager.mark_pong()
 
+    def on_privmsg(self, connection, event):
+        """Handle private messages."""
+        msg = event.arguments[0] if event.arguments else ""
+        username = event.source.split('!')[0]
+
+        # Process through all plugins
+        for name, obj in list(self.pm.plugins.items()):
+            try:
+                start = time.time()
+                handled = False
+                
+                # Call the private message handler if it exists
+                if hasattr(obj, "on_privmsg"):
+                    result = obj.on_privmsg(connection, event)
+                    if result:
+                        handled = True
+                        break  # Stop after first handler claims it
+                
+                # Update performance tracking for base.py modules
+                if hasattr(obj, "_update_performance_stats"):
+                    response_time = time.time() - start
+                    obj._update_performance_stats(response_time)
+                    
+            except Exception as e:
+                # Record error for base.py modules
+                if hasattr(obj, "_record_error"):
+                    obj._record_error(f"on_privmsg error: {e}")
+                
+                print(f"[plugins] {name} privmsg error: {e}", file=sys.stderr)
+
     def on_pubmsg(self, connection, event):
         """Enhanced message handler that works with base.py modules"""
         room = event.target

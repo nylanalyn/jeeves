@@ -208,7 +208,7 @@ class Courtesy(SimpleCommandModule):
             f"Welcome, {username}! I shall address you as Mx. unless you specify otherwise. Try 'my pronouns are they/them' or '!pronouns she/her'.",
             f"Greetings, {username}! If you'd prefer sir/madam or specific pronouns, let me know: 'Jeeves, I am a woman' or '!gender female' both work.",
         ]
-        self.safe_say(random.choice(prompts))
+        self.safe_reply(connection, event, random.choice(prompts))
         self._mark_user_prompted(username)
 
     # ---- Normalization ----
@@ -255,7 +255,7 @@ class Courtesy(SimpleCommandModule):
             self.save_state()
             
             display_title = self.bot.title_for(username)
-            self.safe_say(f"{username}, very good, {display_title}. I shall remember.")
+            self.safe_reply(connection, event, f"{username}, very good, {display_title}. I shall remember.")
             return True
         
         # Natural language: "my pronouns are..."
@@ -266,7 +266,7 @@ class Courtesy(SimpleCommandModule):
             self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
             self.save_state()
             
-            self.safe_say(f"{username}, noted. I shall use {pronouns} henceforth.")
+            self.safe_reply(connection, event, f"{username}, noted. I shall use {pronouns} henceforth.")
             return True
         
         # Natural language: "don't assume my gender"
@@ -275,7 +275,7 @@ class Courtesy(SimpleCommandModule):
             self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
             self.save_state()
             
-            self.safe_say(f"{username}, as you wish. I shall keep to neutral address.")
+            self.safe_reply(connection, event, f"{username}, as you wish. I shall keep to neutral address.")
             return True
         
         return False

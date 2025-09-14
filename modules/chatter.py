@@ -318,16 +318,16 @@ class Chatter:
             return self._handle_animal_mention(connection, event, msg, username)
 
         # Handle other contextual responses - FIXED: all now pass connection and event
-        if self._handle_contextual_response(connection, event, self.WEATHER_WORDS, self.WEATHER_RESPONSES, "weather", username, msg):
-            return True
+#        if self._handle_contextual_response(connection, event, self.WEATHER_WORDS, self.WEATHER_RESPONSES, "weather", username, msg):
+#            return True
             
-        if self._handle_contextual_response(connection, event, self.TECH_WORDS, self.TECH_RESPONSES, "tech", username, msg):
-            return True
+#        if self._handle_contextual_response(connection, event, self.TECH_WORDS, self.TECH_RESPONSES, "tech", username, msg):
+#            return True
             
-        if self._handle_contextual_response(connection, event, self.FOOD_WORDS, self.FOOD_RESPONSES, "food", username, msg):
-            return True
+#        if self._handle_contextual_response(connection, event, self.FOOD_WORDS, self.FOOD_RESPONSES, "food", username, msg):
+#            return True
             
-        if self._handle_contextual_response(connection, event, self.GREETING_WORDS, self.GREETING_RESPONSES, "greeting", username, msg):
-            return True
+#        if self._handle_contextual_response(connection, event, self.GREETING_WORDS, self.GREETING_RESPONSES, "greeting", username, msg):
+#            return True
 
         return False

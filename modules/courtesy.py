@@ -21,8 +21,7 @@ def admin_required(func):
             return False
         return func(self, connection, event, msg, username, *args, **kwargs)
     return wrapper
-
-
+    
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
     version = "2.2.0"

@@ -245,6 +245,28 @@ class Courtesy(SimpleCommandModule):
             if self.is_mentioned(msg) or msg.strip().startswith("!"):
                 self.schedule_delayed_action(2.0, self._prompt_user, connection, event, username)
         
+        # Simple gender choice responses (for follow-up after prompting)
+        if self.RE_SIMPLE_MALE.match(msg):
+            self._set_user_profile(username, title="sir")
+            self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
+            self.save_state()
+            self._send_followup_pronouns_offer(connection, event, username, "sir")
+            return True
+            
+        if self.RE_SIMPLE_FEMALE.match(msg):
+            self._set_user_profile(username, title="madam")
+            self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
+            self.save_state()
+            self._send_followup_pronouns_offer(connection, event, username, "madam")
+            return True
+            
+        if self.RE_SIMPLE_OTHER.match(msg):
+            self._set_user_profile(username, title="neutral")
+            self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
+            self.save_state()
+            self._send_followup_pronouns_offer(connection, event, username, "neutral")
+            return True
+        
         # Natural language: "Jeeves, I am..."
         match = self.RE_GENDER_SET.search(msg)
         if match:
@@ -254,8 +276,7 @@ class Courtesy(SimpleCommandModule):
             self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
             self.save_state()
             
-            display_title = self.bot.title_for(username)
-            self.safe_reply(connection, event, f"{username}, very good, {display_title}. I shall remember.")
+            self._send_followup_pronouns_offer(connection, event, username, title)
             return True
         
         # Natural language: "my pronouns are..."

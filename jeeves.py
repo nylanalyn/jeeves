@@ -585,7 +585,6 @@ class Jeeves(SingleServerIRCBot):
                 time.sleep(1)
         t = threading.Thread(target=loop, daemon=True, name="jeeves-scheduler")
         t.start()
-
 # ----- CLI -----
 def main():
     server = os.getenv("JEEVES_SERVER", "irc.libera.chat").strip()

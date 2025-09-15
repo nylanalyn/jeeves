@@ -1,20 +1,22 @@
 # modules/chatter.py
-# Enhanced daily/weekly scheduled messages + contextual responses - FIXED room targeting
+# Enhanced daily/weekly scheduled messages + contextual responses
 import random
 import re
 import schedule
 import time
 import threading
 from datetime import datetime, timezone, timedelta
+from .base import ResponseModule
 
 UTC = timezone.utc
 
 def setup(bot): 
     return Chatter(bot)
 
-class Chatter:
+class Chatter(ResponseModule):
     name = "chatter"
-    version = "2.0.1"
+    version = "2.1.0"
+    description = "Provides scheduled messages and conversational responses."
     
     # Enhanced pattern matching for better detection
     ANIMAL_WORDS = re.compile(r"\b(?:duck|ducks|cat|cats|kitten|kittens|puppy|puppies|dog|dogs|rabbit|rabbits|bird|birds|fish|hamster|guinea\s+pig)\b", re.IGNORECASE)
@@ -83,62 +85,102 @@ class Chatter:
     ]
 
     def __init__(self, bot):
-        self.bot = bot
-        self.st = bot.get_module_state(self.name)
+        super().__init__(bot)
         
-        # Initialize state with defaults
-        self.st.setdefault("last_daily", None)
-        self.st.setdefault("last_weekly", None)
-        self.st.setdefault("last_animals", None)
-        self.st.setdefault("daily_count", 0)
-        self.st.setdefault("weekly_count", 0)
-        self.st.setdefault("response_counts", {})
-        self.st.setdefault("schedule_times", {})
-        self.st.setdefault("user_interactions", {})
+        self.set_state("last_daily", self.get_state("last_daily", None))
+        self.set_state("last_weekly", self.get_state("last_weekly", None))
+        self.set_state("last_animals", self.get_state("last_animals", None))
+        self.set_state("daily_count", self.get_state("daily_count", 0))
+        self.set_state("weekly_count", self.get_state("weekly_count", 0))
+        self.set_state("response_counts", self.get_state("response_counts", {}))
+        self.set_state("schedule_times", self.get_state("schedule_times", {}))
+        self.set_state("user_interactions", self.get_state("user_interactions", {}))
+        self.save_state()
         
-        # Response tracking for anti-spam
-        self._last_responses = {}
         self._response_cooldowns = {
-            "animal": 3600,      # 1 hour between animal responses
-            "weather": 1800,     # 30 minutes between weather responses  
-            "tech": 900,         # 15 minutes between tech responses
-            "food": 1200,        # 20 minutes between food responses
-            "greeting": 300,     # 5 minutes between greetings
+            "animal": 3600,
+            "weather": 1800,
+            "tech": 900,
+            "food": 1200,
+            "greeting": 300,
         }
         
-        bot.save()
+        self._register_responses()
+        self._register_commands()
 
-    def on_load(self):
-        """Set up schedules when module loads."""
-        # Clear any existing schedules for this module
-        schedule.clear(self.name)
+    def _register_commands(self):
+        self.register_command(r"^\s*!chatter\s+stats\s*$", self._cmd_stats, admin_only=True,
+                              description="Show chatter statistics.")
+        self.register_command(r"^\s*!chatter\s+test\s+daily\s*$", self._cmd_test_daily, admin_only=True,
+                              description="Force a daily message.")
+        self.register_command(r"^\s*!chatter\s+test\s+weekly\s*$", self._cmd_test_weekly, admin_only=True,
+                              description="Force a weekly message.")
+                              
+    def _register_responses(self):
+        self.add_response_pattern(
+            self.ANIMAL_WORDS, 
+            lambda msg, user: self._handle_contextual_response("animal", msg, user), 
+            probability=0.25
+        )
+        self.add_response_pattern(
+            self.WEATHER_WORDS, 
+            lambda msg, user: self._handle_contextual_response("weather", msg, user),
+            probability=0.3
+        )
+        self.add_response_pattern(
+            self.TECH_WORDS, 
+            lambda msg, user: self._handle_contextual_response("tech", msg, user),
+            probability=0.5
+        )
+        self.add_response_pattern(
+            self.FOOD_WORDS, 
+            lambda msg, user: self._handle_contextual_response("food", msg, user),
+            probability=0.3
+        )
+        self.add_response_pattern(
+            self.GREETING_WORDS, 
+            lambda msg, user: self._handle_contextual_response("greeting", msg, user),
+            probability=0.6
+        )
         
-        # Set up new schedules
+    def _handle_contextual_response(self, response_type: str, msg: str, username: str) -> Optional[str]:
+        if not self.check_rate_limit(response_type, self._response_cooldowns.get(response_type, 300)):
+            return None
+            
+        responses = {
+            "animal": self.ANIMAL_RESPONSES,
+            "weather": self.WEATHER_RESPONSES,
+            "tech": self.TECH_RESPONSES,
+            "food": self.FOOD_RESPONSES,
+            "greeting": self.GREETING_RESPONSES,
+        }.get(response_type, [])
+        
+        response_text = self._format_line(random.choice(responses), username)
+        
+        counts = self.get_state("response_counts")
+        counts[response_type] = counts.get(response_type, 0) + 1
+        self.set_state("response_counts", counts)
+        self.save_state()
+        
+        return response_text
+    
+    def on_load(self):
+        super().on_load()
+        schedule.clear(self.name)
         self._schedule_daily_message()
         self._schedule_weekly_message()
 
     def on_unload(self):
-        """Clean up when module unloads."""
-        # Clear schedules
+        super().on_unload()
         schedule.clear(self.name)
-        
-        # Clean up response tracking
-        self._last_responses.clear()
 
     def _get_time_of_day(self) -> str:
-        """Get appropriate time of day greeting."""
         hour = datetime.now(UTC).hour
-        if 5 <= hour < 12:
-            return "morning"
-        elif 12 <= hour < 17:
-            return "afternoon"
-        elif 17 <= hour < 22:
-            return "evening"
-        else:
-            return "evening"  # Late night treated as evening
+        if 5 <= hour < 12: return "morning"
+        elif 12 <= hour < 17: return "afternoon"
+        else: return "evening"
 
     def _format_line(self, line: str, username: str = "nobody") -> str:
-        """Enhanced line formatting with more context."""
         return line.format(
             title=self.bot.title_for(username),
             pronouns=self.bot.pronouns_for(username),
@@ -146,188 +188,72 @@ class Chatter:
         )
 
     def _random_time(self) -> str:
-        """Generate random time with business hour bias for daily messages."""
-        # Bias toward business hours (9-17) for daily messages
-        if random.random() < 0.7:  # 70% chance of business hours
-            hour = random.randint(9, 17)
-        else:
-            hour = random.randint(0, 23)
+        if random.random() < 0.7: hour = random.randint(9, 17)
+        else: hour = random.randint(0, 23)
         minute = random.randint(0, 59)
         return f"{hour:02d}:{minute:02d}"
 
-    def _can_respond(self, response_type: str) -> bool:
-        """Check if enough time has passed since last response of this type."""
-        now = time.time()
-        last_time = self._last_responses.get(response_type, 0)
-        cooldown = self._response_cooldowns.get(response_type, 300)
-        
-        return now - last_time >= cooldown
-
-    def _mark_response(self, response_type: str):
-        """Mark that we've responded with this type."""
-        self._last_responses[response_type] = time.time()
-        
-        # Update statistics
-        counts = self.st.get("response_counts", {})
-        counts[response_type] = counts.get(response_type, 0) + 1
-        self.st["response_counts"] = counts
-        self.bot.save()
-
-    # ---- Scheduled Message System ----
     def _schedule_daily_message(self):
-        """Schedule the next daily message with jitter."""
         schedule.clear("daily")
         next_time = self._random_time()
         schedule.every().day.at(next_time).do(self._say_daily).tag(self.name, "daily")
-        
-        # Store schedule info for debugging
-        schedule_times = self.st.get("schedule_times", {})
+        schedule_times = self.get_state("schedule_times")
         schedule_times["next_daily"] = next_time
-        self.st["schedule_times"] = schedule_times
-        self.bot.save()
+        self.set_state("schedule_times", schedule_times)
+        self.save_state()
 
     def _schedule_weekly_message(self):
-        """Schedule the next weekly message with random day/time."""
         schedule.clear("weekly")
         weekday = random.choice(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
         next_time = self._random_time()
-        
         getattr(schedule.every(), weekday).at(next_time).do(self._say_weekly).tag(self.name, "weekly")
-        
-        # Store schedule info for debugging
-        schedule_times = self.st.get("schedule_times", {})
+        schedule_times = self.get_state("schedule_times")
         schedule_times["next_weekly"] = f"{weekday} at {next_time}"
-        self.st["schedule_times"] = schedule_times
-        self.bot.save()
+        self.set_state("schedule_times", schedule_times)
+        self.save_state()
 
     def _say_daily(self):
-        """Send daily message if not already sent today."""
         today = datetime.now(UTC).strftime("%Y-%m-%d")
-        last_daily = self.st.get("last_daily")
-        
-        if last_daily == today:
-            return  # Already sent today
-        
-        # Select and send message
+        if self.get_state("last_daily") == today: return
         message = self._format_line(random.choice(self.DAILY_LINES))
-        try:
-            # FIXED: Send to primary channel only (scheduled messages are global)
-            self.bot.say(message)
-        except Exception as e:
-            print(f"[chatter] error sending daily message: {e}", file=sys.stderr)
-        
-        # Update state
-        self.st["last_daily"] = today
-        count = self.st.get("daily_count", 0) + 1
-        self.st["daily_count"] = count
-        self.bot.save()
-        
-        # Schedule next day's message
+        self.safe_say(message, self.bot.primary_channel)
+        self.set_state("last_daily", today)
+        self.set_state("daily_count", self.get_state("daily_count", 0) + 1)
+        self.save_state()
         self._schedule_daily_message()
 
     def _say_weekly(self):
-        """Send weekly message if not already sent this week."""
         year, week, _ = datetime.now(UTC).isocalendar()
         week_key = f"{year}-{week:02d}"
-        last_weekly = self.st.get("last_weekly")
-        
-        if last_weekly == week_key:
-            return  # Already sent this week
-        
-        # Select and send message
+        if self.get_state("last_weekly") == week_key: return
         message = self._format_line(random.choice(self.WEEKLY_LINES))
-        try:
-            # FIXED: Send to primary channel only (scheduled messages are global)
-            self.bot.say(message)
-        except Exception as e:
-            print(f"[chatter] error sending weekly message: {e}", file=sys.stderr)
-        
-        # Update state
-        self.st["last_weekly"] = week_key
-        count = self.st.get("weekly_count", 0) + 1
-        self.st["weekly_count"] = count
-        self.bot.save()
-        
-        # Schedule next week's message
+        self.safe_say(message, self.bot.primary_channel)
+        self.set_state("last_weekly", week_key)
+        self.set_state("weekly_count", self.get_state("weekly_count", 0) + 1)
+        self.save_state()
         self._schedule_weekly_message()
 
-    # ---- Contextual Response Handlers ----
-    def _handle_animal_mention(self, connection, event, msg: str, username: str) -> bool:
-        """Handle animal mentions with monthly cooldown per room."""
-        month_key = datetime.now(UTC).strftime("%Y-%m")
-        last_animal_month = self.st.get("last_animals")
+    def _cmd_stats(self, connection, event, msg, username, match):
+        stats = self.get_state()
+        response_counts = stats.get("response_counts", {})
+        schedule_times = stats.get("schedule_times", {})
+        lines = [
+            f"Daily messages sent: {stats.get('daily_count', 0)}",
+            f"Weekly messages sent: {stats.get('weekly_count', 0)}",
+            f"Last daily: {stats.get('last_daily', 'Never')}",
+            f"Last weekly: {stats.get('last_weekly', 'Never')}",
+            f"Response counts: {dict(response_counts)}",
+            f"Next schedules: {dict(schedule_times)}"
+        ]
+        self.safe_reply(connection, event, f"Chatter statistics: {'; '.join(lines)}")
+        return True
         
-        if last_animal_month != month_key and self._can_respond("animal"):
-            self.st["last_animals"] = month_key
-            self._mark_response("animal")
-            
-            response = random.choice(self.ANIMAL_RESPONSES)
-            try:
-                # FIXED: Reply to the room where the message came from
-                connection.privmsg(event.target, response)
-            except Exception as e:
-                print(f"[chatter] error sending animal response: {e}", file=sys.stderr)
-            return True
-        return False
+    def _cmd_test_daily(self, connection, event, msg, username, match):
+        self._say_daily()
+        self.safe_reply(connection, event, "Daily message triggered.")
+        return True
 
-    def _handle_contextual_response(self, connection, event, pattern, responses, response_type, username, msg):
-        """Handle contextual responses with cooldown checking."""
-        if pattern.search(msg) and self._can_respond(response_type):
-            self._mark_response(response_type)
-            response = self._format_line(random.choice(responses), username)
-            try:
-                # FIXED: Reply to the room where the message came from
-                connection.privmsg(event.target, response)
-            except Exception as e:
-                print(f"[chatter] error sending {response_type} response: {e}", file=sys.stderr)
-            return True
-        return False
-
-    def on_pubmsg(self, connection, event, msg, username):
-        """Handle public messages with contextual responses and admin commands."""
-        
-        # Admin debugging commands
-        if self.bot.is_admin(username):
-            if msg.strip().lower() == "!chatter stats":
-                stats = self.st
-                response_counts = stats.get("response_counts", {})
-                schedule_times = stats.get("schedule_times", {})
-                
-                lines = [
-                    f"Daily messages sent: {stats.get('daily_count', 0)}",
-                    f"Weekly messages sent: {stats.get('weekly_count', 0)}",
-                    f"Last daily: {stats.get('last_daily', 'Never')}",
-                    f"Last weekly: {stats.get('last_weekly', 'Never')}",
-                    f"Response counts: {dict(response_counts)}",
-                    f"Next schedules: {dict(schedule_times)}"
-                ]
-                
-                connection.privmsg(event.target, f"Chatter statistics: {'; '.join(lines)}")
-                return True
-                
-            elif msg.strip().lower() == "!chatter test daily":
-                self._say_daily()
-                return True
-                
-            elif msg.strip().lower() == "!chatter test weekly":
-                self._say_weekly()
-                return True
-
-        # Handle animal mentions (special case with monthly cooldown)
-        if self.ANIMAL_WORDS.search(msg):
-            return self._handle_animal_mention(connection, event, msg, username)
-
-        # Handle other contextual responses - FIXED: all now pass connection and event
-#        if self._handle_contextual_response(connection, event, self.WEATHER_WORDS, self.WEATHER_RESPONSES, "weather", username, msg):
-#            return True
-            
-#        if self._handle_contextual_response(connection, event, self.TECH_WORDS, self.TECH_RESPONSES, "tech", username, msg):
-#            return True
-            
-#        if self._handle_contextual_response(connection, event, self.FOOD_WORDS, self.FOOD_RESPONSES, "food", username, msg):
-#            return True
-            
-#        if self._handle_contextual_response(connection, event, self.GREETING_WORDS, self.GREETING_RESPONSES, "greeting", username, msg):
-#            return True
-
-        return False
+    def _cmd_test_weekly(self, connection, event, msg, username, match):
+        self._say_weekly()
+        self.safe_reply(connection, event, "Weekly message triggered.")
+        return True

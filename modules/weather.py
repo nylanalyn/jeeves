@@ -8,18 +8,10 @@ import sys
 import pytz
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
-from .base import SimpleCommandModule, ResponseModule
+from .base import SimpleCommandModule, ResponseModule, admin_required
 
 def setup(bot):
     return Weather(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"

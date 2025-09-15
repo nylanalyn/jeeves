@@ -5,18 +5,10 @@ import time
 import sys
 import functools
 from typing import Optional, Dict, Any, List, Callable, Union
-from .base import SimpleCommandModule, ResponseModule
+from .base import SimpleCommandModule, ResponseModule, admin_required
 
 def setup(bot):
     return Help(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Help(SimpleCommandModule):
     name = "help"
@@ -42,8 +34,6 @@ class Help(SimpleCommandModule):
             re.IGNORECASE
         )
         
-        self._build_command_db()
-
     def _register_commands(self):
         # Admin stats command (registered as a command, not a response)
         self.register_command(r"^\s*!help\s+stats\s*$", self._cmd_stats,
@@ -53,34 +43,28 @@ class Help(SimpleCommandModule):
         self.register_command(r"^\s*!help\s+(\S+)\s*$", self._cmd_help_command,
                               description="Show help for a specific command.")
 
-    def _build_command_db(self):
-        self.commands = {
-            "fortune": "Get a fortune cookie. Use !fortune [spooky|happy|sad|silly] for specific categories",
-            "adventure": "Start a choose-your-own-adventure voting session",
-            "roadtrip": "Show details of the most recent roadtrip",
-            "memo": "Leave a message for someone. Usage: !memo <nick> <message>",
-            "memos": "Show your pending messages with !memos mine",
-            "whoami": "Show your courtesy preferences (pronouns/title)",
-            "gender": "Set your gender/title preference. Usage: !gender <identity>",
-            "pronouns": "Set your preferred pronouns. Usage: !pronouns <pronouns>",
-            "profile": "Show someone's courtesy profile. Usage: !profile <nick>",
-            "forgetme": "Delete your courtesy preferences",
-            "help": "Show available commands or get help for specific command",
-            "replies": "I answer yes/no/maybe questions addressed to me.",
-            "flirt": "I respond to flirtatious remarks.",
-            "sailing": "I respond to the word 'SAIL' from my friend witeshark2.",
-            "natural": "I also respond to natural language! Try 'Jeeves, I am male', 'my pronouns are they/them', 'Jeeves, should I do this?', or 'Coming Jeeves!' for roadtrips"
-        }
-        self.admin_commands = {
-            "reload": "Reload all bot modules",
-            "join": "Join a channel. Usage: !join #channel",
-            "part": "Leave a channel. Usage: !part #channel [message]",
-            "say": "Say something. Usage: !say [#channel] <message>",
-            "channels": "List currently joined channels",
-            "nick": "Change bot nickname. Usage: !nick <newnick>",
-            "emergency": "Emergency shutdown. Usage: !emergency quit [message]",
-            "stats": "Various stats commands: !adventure stats, !roadtrip stats, !courtesy stats, !fortune stats, !flirt stats, !replies stats, !memos stats, !help stats"
-        }
+    def _get_all_commands(self, is_admin: bool) -> Dict[str, str]:
+        """Dynamically builds a dictionary of commands from all loaded modules."""
+        all_commands = {}
+        # Access the bot's plugin manager to find other modules
+        for module_name, module_instance in self.bot.pm.plugins.items():
+            # Check if the module has the _commands attribute from ModuleBase
+            if hasattr(module_instance, "_commands"):
+                for cmd_info in module_instance._commands.values():
+                    if cmd_info.get("admin_only") and not is_admin:
+                        continue # Skip admin commands for non-admins
+
+                    # Extract the command name from the regex pattern
+                    # This is a simple example; you might need a more robust way
+                    pattern_str = cmd_info["pattern"].pattern
+                    command_name = re.search(r'\^\\s\*!(\w+)', pattern_str)
+                    if command_name:
+                        name = command_name.group(1)
+                        description = cmd_info.get("description", "No description available.")
+                        if cmd_info.get("admin_only"):
+                            name += "*" # Mark admin commands
+                        all_commands[name] = description
+        return all_commands
 
     def _can_give_help(self, username: str) -> bool:
         if self.COOLDOWN_SECONDS <= 0: return True
@@ -105,25 +89,41 @@ class Help(SimpleCommandModule):
         self.save_state()
 
     def _get_command_list(self, is_admin: bool) -> str:
-        basic_cmds = list(self.commands.keys())
-        if is_admin:
-            admin_cmds = list(self.admin_commands.keys())
-            all_cmds = basic_cmds + [f"{cmd}*" for cmd in admin_cmds]
-        else:
-            all_cmds = basic_cmds
-        return ", ".join(sorted(all_cmds))
+        # This gets the fresh, dynamic list of commands every time.
+        commands_dict = self._get_all_commands(is_admin)
+    
+        # Get the names (keys) and sort them
+        all_cmds = sorted(commands_dict.keys())
+    
+        # We need to manually check for admin commands to add the '*'
+        final_cmd_list = []
+        for cmd in all_cmds:
+            # A simple way to re-check if it's admin-only for the marker
+            # This is a bit inefficient but clear.
+            if is_admin and self._get_command_help(cmd, True) and self._is_command_admin_only(cmd):
+                 final_cmd_list.append(f"{cmd}*")
+            else:
+                 final_cmd_list.append(cmd)
+             
+        return ", ".join(final_cmd_list)
+
+    def _is_command_admin_only(self, command: str) -> bool:
+        """Checks if a specific command is registered as admin_only."""
+        for module_instance in self.bot.pm.plugins.values():
+            if hasattr(module_instance, "_commands"):
+                for cmd_info in module_instance._commands.values():
+                    pattern_str = cmd_info["pattern"].pattern
+                    match = re.search(r'^\s*!(\w+)', pattern_str)
+                    if match and match.group(1) == command:
+                        return cmd_info.get("admin_only", False)
+        return False
 
     def _get_command_help(self, command: str, is_admin: bool) -> Optional[str]:
         if command.startswith("!"): command = command[1:]
-        if command.endswith("*"): command = command[:-1]
         command = command.lower()
-        if command in self.commands: return self.commands[command]
-        if is_admin and command in self.admin_commands: return self.admin_commands[command]
-        if command in ["adventures", "adv"]: return self.commands["adventure"]
-        elif command in ["roadtrips", "trip"]: return self.commands["roadtrip"]
-        elif command in ["memos"]: return self.commands["memos"]
-        elif command == "nl": return self.commands["natural"]
-        return None
+    
+        commands_dict = self._get_all_commands(is_admin)
+        return commands_dict.get(command)
 
     def on_privmsg(self, connection, event):
         msg = event.arguments[0] if event.arguments else ""

@@ -8,20 +8,12 @@ import threading
 import functools
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any, Tuple
-from .base import ResponseModule, SimpleCommandModule
+from .base import ResponseModule, SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
 def setup(bot):
     return Chatter(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Chatter(SimpleCommandModule, ResponseModule):
     name = "chatter"

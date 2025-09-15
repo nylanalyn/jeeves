@@ -7,20 +7,12 @@ import schedule
 import functools
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
-from .base import SimpleCommandModule
+from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
 def setup(bot):
     return Roadtrip(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"

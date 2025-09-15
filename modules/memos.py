@@ -5,20 +5,12 @@ import functools
 import time 
 from datetime import datetime, timezone
 from typing import Optional
-from .base import SimpleCommandModule
+from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
 def setup(bot):
     return Memos(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Memos(SimpleCommandModule):
     name = "memos"

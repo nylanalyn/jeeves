@@ -9,6 +9,15 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Callable, Union
 from datetime import datetime, timezone
 
+def admin_required(func):
+    """Decorator to require admin privileges for a command."""
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False  # Silent denial
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
+
 class ModuleBase(ABC):
     """
     Enhanced base class for Jeeves modules with common functionality,
@@ -214,15 +223,15 @@ class ModuleBase(ABC):
         return self._call_stats.copy()
 
     # ---- Decorators ----
-    @staticmethod
-    def admin_required(func):
-        """Decorator to require admin privileges for a command."""
-        @functools.wraps(func)
-        def wrapper(self, connection, event, msg, username, *args, **kwargs):
-            if not self.bot.is_admin(username):
-                return False  # Silent denial
-            return func(self, connection, event, msg, username, *args, **kwargs)
-        return wrapper
+#    @staticmethod
+#   def admin_required(func):
+#        """Decorator to require admin privileges for a command."""
+#        @functools.wraps(func)
+#        def wrapper(self, connection, event, msg, username, *args, **kwargs):
+#            if not self.bot.is_admin(username):
+#                return False  # Silent denial
+#            return func(self, connection, event, msg, username, *args, **kwargs)
+#        return wrapper
 
     @staticmethod
     def rate_limited(rate: float):

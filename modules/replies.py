@@ -5,18 +5,10 @@ import random
 import functools
 import time 
 from typing import Dict, Any, Optional
-from .base import ResponseModule, SimpleCommandModule
+from .base import ResponseModule, SimpleCommandModule, admin_required
 
 def setup(bot):
     return Replies(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Replies(SimpleCommandModule):
     name = "replies"

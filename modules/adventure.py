@@ -6,7 +6,7 @@ import time
 import schedule
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
-from .base import SimpleCommandModule
+from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 

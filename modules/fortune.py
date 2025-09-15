@@ -7,18 +7,10 @@ import functools
 import time # <-- ADDED THIS LINE
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from .base import SimpleCommandModule, ResponseModule
+from .base import SimpleCommandModule, ResponseModule, admin_required
 
 def setup(bot):
     return Fortune(bot)
-
-def admin_required(func):
-    @functools.wraps(func)
-    def wrapper(self, connection, event, msg, username, *args, **kwargs):
-        if not self.bot.is_admin(username):
-            return False
-        return func(self, connection, event, msg, username, *args, **kwargs)
-    return wrapper
 
 class Fortune(SimpleCommandModule):
     name = "fortune"

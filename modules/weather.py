@@ -115,54 +115,61 @@ class Weather(SimpleCommandModule, ResponseModule):
             self._record_error("API key is missing, cannot fetch weather.")
             return None
             
-        weather_url = f"https://api.pirateweather.net/forecast/{self.API_KEY}/{lat},{lon}"
+        weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
+
+        headers = {
+            'User-Agent': 'JeevesIRCBot/1.0 https://github.com/your/repo'
+        }
+
         try:
-            weather_response = requests.get(weather_url)
-
-            # --- DEBUG LINE ADDED ---
-            print(f"[WEATHER DEBUG] RAW WEATHER RESPONSE for '{lat},{lon}': {weather_response.text}")
-
+            weather_response = requests.get(weather_url, headers=headers)
             weather_response.raise_for_status()
             return weather_response.json()
-        except Exception as e:
-            self._record_error(f"Pirate Weather API request failed for {lat},{lon}: {e}")
+        except requests.exceptions.RequestException as e:
+            self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
 
     def _format_weather_report(self, data: Dict[str, Any], location_name: str, username: str) -> str:
         try:
-            currently = data["currently"]
-            summary = currently.get("summary", "no summary")
-            temp_f = currently.get("temperature")
-            feels_f = currently.get("apparentTemperature")
-            humidity = currently.get("humidity", "N/A")
-            wind_speed = currently.get("windSpeed", "N/A")
+            # The data is now in a 'timeseries' array. We want the first entry for current weather.
+            now = data['properties']['timeseries'][0]['data']['instant']['details']
+            summary_data = data['properties']['timeseries'][0]['data'].get('next_1_hours')
+
+            # Temperature is now in Celsius
+            temp_c = now.get('air_temperature')
+            # yr.no provides wind speed in meters/second, so we convert to mph
+            wind_ms = now.get('wind_speed', 0)
+            wind_speed_mph = int(wind_ms * 2.237)
+
+            # The summary is a 'symbol_code' (e.g., 'partlycloudy_day')
+            summary_code = "no summary"
+            if summary_data and 'summary' in summary_data:
+                summary_code = summary_data['summary'].get('symbol_code', 'no summary')
             
-            # Format the new temperature strings
-            temp_str = f"{temp_f}°F/{self._f_to_c(temp_f)}°C" if temp_f is not None else "N/A"
-            feels_str = f"{feels_f}°F/{self._f_to_c(feels_f)}°C" if feels_f is not None else "N/A"
+            # Make the summary code more human-readable
+            summary = summary_code.replace('_', ' ').capitalize()
+
+            # Format the new temperature strings (C is primary, F is calculated)
+            temp_str = f"{self._c_to_f(temp_c)}°F/{temp_c}°C" if temp_c is not None else "N/A"
             
-            timezone_str = data.get("timezone", "UTC")
+            # Get the report time
+            report_time_str = data['properties']['timeseries'][0]['time']
+            report_time_utc = datetime.fromisoformat(report_time_str)
             
-            try:
-                import pytz
-                report_time_utc = datetime.fromtimestamp(currently.get("time", 0), tz=timezone.utc)
-                report_time_local = report_time_utc.astimezone(pytz.timezone(timezone_str))
-                formatted_time = report_time_local.strftime('%H:%M %Z')
-            except ImportError:
-                formatted_time = "time unknown"
-                print("[weather] WARNING: 'pytz' library not found. Timezone formatting disabled.", file=sys.stderr)
+            # You can keep your pytz logic for local time formatting if you wish
+            formatted_time = report_time_utc.strftime('%H:%M %Z')
 
             title = self.bot.title_for(username)
             
             return (
-                        f"{title} {username}, the weather in {location_name} is currently {summary}. "
-                        f"The temperature is {temp_str}, and it feels like {feels_str}. "
-                        f"Wind speed is {wind_speed} mph and humidity is {int(humidity * 100)}%. "
-                        f"(Reported at {formatted_time})"
-                    )
-        except Exception as e:
-            self._record_error(f"Failed to format weather report: {e}")
-            return f"{username}, I'm afraid I could not format the weather report."
+                f"{title} {username}, the weather in {location_name} is currently: {summary}. "
+                f"The temperature is {temp_str}. "
+                f"Wind speed is {wind_speed_mph} mph. "
+                f"(Reported at {formatted_time})"
+            )
+        except (KeyError, IndexError, Exception) as e:
+            self._record_error(f"Failed to format yr.no weather report: {e}")
+            return f"{username}, I'm afraid I could not format the weather report from the new source."
 
     def _cmd_set_location(self, connection, event, msg, username, match):
         location_input = match.group(1).strip()
@@ -231,10 +238,13 @@ class Weather(SimpleCommandModule, ResponseModule):
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not find a weather report for '{location_input}'.")
         return True
     
-    def _f_to_c(self, temp_f: float) -> int:
-        """Converts Fahrenheit to Celsius and returns an integer."""
-        return int((temp_f - 32) * 5 / 9)
+#    def _f_to_c(self, temp_f: float) -> int:
+#        """Converts Fahrenheit to Celsius and returns an integer."""
+#        return int((temp_f - 32) * 5 / 9)
 
+    def _c_to_f(self, temp_c: float) -> int:
+        """Converts Celsius to Fahrenheit and returns an integer."""
+        return int((temp_c * 9 / 5) + 32)
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):

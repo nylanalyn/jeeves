@@ -1,18 +1,18 @@
 # modules/weather.py
-# Weather module for local weather lookups using the SimpleCommandModule framework
+# Weather module for local weather lookups
 import re
 import functools
 import os
 import requests
-from typing import Dict, Any, Optional
+import sys
+import pytz
+from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
-from .base import SimpleCommandModule, admin_required
+from .base import SimpleCommandModule, ResponseModule
 
 def setup(bot):
     return Weather(bot)
 
-# The admin_required decorator to be used with commands
-# This decorator checks if the user is an admin before running the command
 def admin_required(func):
     @functools.wraps(func)
     def wrapper(self, connection, event, msg, username, *args, **kwargs):
@@ -21,25 +21,24 @@ def admin_required(func):
         return func(self, connection, event, msg, username, *args, **kwargs)
     return wrapper
 
-class Weather(SimpleCommandModule):
+class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"
-    version = "1.0.0"
+    version = "1.1.0"
     description = "Provides weather information for saved or specified locations using Pirate Weather."
 
-    # Load the API key from an environment variable for security.
     API_KEY = os.getenv("PIRATE_WEATHER_API_KEY")
 
     def __init__(self, bot):
         super().__init__(bot)
-
-        # State will store user locations, e.g., {"nullveil": "Brandon, FL"}
         self.set_state("user_locations", self.get_state("user_locations", {}))
         self.save_state()
 
-        # Check if the API key is present
         if not self.API_KEY:
             self._record_error("PIRATE_WEATHER_API_KEY environment variable is not set. Weather commands will not work.")
-            print("[weather] WARNING: PIRATE_WEATHER_API_KEY environment variable is not set. Weather commands will not work.", file=sys.stderr)
+            print("[weather] WARNING: PIRATE_WEATHER_API_KEY environment variable is not set.", file=sys.stderr)
+        
+        self._register_commands()
+        self._register_responses()
 
     def _register_commands(self):
         self.register_command(
@@ -64,60 +63,92 @@ class Weather(SimpleCommandModule):
             description="Show weather module statistics."
         )
 
-    def _get_weather_data(self, location: str) -> Optional[Dict[str, Any]]:
-        """
-        Fetches weather data from the Pirate Weather API.
-        This uses a geocoding service (like OpenWeather's) first to get lat/lon.
-        """
+    def _register_responses(self):
+        name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
+        weather_pattern = re.compile(
+            rf"\b{name_pat}[,!\s]*\s*(?:what's\s+the|how\s+is\s+the|tell\s+me\s+about\s+the)?\s*weather(?:[\s?]|$)",
+            re.IGNORECASE
+        )
+        
+        self.add_response_pattern(
+            weather_pattern,
+            lambda msg, user: self._handle_natural_weather(msg, user),
+            probability=1.0
+        )
+
+    def _handle_natural_weather(self, msg: str, username: str) -> Optional[str]:
+        user_locations = self.get_state("user_locations")
+        location_input = user_locations.get(username.lower())
+        
+        if not location_input:
+            return f"{username}, you have not set a default location. Use '!location <city, state/country>' to set one."
+
+        weather_data_tuple = self._get_weather_data(location_input)
+        if weather_data_tuple:
+            weather_data, location_name = weather_data_tuple
+            return self._format_weather_report(weather_data, location_name, username)
+        else:
+            return f"{username}, I'm afraid I could not fetch the weather for your location."
+
+    def _get_weather_data(self, location: str) -> Optional[Tuple[Dict[str, Any], str]]:
         if not self.API_KEY:
             return None
 
-        # Step 1: Geocoding (to get lat/lon from location string)
-        # This uses OpenWeather's geocoding API, which is free and does not
-        # require a key for simple geocoding requests.
-        geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={requests.utils.quote(location)}&limit=1&appid=YOUR_OPENWEATHER_API_KEY_OR_USE_ANY_VALID_KEY"
+        geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location)}&format=json&limit=1"
         try:
-            geo_response = requests.get(geo_url)
+            geo_response = requests.get(geo_url, headers={'User-Agent': 'JeevesIRCBot'})
             geo_response.raise_for_status()
             geo_data = geo_response.json()
             if not geo_data:
                 return None
             lat = geo_data[0]["lat"]
             lon = geo_data[0]["lon"]
+            location_name = geo_data[0]["display_name"]
         except requests.exceptions.RequestException as e:
             self._record_error(f"Geocoding request failed for {location}: {e}")
             return None
 
-        # Step 2: Fetch weather data using Pirate Weather API
         weather_url = f"https://api.pirateweather.net/forecast/{self.API_KEY}/{lat},{lon}"
         try:
             weather_response = requests.get(weather_url)
             weather_response.raise_for_status()
-            return weather_response.json()
+            weather_data = weather_response.json()
+            return (weather_data, location_name)
         except requests.exceptions.RequestException as e:
             self._record_error(f"Pirate Weather API request failed for {location}: {e}")
             return None
 
-    def _format_weather_report(self, data: Dict[str, Any], username: str) -> str:
-        """
-        Formats the API response into a user-friendly string.
-        """
+    def _format_weather_report(self, data: Dict[str, Any], location_name: str, username: str) -> str:
         try:
             if "currently" not in data:
                 return f"{username}, I could not find a weather report for that location."
             
-            summary = data["currently"]["summary"]
-            temperature = data["currently"]["temperature"]
+            currently = data["currently"]
+            summary = currently.get("summary", "no summary")
+            temperature = currently.get("temperature", "N/A")
+            feels_like = currently.get("apparentTemperature", "N/A")
+            humidity = currently.get("humidity", "N/A")
+            wind_speed = currently.get("windSpeed", "N/A")
             
-            # The timezone from the API is often a string like "America/New_York"
             timezone_str = data.get("timezone", "UTC")
             
-            # Format the time of the report
-            report_time_utc = datetime.fromtimestamp(data["currently"]["time"], tz=timezone.utc)
-            report_time_local = report_time_utc.astimezone(pytz.timezone(timezone_str))
-            
+            try:
+                import pytz
+                report_time_utc = datetime.fromtimestamp(currently.get("time", 0), tz=timezone.utc)
+                report_time_local = report_time_utc.astimezone(pytz.timezone(timezone_str))
+                formatted_time = report_time_local.strftime('%H:%M %Z')
+            except ImportError:
+                formatted_time = "time unknown"
+                print("[weather] WARNING: 'pytz' library not found. Timezone formatting disabled.", file=sys.stderr)
+
             title = self.bot.title_for(username)
-            return f"{title} {username}, the weather in {data['timezone']} is currently {summary} with a temperature of {temperature}°F. (Reported at {report_time_local.strftime('%H:%M %Z')})"
+            
+            return (
+                f"{title} {username}, the weather in {location_name} is currently {summary}. "
+                f"The temperature is {temperature}°F, and it feels like {feels_like}°F. "
+                f"Wind speed is {wind_speed} mph and humidity is {int(humidity * 100)}%. "
+                f"(Reported at {formatted_time})"
+            )
         except Exception as e:
             self._record_error(f"Failed to format weather report: {e}")
             return f"{username}, I'm afraid I could not format the weather report."
@@ -133,29 +164,32 @@ class Weather(SimpleCommandModule):
 
     def _cmd_weather_self(self, connection, event, msg, username, match):
         user_locations = self.get_state("user_locations")
-        location = user_locations.get(username.lower())
-
-        if not location:
+        location_input = user_locations.get(username.lower())
+        
+        if not location_input:
             self.safe_reply(connection, event, f"{username}, you have not set a default location. Use '!location <city, state/country>' to set one.")
             return True
 
-        weather_data = self._get_weather_data(location)
-        if weather_data:
-            report = self._format_weather_report(weather_data, username)
+        weather_data_tuple = self._get_weather_data(location_input)
+        if weather_data_tuple:
+            weather_data, location_name = weather_data_tuple
+            report = self._format_weather_report(weather_data, location_name, username)
             self.safe_reply(connection, event, report)
         else:
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not fetch the weather for your location.")
         return True
 
     def _cmd_weather_other(self, connection, event, msg, username, match):
-        location = match.group(1).strip()
-        weather_data = self._get_weather_data(location)
+        location_input = match.group(1).strip()
         
-        if weather_data:
-            report = self._format_weather_report(weather_data, username)
+        weather_data_tuple = self._get_weather_data(location_input)
+        
+        if weather_data_tuple:
+            weather_data, location_name = weather_data_tuple
+            report = self._format_weather_report(weather_data, location_name, username)
             self.safe_reply(connection, event, report)
         else:
-            self.safe_reply(connection, event, f"{username}, I'm afraid I could not find a weather report for '{location}'.")
+            self.safe_reply(connection, event, f"{username}, I'm afraid I could not find a weather report for '{location_input}'.")
         return True
     
     @admin_required
@@ -166,4 +200,7 @@ class Weather(SimpleCommandModule):
         return True
 
     def on_pubmsg(self, connection, event, msg, username):
+        if self._handle_message(connection, event, msg, username):
+            return True
+            
         return super().on_pubmsg(connection, event, msg, username)

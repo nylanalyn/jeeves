@@ -70,57 +70,76 @@ class Weather(SimpleCommandModule, ResponseModule):
 
     def _handle_natural_weather(self, msg: str, username: str) -> Optional[str]:
         user_locations = self.get_state("user_locations")
-        location_input = user_locations.get(username.lower())
+        location_obj = user_locations.get(username.lower())
         
-        if not location_input:
+        if not location_obj:
             return f"{username}, you have not set a default location. Use '!location <city, state/country>' to set one."
 
-        weather_data_tuple = self._get_weather_data(location_input)
-        if weather_data_tuple:
-            weather_data, location_name = weather_data_tuple
-            return self._format_weather_report(weather_data, location_name, username)
+        # Use the saved coordinates and short name from the new data structure
+        lat, lon = location_obj["lat"], location_obj["lon"]
+        short_name = location_obj["query"]
+        
+        weather_data = self._get_weather_data(lat, lon)
+        if weather_data:
+            report = self._format_weather_report(weather_data, short_name, username)
+            # For natural language, we reply directly to the channel
+            self.safe_reply(self.bot.connection, self.bot.primary_channel, report)
+            return report # Return the report to satisfy the handler
         else:
             return f"{username}, I'm afraid I could not fetch the weather for your location."
 
-    def _get_weather_data(self, location: str) -> Optional[Tuple[Dict[str, Any], str]]:
-        if not self.API_KEY:
-            return None
-
+    def _get_geocode_data(self, location: str) -> Optional[Tuple[str, str, str]]:
+        """Geocodes a location string and returns lat, lon, and display_name."""
         geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location)}&format=json&limit=1"
         try:
             geo_response = requests.get(geo_url, headers={'User-Agent': 'JeevesIRCBot'})
+            
+            # --- DEBUG LINE ADDED ---
+            print(f"[WEATHER DEBUG] RAW GEOCODE RESPONSE for '{location}': {geo_response.text}")
+            
             geo_response.raise_for_status()
             geo_data = geo_response.json()
             if not geo_data:
                 return None
+            
             lat = geo_data[0]["lat"]
             lon = geo_data[0]["lon"]
-            location_name = geo_data[0]["display_name"]
-        except requests.exceptions.RequestException as e:
+            display_name = geo_data[0]["display_name"]
+            return (lat, lon, display_name)
+        except Exception as e:
             self._record_error(f"Geocoding request failed for {location}: {e}")
             return None
 
+    def _get_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
+        if not self.API_KEY:
+            self._record_error("API key is missing, cannot fetch weather.")
+            return None
+            
         weather_url = f"https://api.pirateweather.net/forecast/{self.API_KEY}/{lat},{lon}"
         try:
             weather_response = requests.get(weather_url)
+
+            # --- DEBUG LINE ADDED ---
+            print(f"[WEATHER DEBUG] RAW WEATHER RESPONSE for '{lat},{lon}': {weather_response.text}")
+
             weather_response.raise_for_status()
-            weather_data = weather_response.json()
-            return (weather_data, location_name)
-        except requests.exceptions.RequestException as e:
-            self._record_error(f"Pirate Weather API request failed for {location}: {e}")
+            return weather_response.json()
+        except Exception as e:
+            self._record_error(f"Pirate Weather API request failed for {lat},{lon}: {e}")
             return None
 
     def _format_weather_report(self, data: Dict[str, Any], location_name: str, username: str) -> str:
         try:
-            if "currently" not in data:
-                return f"{username}, I could not find a weather report for that location."
-            
             currently = data["currently"]
             summary = currently.get("summary", "no summary")
-            temperature = currently.get("temperature", "N/A")
-            feels_like = currently.get("apparentTemperature", "N/A")
+            temp_f = currently.get("temperature")
+            feels_f = currently.get("apparentTemperature")
             humidity = currently.get("humidity", "N/A")
             wind_speed = currently.get("windSpeed", "N/A")
+            
+            # Format the new temperature strings
+            temp_str = f"{temp_f}°F/{self._f_to_c(temp_f)}°C" if temp_f is not None else "N/A"
+            feels_str = f"{feels_f}°F/{self._f_to_c(feels_f)}°C" if feels_f is not None else "N/A"
             
             timezone_str = data.get("timezone", "UTC")
             
@@ -136,36 +155,57 @@ class Weather(SimpleCommandModule, ResponseModule):
             title = self.bot.title_for(username)
             
             return (
-                f"{title} {username}, the weather in {location_name} is currently {summary}. "
-                f"The temperature is {temperature}°F, and it feels like {feels_like}°F. "
-                f"Wind speed is {wind_speed} mph and humidity is {int(humidity * 100)}%. "
-                f"(Reported at {formatted_time})"
-            )
+                        f"{title} {username}, the weather in {location_name} is currently {summary}. "
+                        f"The temperature is {temp_str}, and it feels like {feels_str}. "
+                        f"Wind speed is {wind_speed} mph and humidity is {int(humidity * 100)}%. "
+                        f"(Reported at {formatted_time})"
+                    )
         except Exception as e:
             self._record_error(f"Failed to format weather report: {e}")
             return f"{username}, I'm afraid I could not format the weather report."
 
     def _cmd_set_location(self, connection, event, msg, username, match):
-        location = match.group(1).strip()
+        location_input = match.group(1).strip()
+    
+        # We now geocode immediately to validate the location
+        geo_data = self._get_geocode_data(location_input)
+    
+        if not geo_data:
+            self.safe_reply(connection, event, f"{username}, I'm sorry, I could not find coordinates for '{location_input}'. Please be more specific.")
+            return True
+
+        lat, lon, display_name = geo_data
+    
+        # Save a structured object instead of just the input string
         user_locations = self.get_state("user_locations")
-        user_locations[username.lower()] = location
+        user_locations[username.lower()] = {
+            "query": location_input, # The user's short name
+           "lat": lat,
+            "lon": lon,
+            "display_name": display_name # The full name for confirmation
+        }
         self.set_state("user_locations", user_locations)
         self.save_state()
-        self.safe_reply(connection, event, f"{username}, I have saved your location as '{location}'.")
+    
+        # Confirm with the full, unambiguous name
+        self.safe_reply(connection, event, f"{username}, noted. I have saved your location as '{display_name}'.")
         return True
 
     def _cmd_weather_self(self, connection, event, msg, username, match):
         user_locations = self.get_state("user_locations")
-        location_input = user_locations.get(username.lower())
+        location_obj = user_locations.get(username.lower())
         
-        if not location_input:
+        if not location_obj:
             self.safe_reply(connection, event, f"{username}, you have not set a default location. Use '!location <city, state/country>' to set one.")
             return True
 
-        weather_data_tuple = self._get_weather_data(location_input)
-        if weather_data_tuple:
-            weather_data, location_name = weather_data_tuple
-            report = self._format_weather_report(weather_data, location_name, username)
+        # Use the saved coordinates and short name
+        lat, lon = location_obj["lat"], location_obj["lon"]
+        short_name = location_obj["query"]
+        
+        weather_data = self._get_weather_data(lat, lon)
+        if weather_data:
+            report = self._format_weather_report(weather_data, short_name, username)
             self.safe_reply(connection, event, report)
         else:
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not fetch the weather for your location.")
@@ -174,16 +214,28 @@ class Weather(SimpleCommandModule, ResponseModule):
     def _cmd_weather_other(self, connection, event, msg, username, match):
         location_input = match.group(1).strip()
         
-        weather_data_tuple = self._get_weather_data(location_input)
+        geocode_data = self._get_geocode_data(location_input)
         
-        if weather_data_tuple:
-            weather_data, location_name = weather_data_tuple
-            report = self._format_weather_report(weather_data, location_name, username)
+        if not geocode_data:
+            self.safe_reply(connection, event, f"{username}, I'm afraid I could not find a location for '{location_input}'.")
+            return True
+        
+        lat, lon, _ = geocode_data # We don't need the long display_name here
+        
+        weather_data = self._get_weather_data(lat, lon)
+        if weather_data:
+            # For one-off lookups, use the user's original input as the name
+            report = self._format_weather_report(weather_data, location_input, username)
             self.safe_reply(connection, event, report)
         else:
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not find a weather report for '{location_input}'.")
         return True
     
+    def _f_to_c(self, temp_f: float) -> int:
+        """Converts Fahrenheit to Celsius and returns an integer."""
+        return int((temp_f - 32) * 5 / 9)
+
+
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state("stats", {})

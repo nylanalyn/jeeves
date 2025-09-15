@@ -24,7 +24,7 @@ def admin_required(func):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "2.1.0"
+    version = "2.2.0" # <-- version updated
     description = "Schedules surprise roadtrips for channel members."
     
     MIN_HOURS_BETWEEN_TRIPS = 3
@@ -146,18 +146,18 @@ class Roadtrip(SimpleCommandModule):
         self.set_state("next_trip_message_threshold", self._compute_message_threshold())
         self.save_state()
 
-    def _open_rsvp_window(self, connection, room: str):
+    def _open_rsvp_window(self, connection, event):
         destination = random.choice(self.LOCATIONS)
         trigger_msg = random.choice(self.TRIGGER_MESSAGES)
         title = self.bot.title_for("nobody")
-        self.safe_reply(connection, None, trigger_msg.format(title=title))
-        self.safe_reply(connection, None,
+        self.safe_reply(connection, event, trigger_msg.format(title=title))
+        self.safe_reply(connection, event,
                         f"Shall we? I've in mind a little excursion to {destination}. "
                         f'Say "coming jeeves!" or "!me" within {self.JOIN_WINDOW_SECONDS} seconds to be shown to the car.')
         now = datetime.now(UTC)
         close_time = time.time() + self.JOIN_WINDOW_SECONDS
         rsvp_state = {
-            "destination": destination, "room": room, "participants": [],
+            "destination": destination, "room": event.target, "participants": [],
             "triggered_at": now.isoformat(), "close_epoch": close_time,
             "messages_at_trigger": self.get_state("messages_since_last", 0)
         }
@@ -229,7 +229,7 @@ class Roadtrip(SimpleCommandModule):
                 current_rsvp["participants"] = participants
                 self.set_state("current_rsvp", current_rsvp)
                 self.save_state()
-                self.safe_reply(None, None, f"Noted, {username}. Mind the running board.", target=room)
+                self.safe_say(f"Noted, {username}. Mind the running board.", target=room) # CORRECTED THIS LINE
             return True
         return False
 
@@ -240,7 +240,7 @@ class Roadtrip(SimpleCommandModule):
     def _answer_latest(self, connection, room: str, username: str):
         history = self.get_state("history", [])
         if not history:
-            self.safe_reply(connection, None, f"{username}, no roadtrips on the books yet, {self.bot.title_for(username)}.", target=room)
+            self.safe_say(f"{username}, no roadtrips on the books yet, {self.bot.title_for(username)}.", target=room) # CORRECTED THIS LINE
             return True
         last_trip = history[-1]
         when = last_trip.get("date_iso", "unknown time")[:16]
@@ -248,9 +248,9 @@ class Roadtrip(SimpleCommandModule):
         destination = last_trip.get("destination", "parts unknown")
         if participants:
             details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
-            self.safe_reply(connection, None, f"{username}, most recent outing to {destination} ({when}): {', '.join(details)}.", target=room)
+            self.safe_say(f"{username}, most recent outing to {destination} ({when}): {', '.join(details)}.", target=room) # CORRECTED THIS LINE
         else:
-            self.safe_reply(connection, None, f"{username}, the most recent outing to {destination} ({when}) departed without passengers, {self.bot.title_for(username)}.", target=room)
+            self.safe_say(f"{username}, the most recent outing to {destination} ({when}) departed without passengers, {self.bot.title_for(username)}.", target=room) # CORRECTED THIS LINE
         return True
 
     def _cmd_roadtrip(self, connection, event, msg, username, match):
@@ -284,5 +284,5 @@ class Roadtrip(SimpleCommandModule):
         if self.get_state("current_rsvp"):
             self.safe_reply(connection, event, "A roadtrip RSVP window is already active.")
         else:
-            self._open_rsvp_window(connection, event.target)
+            self._open_rsvp_window(connection, event) # CORRECTED THIS LINE
         return True

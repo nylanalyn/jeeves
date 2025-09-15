@@ -18,10 +18,9 @@ def admin_required(func):
         return func(self, connection, event, msg, username, *args, **kwargs)
     return wrapper
 
-
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.1.0"
+    version = "2.2.0"
     description = "Administrative bot controls."
     
     def __init__(self, bot):
@@ -83,60 +82,138 @@ class Admin(SimpleCommandModule):
     @admin_required
     def _cmd_join(self, connection, event, msg, username, match):
         room_to_join = match.group(1)
-        # ... (same join logic) ...
+        print(f"[admin] DEBUG: Handling !join command for room: {room_to_join}", file=sys.stderr)
+        try:
+            self.bot.connection.join(room_to_join)
+            self.safe_reply(connection, event, f"Joined {room_to_join}.")
+            self.set_state("channels_joined", self.get_state("channels_joined", 0) + 1)
+            self.save_state()
+            print(f"[admin] DEBUG: Successfully joined {room_to_join}", file=sys.stderr)
+        except Exception as e:
+            self.safe_reply(connection, event, f"Error joining {room_to_join}: {e}")
+            self._record_error(f"Error joining channel: {e}")
+            print(f"[admin] DEBUG: Failed to join {room_to_join} with error: {e}", file=sys.stderr)
         return True
 
     @admin_required
     def _cmd_part(self, connection, event, msg, username, match):
         room_to_part, part_msg = match.groups()
-        # ... (same part logic) ...
+        print(f"[admin] DEBUG: Handling !part command for room: {room_to_part}", file=sys.stderr)
+        if room_to_part in self.bot.joined_channels:
+            try:
+                self.bot.connection.part(room_to_part, part_msg or "Leaving per request.")
+                self.safe_reply(connection, event, f"Left {room_to_part}.")
+                self.set_state("channels_joined", self.get_state("channels_joined", 0) - 1)
+                self.save_state()
+                print(f"[admin] DEBUG: Successfully parted {room_to_part}", file=sys.stderr)
+            except Exception as e:
+                self.safe_reply(connection, event, f"Error leaving {room_to_part}: {e}")
+                self._record_error(f"Error leaving channel: {e}")
+                print(f"[admin] DEBUG: Failed to part {room_to_part} with error: {e}", file=sys.stderr)
+        else:
+            self.safe_reply(connection, event, f"I am not in {room_to_part}.")
+            print(f"[admin] DEBUG: Not in channel {room_to_part}", file=sys.stderr)
         return True
     
     @admin_required
     def _cmd_channels(self, connection, event, msg, username, match):
-        # ... (same channels logic) ...
+        print(f"[admin] DEBUG: Handling !channels command", file=sys.stderr)
+        channels_list = ", ".join(sorted(list(self.bot.joined_channels)))
+        self.safe_reply(connection, event, f"I am currently in these channels: {channels_list}")
         return True
 
     @admin_required
     def _cmd_say(self, connection, event, msg, username, match):
         target_room, message = match.groups()
-        # ... (same say logic) ...
+        print(f"[admin] DEBUG: Handling !say command for target: {target_room}", file=sys.stderr)
+        target = target_room or event.target
+        self.bot.connection.privmsg(target, message)
         return True
 
     @admin_required
     def _cmd_adv_cancel(self, connection, event, msg, username, match):
-        # ... (same adventure cancel logic) ...
+        print(f"[admin] DEBUG: Handling !adventure cancel command", file=sys.stderr)
+        adventure_plugin = self.bot.pm.plugins.get("adventure")
+        if adventure_plugin:
+            adventure_state = self._get_adventure_state_for_room(event.target)
+            if adventure_state:
+                adventure_plugin._close_adventure_round()
+                self.safe_reply(connection, event, "Adventure has been cancelled.")
+            else:
+                self.safe_reply(connection, event, "There is no adventure to cancel.")
+        else:
+            self.safe_reply(connection, event, "Adventure module is not loaded.")
         return True
 
     @admin_required
     def _cmd_adv_shorten(self, connection, event, msg, username, match):
         value = match.group(1)
         delta_secs = int(value)
-        # ... (same shorten logic) ...
+        print(f"[admin] DEBUG: Handling !adventure shorten command by {delta_secs}s", file=sys.stderr)
+        adventure_plugin = self.bot.pm.plugins.get("adventure")
+        if adventure_plugin:
+            adventure_state = self._get_adventure_state_for_room(event.target)
+            if adventure_state:
+                new_close_time = float(adventure_state.get("close_epoch", 0)) - delta_secs
+                adventure_state["close_epoch"] = new_close_time
+                self.bot.update_module_state("adventure", {"current": adventure_state})
+                self.safe_reply(connection, event, f"Adventure timer shortened by {delta_secs} seconds.")
+            else:
+                self.safe_reply(connection, event, "There is no adventure to modify.")
+        else:
+            self.safe_reply(connection, event, "Adventure module is not loaded.")
         return True
         
     @admin_required
     def _cmd_adv_extend(self, connection, event, msg, username, match):
         value = match.group(1)
         delta_secs = int(value)
-        # ... (same extend logic) ...
+        print(f"[admin] DEBUG: Handling !adventure extend command by {delta_secs}s", file=sys.stderr)
+        adventure_plugin = self.bot.pm.plugins.get("adventure")
+        if adventure_plugin:
+            adventure_state = self._get_adventure_state_for_room(event.target)
+            if adventure_state:
+                new_close_time = float(adventure_state.get("close_epoch", 0)) + delta_secs
+                adventure_state["close_epoch"] = new_close_time
+                self.bot.update_module_state("adventure", {"current": adventure_state})
+                self.safe_reply(connection, event, f"Adventure timer extended by {delta_secs} seconds.")
+            else:
+                self.safe_reply(connection, event, "There is no adventure to modify.")
+        else:
+            self.safe_reply(connection, event, "Adventure module is not loaded.")
         return True
     
     @admin_required
     def _cmd_adv_status(self, connection, event, msg, username, match):
-        # ... (same adventure status logic) ...
+        print(f"[admin] DEBUG: Handling !adventure status command", file=sys.stderr)
+        adventure_plugin = self.bot.pm.plugins.get("adventure")
+        if adventure_plugin:
+            adventure_state = self._get_adventure_state_for_room(event.target)
+            if adventure_state:
+                options = adventure_state["options"]
+                close_time = float(adventure_state.get("close_epoch", 0))
+                secs_left = max(0, int(close_time - time.time()))
+                self.safe_reply(connection, event, f"Adventure in progress: 1. {options[0]} or 2. {options[1]} — {secs_left}s left.")
+            else:
+                self.safe_reply(connection, event, "There is no adventure in progress in this channel.")
+        else:
+            self.safe_reply(connection, event, "Adventure module is not loaded.")
         return True
 
     @admin_required
     def _cmd_emergency_quit(self, connection, event, msg, username, match):
         quit_msg = match.group(1)
-        # ... (same quit logic) ...
+        self.bot.connection.quit(quit_msg or "Emergency quit.")
         return True
     
     @admin_required
     def _cmd_nick(self, connection, event, msg, username, match):
         new_nick = match.group(1)
-        # ... (same nick logic) ...
+        try:
+            self.bot.connection.nick(new_nick)
+            self.safe_reply(connection, event, f"Nickname changed to {new_nick}.")
+        except Exception as e:
+            self.safe_reply(connection, event, f"Failed to change nick: {e}")
         return True
     
     @admin_required
@@ -151,34 +228,10 @@ class Admin(SimpleCommandModule):
         return True
         
     # --- Helper methods (same as before) ---
-    def _get_adventure_state_for_room(self, room: str) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
-        # ... (same helper logic) ...
-        pass
-    
-    def _format_time_remaining(self, seconds: int) -> str:
-        # ... (same helper logic) ...
-        pass
-    
-    def _handle_join(self, connection, event, room_to_join: str):
-        # ... (same helper logic) ...
-        pass
-        
-    def _handle_part(self, connection, event, room_to_part: str, part_message: Optional[str] = None):
-        # ... (same helper logic) ...
-        pass
-    
-    def _handle_channels_list(self, connection, room: str):
-        # ... (same helper logic) ...
-        pass
-    
-    def _handle_say(self, connection, event, target_room: Optional[str], message: str):
-        # ... (same helper logic) ...
-        pass
-        
-    def _handle_emergency_quit(self, connection, quit_message: Optional[str]):
-        # ... (same helper logic) ...
-        pass
-        
-    def _handle_nick_change(self, connection, new_nick: str):
-        # ... (same helper logic) ...
-        pass
+    def _get_adventure_state_for_room(self, room: str) -> Optional[Dict[str, Any]]:
+        adventure_plugin = self.bot.pm.plugins.get("adventure")
+        if adventure_plugin and hasattr(adventure_plugin, "get_state"):
+            current_adventure = adventure_plugin.get_state("current")
+            if current_adventure and current_adventure.get("room") == room:
+                return current_adventure
+        return None

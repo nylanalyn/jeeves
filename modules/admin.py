@@ -3,11 +3,21 @@
 import re
 import time
 import threading
+import functools
 from typing import Optional, Tuple, Dict, Any
-from .base import SimpleCommandModule, admin_required
+from .base import SimpleCommandModule
 
 def setup(bot): 
     return Admin(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
+
 
 class Admin(SimpleCommandModule):
     name = "admin"
@@ -70,55 +80,66 @@ class Admin(SimpleCommandModule):
         return handled
 
     # --- Command Handlers ---
+    @admin_required
     def _cmd_join(self, connection, event, msg, username, match):
         room_to_join = match.group(1)
         # ... (same join logic) ...
         return True
 
+    @admin_required
     def _cmd_part(self, connection, event, msg, username, match):
         room_to_part, part_msg = match.groups()
         # ... (same part logic) ...
         return True
     
+    @admin_required
     def _cmd_channels(self, connection, event, msg, username, match):
         # ... (same channels logic) ...
         return True
 
+    @admin_required
     def _cmd_say(self, connection, event, msg, username, match):
         target_room, message = match.groups()
         # ... (same say logic) ...
         return True
 
+    @admin_required
     def _cmd_adv_cancel(self, connection, event, msg, username, match):
         # ... (same adventure cancel logic) ...
         return True
 
+    @admin_required
     def _cmd_adv_shorten(self, connection, event, msg, username, match):
         value = match.group(1)
         delta_secs = int(value)
         # ... (same shorten logic) ...
         return True
         
+    @admin_required
     def _cmd_adv_extend(self, connection, event, msg, username, match):
         value = match.group(1)
         delta_secs = int(value)
         # ... (same extend logic) ...
         return True
     
+    @admin_required
     def _cmd_adv_status(self, connection, event, msg, username, match):
         # ... (same adventure status logic) ...
         return True
 
+    @admin_required
     def _cmd_emergency_quit(self, connection, event, msg, username, match):
         quit_msg = match.group(1)
         # ... (same quit logic) ...
         return True
     
+    @admin_required
     def _cmd_nick(self, connection, event, msg, username, match):
         new_nick = match.group(1)
         # ... (same nick logic) ...
         return True
     
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state()
         lines = [

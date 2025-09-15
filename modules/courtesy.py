@@ -4,14 +4,24 @@ import re
 import time
 import random
 import sys
-from typing import Optional
+import functools
+from typing import Optional, Dict, Any, List, Callable, Union
 from datetime import datetime, timezone
-from .base import SimpleCommandModule, ResponseModule, admin_required
+from .base import SimpleCommandModule, ResponseModule
 
 UTC = timezone.utc
 
 def setup(bot):
     return Courtesy(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
+
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
@@ -270,6 +280,7 @@ class Courtesy(SimpleCommandModule):
             self.safe_reply(connection, event, f"{username}, there were no preferences on file.")
         return True
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         profiles = self.get_state("profiles", {})
         pron_stats = self.get_state("most_common_pronouns", {})

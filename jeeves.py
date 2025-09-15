@@ -117,7 +117,7 @@ class StateManager:
 
 state_manager = StateManager(STATE_PATH)
 
-# ----- Plugin Manager -----
+# ----- Plugin Manager (updated with better reporting) -----
 class PluginManager:
     def __init__(self, bot):
         self.bot = bot
@@ -135,91 +135,62 @@ class PluginManager:
 
     def load_all(self):
         """Load all modules with proper base.py support"""
-        errors = []
-        temp_plugins = {}
-        temp_modules = {}
+        loaded_modules = []
+        failed_modules = []
         
         # First, ensure base.py is loaded into the modules namespace
         try:
             base_path = MODULES_DIR / "base.py"
             if base_path.exists():
+                print("[plugins] loading base module...", file=sys.stderr)
                 spec = importlib.util.spec_from_file_location("modules.base", base_path)
                 base_module = importlib.util.module_from_spec(spec)
-                sys.modules["modules.base"] = base_module  # Make it importable
+                sys.modules["modules.base"] = base_module
                 spec.loader.exec_module(base_module)
-                print("[plugins] loaded base module", file=sys.stderr)
+                print("[plugins] loaded base module successfully.", file=sys.stderr)
             else:
-                print("[plugins] warning: base.py not found", file=sys.stderr)
+                print("[plugins] warning: base.py not found. Module loading will fail.", file=sys.stderr)
+                return False
         except Exception as e:
-            errors.append(f"[plugins] failed to load base.py: {e}")
-            print(f"[plugins] failed to load base.py: {e}", file=sys.stderr)
+            print(f"[plugins] FAILED to load base.py: {e}", file=sys.stderr)
+            print("Module loading stopped.", file=sys.stderr)
+            return False
 
-        # Get all module files
-        remaining_files = [p for p in MODULES_DIR.glob("*.py") 
-                          if p.name not in ("__init__.py", "base.py")]
-
-        # Load modules with dependency resolution (simple retry loop)
-        for attempt in range(10):
-            made_progress = False
-            
-            for py in list(remaining_files):
-                name = py.stem
-                try:
-                    spec = importlib.util.spec_from_file_location(f"modules.{name}", py)
-                    mod = importlib.util.module_from_spec(spec)
-                    
-                    # Add to sys.modules so imports work
-                    sys.modules[f"modules.{name}"] = mod
-                    spec.loader.exec_module(mod)
-
-                    # Skip helpers or any module without setup(bot)
-                    if not hasattr(mod, "setup"):
-                        remaining_files.remove(py)
-                        made_progress = True
-                        continue
-
-                    # Try to instantiate the module
-                    instance = mod.setup(self.bot)
-                    temp_plugins[name] = instance
-                    temp_modules[name] = mod
-                    made_progress = True
-                    remaining_files.remove(py)
-
-                except ImportError as e:
-                    # Dependency not ready yet, try again later
-                    if attempt < 5:  # Only show import errors after a few attempts
-                        continue
-                    errors.append(f"[plugins] import error in {py.name}: {e}")
-                except Exception as e:
-                    errors.append(f"[plugins] failed to load {py.name}: {e}")
-                    remaining_files.remove(py)  # Don't retry non-import errors
-                    made_progress = True
-
-            if not made_progress:
-                break
-
-        # Report any remaining errors
-        if errors:
-            for err in errors:
-                print(err, file=sys.stderr)
-
-        # Clean shutdown of old plugins
-        self.unload_all()
+        remaining_files = sorted([p for p in MODULES_DIR.glob("*.py") if p.name not in ("__init__.py", "base.py")])
         
-        # Install new plugins
-        self.modules = temp_modules
-        self.plugins = temp_plugins
+        print(f"[plugins] Found {len(remaining_files)} modules to load: {', '.join([p.name for p in remaining_files])}", file=sys.stderr)
 
-        # Initialize plugin stats
-        for name in self.plugins:
-            self._plugin_stats[name] = {
-                "calls": 0, 
-                "total_time": 0.0, 
-                "errors": 0, 
-                "last_error": None
-            }
+        for py in remaining_files:
+            name = py.stem
+            try:
+                print(f"[plugins] loading {name}...", file=sys.stderr)
+                spec = importlib.util.spec_from_file_location(f"modules.{name}", py)
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[f"modules.{name}"] = mod
+                spec.loader.exec_module(mod)
 
-        # Call on_load for all plugins
+                if not hasattr(mod, "setup"):
+                    print(f"[plugins] skipping {name}: no setup() function found.", file=sys.stderr)
+                    continue
+
+                instance = mod.setup(self.bot)
+                self.plugins[name] = instance
+                self.modules[name] = mod
+                loaded_modules.append(name)
+                print(f"[plugins] loaded {name} successfully.", file=sys.stderr)
+
+            except ImportError as e:
+                failed_modules.append(f"{name}: Import error: {e}")
+                print(f"[plugins] FAILED to load {name}: Import error: {e}", file=sys.stderr)
+            except Exception as e:
+                failed_modules.append(f"{name}: Failed to load: {e}")
+                print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
+        
+        if failed_modules:
+            print("\n[plugins] Summary of modules that FAILED to load:", file=sys.stderr)
+            for err in failed_modules:
+                print(f" - {err}", file=sys.stderr)
+
         for name, obj in self.plugins.items():
             try:
                 if hasattr(obj, "on_load"):
@@ -227,21 +198,20 @@ class PluginManager:
             except Exception as e:
                 print(f"[plugins] on_load error in {name}: {e}", file=sys.stderr)
 
-        print(f"[plugins] loaded: {', '.join(sorted(self.plugins.keys()))}", file=sys.stderr)
-        return len(errors) == 0
+        print(f"\n[plugins] Loaded {len(loaded_modules)} modules: {', '.join(sorted(loaded_modules))}", file=sys.stderr)
+        
+        return len(failed_modules) == 0
 
     def unload_all(self):
-        """Properly unload all plugins"""
         for name, obj in list(self.plugins.items()):
             try:
                 if hasattr(obj, "on_unload"):
                     obj.on_unload()
             except Exception as e:
                 print(f"[plugins] on_unload error in {name}: {e}", file=sys.stderr)
-        
         self.plugins.clear()
         self.modules.clear()
-
+        
 # ----- Connection Manager -----
 class ConnectionManager:
     def __init__(self, bot):
@@ -537,6 +507,8 @@ class Jeeves(SingleServerIRCBot):
                 if hasattr(obj, "_call_stats") and handled:
                     obj._call_stats["commands_executed"] += 1
                     
+                if handled:
+                    break # STOP processing after one module handles a message
             except Exception as e:
                 # Update error stats
                 stats = self.pm._plugin_stats.get(name, {})
@@ -585,6 +557,7 @@ class Jeeves(SingleServerIRCBot):
                 time.sleep(1)
         t = threading.Thread(target=loop, daemon=True, name="jeeves-scheduler")
         t.start()
+
 # ----- CLI -----
 def main():
     server = os.getenv("JEEVES_SERVER", "irc.libera.chat").strip()

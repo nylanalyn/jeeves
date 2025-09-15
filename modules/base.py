@@ -4,10 +4,10 @@
 import re
 import time
 import threading
+import functools
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Callable, Union
 from datetime import datetime, timezone
-import functools
 
 class ModuleBase(ABC):
     """

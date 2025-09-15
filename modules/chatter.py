@@ -6,6 +6,7 @@ import schedule
 import time
 import threading
 import functools
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 from .base import ResponseModule, SimpleCommandModule, admin_required
@@ -19,7 +20,7 @@ class Chatter(SimpleCommandModule, ResponseModule):
     name = "chatter"
     version = "2.1.0"
     description = "Provides scheduled messages and conversational responses."
-    
+
     # Enhanced pattern matching for better detection
     ANIMAL_WORDS = re.compile(r"\b(?:duck|ducks|cat|cats|kitten|kittens|puppy|puppies|dog|dogs|rabbit|rabbits|bird|birds|fish|hamster|guinea\s+pig)\b", re.IGNORECASE)
     WEATHER_WORDS = re.compile(r"\b(?:rain|raining|sunny|cloudy|storm|snow|snowing|hot|cold|weather|forecast)\b", re.IGNORECASE)
@@ -99,12 +100,19 @@ class Chatter(SimpleCommandModule, ResponseModule):
         self.set_state("user_interactions", self.get_state("user_interactions", {}))
         self.save_state()
         
+        def get_cooldown(env_var, default):
+            val = os.getenv(env_var, default)
+            try:
+                return int(val)
+            except (ValueError, TypeError):
+                return default
+        
         self._response_cooldowns = {
-            "animal": 3600,
-            "weather": 1800,
-            "tech": 900,
-            "food": 1200,
-            "greeting": 300,
+            "animal":   get_cooldown("JEEVES_CHATTER_COOLDOWN_ANIMAL", 3600),
+            "weather":  get_cooldown("JEEVES_CHATTER_COOLDOWN_WEATHER", 1800),
+            "tech":     get_cooldown("JEEVES_CHATTER_COOLDOWN_TECH", 900),
+            "food":     get_cooldown("JEEVES_CHATTER_COOLDOWN_FOOD", 1200),
+            "greeting": get_cooldown("JEEVES_CHATTER_COOLDOWN_GREETING", 300),
         }
         
         self._register_responses()
@@ -146,8 +154,36 @@ class Chatter(SimpleCommandModule, ResponseModule):
         )
         
     def _handle_contextual_response(self, response_type: str, msg: str, username: str) -> Optional[str]:
-        if not self.check_rate_limit(response_type, self._response_cooldowns.get(response_type, 300)):
+        cooldown = self._response_cooldowns.get(response_type, 300)
+
+        # ADD THIS CHECK: If cooldown is negative, the response is disabled.
+        if cooldown < 0:
             return None
+
+        # The original rate limit check now uses the 'cooldown' variable.
+        if not self.check_rate_limit(response_type, cooldown):
+            return None
+        
+        responses = {
+            "animal": self.ANIMAL_RESPONSES,
+            "weather": self.WEATHER_RESPONSES,
+            "tech": self.TECH_RESPONSES,
+            "food": self.FOOD_RESPONSES,
+            "greeting": self.GREETING_RESPONSES,
+        }.get(response_type, [])
+    
+        # This check is needed in case you uncomment a response type but the list is empty
+        if not responses:
+            return None
+
+        response_text = self._format_line(random.choice(responses), username)
+    
+        counts = self.get_state("response_counts")
+        counts[response_type] = counts.get(response_type, 0) + 1
+        self.set_state("response_counts", counts)
+        self.save_state()
+    
+        return response_text
             
         responses = {
             "animal": self.ANIMAL_RESPONSES,

@@ -4,6 +4,7 @@ import re
 import time
 import threading
 import functools
+import sys
 from typing import Optional, Tuple, Dict, Any
 from .base import SimpleCommandModule
 

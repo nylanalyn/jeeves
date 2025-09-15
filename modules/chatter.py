@@ -160,9 +160,9 @@ class Chatter(SimpleCommandModule, ResponseModule):
         responses = {
             "animal": self.ANIMAL_RESPONSES,
             "weather": self.WEATHER_RESPONSES,
-            "tech": self.TECH_RESPONSES,
-            "food": self.FOOD_RESPONSES,
-            "greeting": self.GREETING_RESPONSES,
+            #"tech": self.TECH_RESPONSES,
+            #"food": self.FOOD_RESPONSES,
+            #"greeting": self.GREETING_RESPONSES,
         }.get(response_type, [])
         
         response_text = self._format_line(random.choice(responses), username)

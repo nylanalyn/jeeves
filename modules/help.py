@@ -3,11 +3,20 @@
 import re
 import time
 import sys
-from typing import Optional
-from .base import SimpleCommandModule, admin_required
+import functools
+from typing import Optional, Dict, Any, List, Callable, Union
+from .base import SimpleCommandModule, ResponseModule
 
 def setup(bot):
     return Help(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
 
 class Help(SimpleCommandModule):
     name = "help"
@@ -172,6 +181,7 @@ class Help(SimpleCommandModule):
         
         return False
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state()
         help_requests = stats.get("help_requests", 0)

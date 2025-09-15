@@ -1,14 +1,23 @@
 # modules/memos.py
 # Memo delivery with butler flair — with per-user memo cap
 import re
+import functools
 from datetime import datetime, timezone
 from typing import Optional
-from .base import SimpleCommandModule, admin_required
+from .base import SimpleCommandModule
 
 UTC = timezone.utc
 
 def setup(bot):
     return Memos(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
 
 class Memos(SimpleCommandModule):
     name = "memos"
@@ -150,6 +159,7 @@ class Memos(SimpleCommandModule):
             self.safe_reply(connection, event, f"{username}, …and {more} more memo(s) queued.")
         return True
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         room = event.target
         total_pending = sum(len(v) for v in self.get_state("pending", {}).values())

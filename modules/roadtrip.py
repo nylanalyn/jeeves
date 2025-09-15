@@ -4,14 +4,23 @@ import random
 import re
 import time
 import schedule
+import functools
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
-from .base import SimpleCommandModule, admin_required
+from .base import SimpleCommandModule
 
 UTC = timezone.utc
 
 def setup(bot):
     return Roadtrip(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
@@ -247,6 +256,7 @@ class Roadtrip(SimpleCommandModule):
     def _cmd_roadtrip(self, connection, event, msg, username, match):
         return self._answer_latest(connection, event.target, username)
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state("stats")
         triggered = stats.get("trips_triggered", 0)
@@ -269,6 +279,7 @@ class Roadtrip(SimpleCommandModule):
         self.safe_reply(connection, event, f"Roadtrip stats: {'; '.join(lines)}")
         return True
 
+    @admin_required
     def _cmd_trigger(self, connection, event, msg, username, match):
         if self.get_state("current_rsvp"):
             self.safe_reply(connection, event, "A roadtrip RSVP window is already active.")

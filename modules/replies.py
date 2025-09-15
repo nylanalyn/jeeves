@@ -2,11 +2,20 @@
 # Enhanced question-answering using the ResponseModule framework
 import re
 import random
+import functools
 from typing import Dict, Any, Optional
-from .base import ResponseModule, SimpleCommandModule, admin_required
+from .base import ResponseModule, SimpleCommandModule
 
 def setup(bot):
     return Replies(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
 
 class Replies(SimpleCommandModule):
     name = "replies"
@@ -186,6 +195,7 @@ class Replies(SimpleCommandModule):
         self._update_reply_stats(username, response_type, "philosophical")
         return f"{username}, {self._format_response(template, username)}"
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state()
         lines = [

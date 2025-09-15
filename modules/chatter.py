@@ -5,16 +5,25 @@ import re
 import schedule
 import time
 import threading
-from typing import Optional
+import functools
 from datetime import datetime, timezone, timedelta
-from .base import ResponseModule
+from typing import Optional, List, Dict, Any, Tuple
+from .base import ResponseModule, SimpleCommandModule
 
 UTC = timezone.utc
 
-def setup(bot): 
+def setup(bot):
     return Chatter(bot)
 
-class Chatter(ResponseModule):
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
+
+class Chatter(SimpleCommandModule, ResponseModule):
     name = "chatter"
     version = "2.1.0"
     description = "Provides scheduled messages and conversational responses."
@@ -30,7 +39,7 @@ class Chatter(ResponseModule):
     DAILY_LINES = [
         "If I might venture, {title}: turning it off and on again remains the sovereign remedy.",
         "Very good, {title}. I've queued the chaos for after tea.",
-        "Might I suggest, {title}, that the cloud be treated as weather—admired, not trusted.",
+        "Might I suggest, {title}: that the cloud be treated as weather—admired, not trusted.",
         "Indeed, {title}: one cannot argue with results, though results frequently try.",
         "A most illuminating day, if I may observe. The servers appear to be in particularly cooperative spirits.",
         "The morning brings fresh opportunities for elegant solutions, {title}.",
@@ -234,6 +243,7 @@ class Chatter(ResponseModule):
         self.save_state()
         self._schedule_weekly_message()
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state()
         response_counts = stats.get("response_counts", {})
@@ -249,11 +259,13 @@ class Chatter(ResponseModule):
         self.safe_reply(connection, event, f"Chatter statistics: {'; '.join(lines)}")
         return True
         
+    @admin_required
     def _cmd_test_daily(self, connection, event, msg, username, match):
         self._say_daily()
         self.safe_reply(connection, event, "Daily message triggered.")
         return True
 
+    @admin_required
     def _cmd_test_weekly(self, connection, event, msg, username, match):
         self._say_weekly()
         self.safe_reply(connection, event, "Weekly message triggered.")

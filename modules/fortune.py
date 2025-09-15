@@ -3,12 +3,21 @@
 import re
 import random
 import os
+import functools
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from .base import SimpleCommandModule, ResponseModule, admin_required
+from .base import SimpleCommandModule, ResponseModule
 
 def setup(bot):
     return Fortune(bot)
+
+def admin_required(func):
+    @functools.wraps(func)
+    def wrapper(self, connection, event, msg, username, *args, **kwargs):
+        if not self.bot.is_admin(username):
+            return False
+        return func(self, connection, event, msg, username, *args, **kwargs)
+    return wrapper
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
@@ -58,6 +67,7 @@ class Fortune(SimpleCommandModule):
         self.safe_reply(connection, event, response)
         return True
 
+    @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
         stats = self.get_state()
         total_given = stats.get("fortunes_given", 0)
@@ -72,6 +82,7 @@ class Fortune(SimpleCommandModule):
         self.safe_reply(connection, event, f"Fortune stats: {'; '.join(lines)}")
         return True
 
+    @admin_required
     def _cmd_reload(self, connection, event, msg, username, match):
         self._load_all_fortunes()
         total_loaded = sum(len(fortunes) for fortunes in self._fortunes.values())

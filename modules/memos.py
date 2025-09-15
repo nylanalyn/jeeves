@@ -2,6 +2,7 @@
 # Memo delivery with butler flair — with per-user memo cap
 import re
 from datetime import datetime, timezone
+from typing import Optional
 from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc

@@ -3,6 +3,7 @@
 import re
 import time
 import random
+from typing import Optional
 from .base import ResponseModule
 
 def setup(bot):

@@ -2,7 +2,7 @@
 # Enhanced question-answering using the ResponseModule framework
 import re
 import random
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from .base import ResponseModule, SimpleCommandModule, admin_required
 
 def setup(bot):

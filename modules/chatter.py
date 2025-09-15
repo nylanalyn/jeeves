@@ -5,6 +5,7 @@ import re
 import schedule
 import time
 import threading
+from typing import Optional
 from datetime import datetime, timezone, timedelta
 from .base import ResponseModule
 

@@ -3,6 +3,7 @@
 import re
 import time
 import sys
+from typing import Optional
 from .base import SimpleCommandModule, admin_required
 
 def setup(bot):

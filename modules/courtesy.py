@@ -4,6 +4,7 @@ import re
 import time
 import random
 import sys
+from typing import Optional
 from datetime import datetime, timezone
 from .base import SimpleCommandModule, ResponseModule, admin_required
 

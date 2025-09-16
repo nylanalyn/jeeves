@@ -1,5 +1,5 @@
 # modules/adventure.py
-# Enhanced choose-your-own-adventure with better state management
+# Enhanced choose-your-own-adventure with better state management and admin controls
 import random
 import re
 import time
@@ -15,7 +15,7 @@ def setup(bot):
 
 class Adventure(SimpleCommandModule):
     name = "adventure"
-    version = "2.1.0"
+    version = "2.2.0" # version bumped
     description = "A choose-your-own-adventure game for the channel."
     
     # Configuration constants
@@ -106,6 +106,13 @@ class Adventure(SimpleCommandModule):
                               description="Check the status of the current adventure.")
         self.register_command(r"^\s*!adventure\s+(last|history)\s*$", self._cmd_last,
                               description="Show the last adventure and its outcome.")
+        # Admin commands moved from admin.py
+        self.register_command(r"^\s*!adventure\s+cancel\s*$", self._cmd_adv_cancel,
+                              admin_only=True, description="[Admin] Cancel the current adventure.")
+        self.register_command(r"^\s*!adventure\s+shorten\s+(\d+)\s*$", self._cmd_adv_shorten,
+                              admin_only=True, description="[Admin] Shorten adventure timer by N seconds.")
+        self.register_command(r"^\s*!adventure\s+extend\s+(\d+)\s*$", self._cmd_adv_extend,
+                              admin_only=True, description="[Admin] Extend adventure timer by N seconds.")
 
     def on_load(self):
         """Initialize and restore adventure state on load."""
@@ -236,6 +243,46 @@ class Adventure(SimpleCommandModule):
                         f"{username}, last adventure: 1. {options[0]} ({vote_counts[0]}) vs 2. {options[1]} ({vote_counts[1]}) → {winner} at {when}.")
         return True
 
+    # --- Admin Command Handlers ---
+    @admin_required
+    def _cmd_adv_cancel(self, connection, event, msg, username, match):
+        current = self.get_state("current")
+        if current and current.get("room") == event.target:
+            self._close_adventure_round()
+            self.safe_reply(connection, event, "Adventure has been cancelled.")
+        else:
+            self.safe_reply(connection, event, "There is no adventure in this channel to cancel.")
+        return True
+
+    @admin_required
+    def _cmd_adv_shorten(self, connection, event, msg, username, match):
+        delta_secs = int(match.group(1))
+        current = self.get_state("current")
+        if current and current.get("room") == event.target:
+            new_close_time = float(current.get("close_epoch", 0)) - delta_secs
+            current["close_epoch"] = new_close_time
+            self.set_state("current", current)
+            self.save_state()
+            self.safe_reply(connection, event, f"Adventure timer shortened by {delta_secs} seconds.")
+        else:
+            self.safe_reply(connection, event, "There is no adventure in this channel to modify.")
+        return True
+
+    @admin_required
+    def _cmd_adv_extend(self, connection, event, msg, username, match):
+        delta_secs = int(match.group(1))
+        current = self.get_state("current")
+        if current and current.get("room") == event.target:
+            new_close_time = float(current.get("close_epoch", 0)) + delta_secs
+            current["close_epoch"] = new_close_time
+            self.set_state("current", current)
+            self.save_state()
+            self.safe_reply(connection, event, f"Adventure timer extended by {delta_secs} seconds.")
+        else:
+            self.safe_reply(connection, event, "There is no adventure in this channel to modify.")
+        return True
+
+    # --- Internal Methods ---
     def _get_two_places(self) -> Tuple[str, str]:
         return tuple(random.sample(self.PLACES, 2))
 

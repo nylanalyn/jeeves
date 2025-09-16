@@ -13,7 +13,7 @@ def setup(bot):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.2.0"
+    version = "2.3.0" # version bumped
     description = "Administrative bot controls."
     
     def __init__(self, bot):
@@ -39,16 +39,6 @@ class Admin(SimpleCommandModule):
                               admin_only=True, description="List all channels I'm in.")
         self.register_command(r"^\s*!say(?:\s+(#\S+))?\s+(.+)$", self._cmd_say,
                               admin_only=True, description="Make the bot say something. Usage: !say [#channel] <message>")
-
-        # Adventure Controls (requires adventure.py)
-        self.register_command(r"^\s*!adventure\s+cancel\s*$", self._cmd_adv_cancel,
-                              admin_only=True, description="Cancel the current adventure.")
-        self.register_command(r"^\s*!adventure\s+shorten\s+(\d+)\s*$", self._cmd_adv_shorten,
-                              admin_only=True, description="Shorten adventure timer by N seconds.")
-        self.register_command(r"^\s*!adventure\s+extend\s+(\d+)\s*$", self._cmd_adv_extend,
-                              admin_only=True, description="Extend adventure timer by N seconds.")
-        self.register_command(r"^\s*!adventure\s+status\s*$", self._cmd_adv_status,
-                              admin_only=True, description="Show current adventure status.")
         
         # Emergency Controls
         self.register_command(r"^\s*!emergency\s+quit(?:\s+(.+))?\s*$", self._cmd_emergency_quit,
@@ -124,76 +114,6 @@ class Admin(SimpleCommandModule):
         return True
 
     @admin_required
-    def _cmd_adv_cancel(self, connection, event, msg, username, match):
-        print(f"[admin] DEBUG: Handling !adventure cancel command", file=sys.stderr)
-        adventure_plugin = self.bot.pm.plugins.get("adventure")
-        if adventure_plugin:
-            adventure_state = self._get_adventure_state_for_room(event.target)
-            if adventure_state:
-                adventure_plugin._close_adventure_round()
-                self.safe_reply(connection, event, "Adventure has been cancelled.")
-            else:
-                self.safe_reply(connection, event, "There is no adventure to cancel.")
-        else:
-            self.safe_reply(connection, event, "Adventure module is not loaded.")
-        return True
-
-    @admin_required
-    def _cmd_adv_shorten(self, connection, event, msg, username, match):
-        value = match.group(1)
-        delta_secs = int(value)
-        print(f"[admin] DEBUG: Handling !adventure shorten command by {delta_secs}s", file=sys.stderr)
-        adventure_plugin = self.bot.pm.plugins.get("adventure")
-        if adventure_plugin:
-            adventure_state = self._get_adventure_state_for_room(event.target)
-            if adventure_state:
-                new_close_time = float(adventure_state.get("close_epoch", 0)) - delta_secs
-                adventure_state["close_epoch"] = new_close_time
-                self.bot.update_module_state("adventure", {"current": adventure_state})
-                self.safe_reply(connection, event, f"Adventure timer shortened by {delta_secs} seconds.")
-            else:
-                self.safe_reply(connection, event, "There is no adventure to modify.")
-        else:
-            self.safe_reply(connection, event, "Adventure module is not loaded.")
-        return True
-        
-    @admin_required
-    def _cmd_adv_extend(self, connection, event, msg, username, match):
-        value = match.group(1)
-        delta_secs = int(value)
-        print(f"[admin] DEBUG: Handling !adventure extend command by {delta_secs}s", file=sys.stderr)
-        adventure_plugin = self.bot.pm.plugins.get("adventure")
-        if adventure_plugin:
-            adventure_state = self._get_adventure_state_for_room(event.target)
-            if adventure_state:
-                new_close_time = float(adventure_state.get("close_epoch", 0)) + delta_secs
-                adventure_state["close_epoch"] = new_close_time
-                self.bot.update_module_state("adventure", {"current": adventure_state})
-                self.safe_reply(connection, event, f"Adventure timer extended by {delta_secs} seconds.")
-            else:
-                self.safe_reply(connection, event, "There is no adventure to modify.")
-        else:
-            self.safe_reply(connection, event, "Adventure module is not loaded.")
-        return True
-    
-    @admin_required
-    def _cmd_adv_status(self, connection, event, msg, username, match):
-        print(f"[admin] DEBUG: Handling !adventure status command", file=sys.stderr)
-        adventure_plugin = self.bot.pm.plugins.get("adventure")
-        if adventure_plugin:
-            adventure_state = self._get_adventure_state_for_room(event.target)
-            if adventure_state:
-                options = adventure_state["options"]
-                close_time = float(adventure_state.get("close_epoch", 0))
-                secs_left = max(0, int(close_time - time.time()))
-                self.safe_reply(connection, event, f"Adventure in progress: 1. {options[0]} or 2. {options[1]} — {secs_left}s left.")
-            else:
-                self.safe_reply(connection, event, "There is no adventure in progress in this channel.")
-        else:
-            self.safe_reply(connection, event, "Adventure module is not loaded.")
-        return True
-
-    @admin_required
     def _cmd_emergency_quit(self, connection, event, msg, username, match):
         quit_msg = match.group(1)
         self.bot.connection.quit(quit_msg or "Emergency quit.")
@@ -219,12 +139,3 @@ class Admin(SimpleCommandModule):
         ]
         self.safe_reply(connection, event, "; ".join(lines))
         return True
-        
-    # --- Helper methods (same as before) ---
-    def _get_adventure_state_for_room(self, room: str) -> Optional[Dict[str, Any]]:
-        adventure_plugin = self.bot.pm.plugins.get("adventure")
-        if adventure_plugin and hasattr(adventure_plugin, "get_state"):
-            current_adventure = adventure_plugin.get_state("current")
-            if current_adventure and current_adventure.get("room") == room:
-                return current_adventure
-        return None

@@ -12,13 +12,12 @@ def setup(bot, config):
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.3.1" # version bumped
+    version = "2.3.3" # version bumped
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
         super().__init__(bot)
         
-        # Load settings from config.yaml, with sane defaults
         self.COOLDOWN_SECONDS = config.get("cooldown_seconds", 10.0)
 
         self.set_state("help_requests", self.get_state("help_requests", 0))
@@ -27,7 +26,6 @@ class Help(SimpleCommandModule):
         self.set_state("last_help_time", self.get_state("last_help_time", {}))
         self.save_state()
         
-        # Natural language patterns
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
         self.RE_NL_HELP = re.compile(
             rf"\b{name_pat}[,!\s]*\s*(?:what\s+(?:can\s+you\s+do|commands)|help\s+me|show\s+me\s+(?:the\s+)?commands)\b",
@@ -82,60 +80,48 @@ class Help(SimpleCommandModule):
         self.save_state()
 
     def _get_command_list(self, is_admin: bool) -> str:
-        """Correctly builds the list of commands."""
+        """Builds a clean list of primary commands."""
         commands_dict = self._get_all_commands(is_admin)
+        primary_commands = set()
+        for name in commands_dict.keys():
+            primary_command = name.split(" ")[0]
+            primary_commands.add(primary_command)
+        
         command_names = []
-        # Sort by command name alphabetically
-        for name in sorted(commands_dict.keys()):
-            info = commands_dict[name]
-            display_name = name
-            # Append a '*' for admin commands only if the user is an admin
-            if is_admin and info.get("admin_only"):
+        for cmd in sorted(list(primary_commands)):
+            is_any_admin = False
+            if is_admin:
+                for name, info in commands_dict.items():
+                    if name.startswith(cmd) and info.get("admin_only"):
+                        is_any_admin = True
+                        break
+            
+            display_name = cmd
+            if is_any_admin:
                 display_name += "*"
             command_names.append(display_name)
+            
         return ", ".join(command_names)
 
-    def _get_command_help(self, command: str, is_admin: bool) -> Optional[str]:
-        if command.startswith("!"): command = command[1:]
-        command = command.lower()
-    
+    def _get_command_help(self, command: str, is_admin: bool) -> List[str]:
+        """Gets help for a specific command, including subcommands."""
+        command = command.lower().strip("!")
         all_commands = self._get_all_commands(is_admin)
-        cmd_info = all_commands.get(command)
-        return cmd_info.get("description") if cmd_info else None
+        
+        matches = {}
+        for name, info in all_commands.items():
+            if name == command or name.startswith(command + " "):
+                matches[name] = info['description']
+        
+        if not matches:
+            return []
 
-    def on_privmsg(self, connection, event):
-        msg = event.arguments[0] if event.arguments else ""
-        username = event.source.split('!')[0]
-        is_admin = self.bot.is_admin(username)
+        help_lines = []
+        for name in sorted(matches.keys()):
+            help_lines.append(f"!{name}: {matches[name]}")
         
-        if not self._can_give_help(username): return False
-        
-        help_simple = re.match(r"^\s*help\s*$", msg, re.IGNORECASE)
-        help_command = re.match(r"^\s*help\s+(\S+)\s*$", msg, re.IGNORECASE)
-        
-        if help_command:
-            command = help_command.group(1)
-            help_text = self._get_command_help(command, is_admin)
-            if help_text:
-                self.safe_privmsg(username, f"!{command}: {help_text}")
-                self._mark_help_given(username, is_command_lookup=True)
-            else:
-                available_note = " (admin commands marked with *)" if is_admin else ""
-                cmd_list = self._get_command_list(is_admin)
-                self.safe_privmsg(username, f"Unknown command. Available: {cmd_list}{available_note}")
-            return True
-        
-        elif help_simple:
-            title = self.bot.title_for(username)
-            available_note = " (admin commands marked with *)" if is_admin else ""
-            cmd_list = self._get_command_list(is_admin)
-            self.safe_privmsg(username, f"Available commands, {title}: {cmd_list}{available_note}")
-            self.safe_privmsg(username, f"Use 'help <command>' for details on any command. I also respond to natural language - just address me by name!")
-            self._mark_help_given(username)
-            return True
-        
-        return False
-        
+        return help_lines
+
     def on_pubmsg(self, connection, event, msg, username):
         if super().on_pubmsg(connection, event, msg, username):
             return True
@@ -144,14 +130,7 @@ class Help(SimpleCommandModule):
             return False
             
         if self.RE_NL_HELP.search(msg):
-            title = self.bot.title_for(username)
-            is_admin = self.bot.is_admin(username)
-            available_note = " (admin commands marked with *)" if is_admin else ""
-            cmd_list = self._get_command_list(is_admin)
-            self.safe_privmsg(username, f"Available commands, {title}: {cmd_list}{available_note}")
-            self.safe_privmsg(username, f"Use !help <command> for details on any command. I also respond to natural language - just address me by name!")
-            self.safe_reply(connection, event, f"{username}, command list sent privately. Use !help <command> for specific help.")
-            self._mark_help_given(username)
+            self._cmd_help(connection, event, msg, username, None)
             return True
         
         return False
@@ -162,30 +141,40 @@ class Help(SimpleCommandModule):
         help_requests = stats.get("help_requests", 0)
         command_lookups = stats.get("command_lookups", 0)
         unique_users = len(stats.get("users_helped", []))
-        self.safe_reply(connection, event, f"Help stats: {help_requests} general requests, {command_lookups} command lookups from {unique_users} unique users")
+        self.safe_reply(connection, event, f"Help stats: {help_requests} general requests, {command_lookups} command lookups from {unique_users} unique users.")
         return True
 
     def _cmd_help(self, connection, event, msg, username, match):
+        """Handles the general !help command by sending all info privately."""
         is_admin = self.bot.is_admin(username)
-        title = self.bot.title_for(username)
-        available_note = " (admin commands marked with *)" if is_admin else ""
         cmd_list = self._get_command_list(is_admin)
-        self.safe_privmsg(username, f"Available commands, {title}: {cmd_list}{available_note}")
-        self.safe_privmsg(username, f"Use '!help <command>' for details on any command. I also respond to natural language - just address me by name!")
-        self.safe_reply(connection, event, f"{username}, command list sent privately. Use !help <command> for specific help.")
+        
+        # Send all help text privately
+        self.safe_privmsg(username, f"Available commands: {cmd_list}")
+        
+        available_note = " (admin commands are marked with *)" if is_admin else ""
+        self.safe_privmsg(username, f"Use '!help <command>' for more details on a specific command.{available_note}")
+        
+        # Send a confirmation to the channel
+        self.safe_reply(connection, event, f"{username}, I have sent you a list of my available commands privately.")
+        
         self._mark_help_given(username)
         return True
 
     def _cmd_help_command(self, connection, event, msg, username, match):
+        """Handles getting help for a specific command by sending it privately."""
         is_admin = self.bot.is_admin(username)
         command = match.group(1)
-        help_text = self._get_command_help(command, is_admin)
-        if help_text:
-            self.safe_privmsg(username, f"!{command}: {help_text}")
-            self.safe_reply(connection, event, f"{username}, command help sent privately.")
+        help_lines = self._get_command_help(command, is_admin)
+        
+        if help_lines:
+            # Send the detailed help privately
+            for line in help_lines:
+                self.safe_privmsg(username, line)
+            
+            # Send a confirmation to the channel
+            self.safe_reply(connection, event, f"{username}, I have sent you the details for that command privately.")
             self._mark_help_given(username, is_command_lookup=True)
         else:
-            available_note = " (admin commands marked with *)" if is_admin else ""
-            cmd_list = self._get_command_list(is_admin)
-            self.safe_reply(connection, event, f"{username}, unknown command. Available: {cmd_list}{available_note}")
+            self.safe_reply(connection, event, f"{username}, I'm afraid I don't know that command.")
         return True

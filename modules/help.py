@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.3.0" # version bumped
+    version = "2.3.1" # version bumped
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
@@ -82,14 +82,18 @@ class Help(SimpleCommandModule):
         self.save_state()
 
     def _get_command_list(self, is_admin: bool) -> str:
+        """Correctly builds the list of commands."""
         commands_dict = self._get_all_commands(is_admin)
         command_names = []
-        for name, info in commands_dict.items():
+        # Sort by command name alphabetically
+        for name in sorted(commands_dict.keys()):
+            info = commands_dict[name]
             display_name = name
-            if info.get("admin_only"):
+            # Append a '*' for admin commands only if the user is an admin
+            if is_admin and info.get("admin_only"):
                 display_name += "*"
             command_names.append(display_name)
-        return ", ".join(sorted(command_names))
+        return ", ".join(command_names)
 
     def _get_command_help(self, command: str, is_admin: bool) -> Optional[str]:
         if command.startswith("!"): command = command[1:]

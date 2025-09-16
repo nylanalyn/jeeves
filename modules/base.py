@@ -26,13 +26,9 @@ class ModuleBase(ABC):
     
     # Module metadata - override in subclasses
     name = "base"
-    version = "1.1.0" # version bumped
+    version = "1.1.1" # version bumped
     description = "Base module class"
-    dependencies: List[str] = []  # List of required module names
-    
-    # Command registration system
-    _commands: Dict[str, Dict[str, Any]] = {}
-    _scheduled_tasks: List[Callable] = []
+    dependencies: List[str] = []
     
     def __init__(self, bot):
         self.bot = bot
@@ -40,6 +36,10 @@ class ModuleBase(ABC):
         self._state_dirty = False
         self._state_lock = threading.RLock()
         
+        # This is now an INSTANCE attribute, not a class attribute.
+        self._commands: Dict[str, Dict[str, Any]] = {}
+        self._scheduled_tasks: List[Callable] = []
+
         # Performance tracking
         self._call_stats = {
             "messages_processed": 0,
@@ -111,7 +111,7 @@ class ModuleBase(ABC):
         if isinstance(pattern, str):
             pattern = re.compile(pattern, re.IGNORECASE)
         
-        command_id = f"{self.name}_{name}" # Use name for a more stable ID
+        command_id = f"{self.name}_{name}"
         self._commands[command_id] = {
             "pattern": pattern,
             "handler": handler,
@@ -181,7 +181,6 @@ class ModuleBase(ABC):
             if target:
                 self.bot.say_to(target, text)
             else:
-                # Default to primary channel as fallback
                 self.bot.say(text)
             return True
         except Exception as e:
@@ -225,17 +224,6 @@ class ModuleBase(ABC):
         """Get module performance statistics."""
         return self._call_stats.copy()
 
-    # ---- Decorators ----
-#    @staticmethod
-#   def admin_required(func):
-#        """Decorator to require admin privileges for a command."""
-#        @functools.wraps(func)
-#        def wrapper(self, connection, event, msg, username, *args, **kwargs):
-#            if not self.bot.is_admin(username):
-#                return False  # Silent denial
-#            return func(self, connection, event, msg, username, *args, **kwargs)
-#        return wrapper
-
     @staticmethod
     def rate_limited(rate: float):
         """Decorator to add rate limiting to a command."""
@@ -244,7 +232,7 @@ class ModuleBase(ABC):
             def wrapper(self, connection, event, msg, username, *args, **kwargs):
                 key = f"{self.name}:{func.__name__}:{username}"
                 if not self.check_rate_limit(key, rate):
-                    return False  # Rate limited
+                    return False
                 return func(self, connection, event, msg, username, *args, **kwargs)
             return wrapper
         return decorator
@@ -252,45 +240,33 @@ class ModuleBase(ABC):
     # ---- Lifecycle Methods ----
     def on_load(self) -> None:
         """Called when module is loaded. Override in subclasses."""
-        self.save_state()  # Ensure state is initialized
+        self.save_state()
 
     def on_unload(self) -> None:
         """Called when module is unloaded. Override in subclasses."""
-        self.save_state(force=True)  # Save any pending state
+        self.save_state(force=True)
         self.unregister_all_commands()
-        
-        # Clean up scheduled tasks
         self._scheduled_tasks.clear()
-        
-        # Clean up rate limiting data
         self._rate_limits.clear()
         self._user_cooldowns.clear()
 
     def on_pubmsg(self, connection, event, msg: str, username: str) -> bool:
         """
         Enhanced message handler with command dispatch and performance tracking.
-        Override this method OR use the command registration system.
         """
         start_time = time.time()
-        
         try:
             self._call_stats["messages_processed"] += 1
-            
-            # Try registered commands first
             handled = self._dispatch_commands(connection, event, msg, username)
             if handled:
                 self._call_stats["commands_executed"] += 1
                 return True
-            
-            # Call custom handler if implemented
             if hasattr(self, '_handle_message'):
                 handled = self._handle_message(connection, event, msg, username)
                 if handled:
                     self._call_stats["commands_executed"] += 1
                 return handled
-            
             return False
-            
         except Exception as e:
             self._record_error(f"Error in on_pubmsg: {e}")
             return False
@@ -303,33 +279,21 @@ class ModuleBase(ABC):
         for cmd_id, cmd_info in self._commands.items():
             pattern = cmd_info["pattern"]
             match = pattern.match(msg)
-            
             if not match:
                 continue
-            
-            # Check admin requirements
             if cmd_info["admin_only"] and not self.bot.is_admin(username):
                 continue
-            
-            # Check cooldown
             if not self.check_user_cooldown(username, cmd_id, cmd_info["cooldown"]):
                 continue
-            
             try:
-                # Call handler with match groups
                 result = cmd_info["handler"](connection, event, msg, username, match)
-                
-                # Update command statistics
                 cmd_info["uses"] += 1
                 cmd_info["last_used"] = time.time()
-                
                 if result:
                     return True
-                    
             except Exception as e:
                 self._record_error(f"Error in command {cmd_id}: {e}")
                 continue
-        
         return False
 
     # ---- Helper Methods for Common Patterns ----
@@ -364,9 +328,7 @@ class ModuleBase(ABC):
 class SimpleCommandModule(ModuleBase):
     """
     Base class for modules that primarily respond to simple commands.
-    Provides convenient command registration in __init__.
     """
-    
     def __init__(self, bot):
         super().__init__(bot)
         self._register_commands()
@@ -379,9 +341,7 @@ class SimpleCommandModule(ModuleBase):
 class ResponseModule(ModuleBase):
     """
     Base class for modules that react to keywords or patterns in messages.
-    Provides convenient pattern matching utilities.
     """
-    
     def __init__(self, bot):
         super().__init__(bot)
         self._response_patterns = []
@@ -389,7 +349,6 @@ class ResponseModule(ModuleBase):
     def add_response_pattern(self, pattern: Union[str, re.Pattern], 
                            response: Union[str, Callable], 
                            probability: float = 1.0) -> None:
-        """Add a pattern that triggers a response."""
         if isinstance(pattern, str):
             pattern = re.compile(pattern, re.IGNORECASE)
         
@@ -400,9 +359,7 @@ class ResponseModule(ModuleBase):
         })
     
     def _handle_message(self, connection, event, msg: str, username: str) -> bool:
-        """Check message against response patterns."""
         import random
-        
         for item in self._response_patterns:
             if item["pattern"].search(msg):
                 if random.random() <= item["probability"]:

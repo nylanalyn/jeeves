@@ -7,20 +7,20 @@ import functools
 from typing import Optional, Dict, Any, List, Callable, Union
 from .base import SimpleCommandModule, ResponseModule, admin_required
 
-def setup(bot):
-    return Help(bot)
+def setup(bot, config):
+    return Help(bot, config)
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.1.0"
+    version = "2.2.0" # version bumped
     description = "Provides a list of commands and help for specific commands."
     
-    # Cooldown to prevent spam
-    COOLDOWN_SECONDS = 10.0
-    
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
+        # Load settings from config.yaml, with sane defaults
+        self.COOLDOWN_SECONDS = config.get("cooldown_seconds", 10.0)
+
         self.set_state("help_requests", self.get_state("help_requests", 0))
         self.set_state("command_lookups", self.get_state("command_lookups", 0))
         self.set_state("users_helped", self.get_state("users_helped", []))

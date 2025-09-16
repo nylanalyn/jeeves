@@ -8,8 +8,8 @@ import sys
 from typing import Optional, Dict, Any
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
-    return Gif(bot)
+def setup(bot, config): # MODIFIED: Added config argument
+    return Gif(bot, config)
 
 class Gif(SimpleCommandModule):
     name = "gif"
@@ -22,7 +22,7 @@ class Gif(SimpleCommandModule):
     # Cooldown in seconds to prevent spam
     COOLDOWN = 10.0
 
-    def __init__(self, bot):
+    def __init__(self, bot, config): # MODIFIED: Added config argument
         super().__init__(bot)
         
         # Initialize state for statistics

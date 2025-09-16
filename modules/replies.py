@@ -7,8 +7,8 @@ import time
 from typing import Dict, Any, Optional
 from .base import ResponseModule, SimpleCommandModule, admin_required
 
-def setup(bot):
-    return Replies(bot)
+def setup(bot, config): # MODIFIED: Added config argument
+    return Replies(bot, config)
 
 class Replies(SimpleCommandModule):
     name = "replies"
@@ -76,7 +76,7 @@ class Replies(SimpleCommandModule):
         "Such questions are best pondered over a proper meal, {title}."
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot, config): # MODIFIED: Added config argument
         super().__init__(bot)
         
         self.set_state("questions_answered", self.get_state("questions_answered", 0))

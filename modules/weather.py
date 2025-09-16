@@ -10,8 +10,8 @@ from typing import Dict, Any, Optional, Tuple
 from datetime import datetime, timezone, timedelta
 from .base import SimpleCommandModule, ResponseModule, admin_required
 
-def setup(bot):
-    return Weather(bot)
+def setup(bot, config): # MODIFIED: Added config argument
+    return Weather(bot, config)
 
 class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"
@@ -20,7 +20,7 @@ class Weather(SimpleCommandModule, ResponseModule):
 
     API_KEY = os.getenv("PIRATE_WEATHER_API_KEY")
 
-    def __init__(self, bot):
+    def __init__(self, bot, config): # MODIFIED: Added config argument
         super().__init__(bot)
         self.set_state("user_locations", self.get_state("user_locations", {}))
         self.save_state()

@@ -7,19 +7,13 @@ import functools
 from typing import Dict, Any, Optional
 from .base import ResponseModule, admin_required
 
-def setup(bot):
-    return Sailing(bot)
+def setup(bot, config):
+    return Sailing(bot, config)
 
 class Sailing(ResponseModule):
     name = "sailing"
-    version = "1.1.0"
+    version = "1.2.0" # version bumped
     description = "Responds to the 'SAIL' trigger from a specific user with nautical lore."
-    
-    # Target user
-    TARGET_USER = "witeshark2"
-    
-    # Cooldown to prevent spam (in seconds)
-    COOLDOWN = 5.0
     
     # Deep nautical responses with obscure maritime lore
     NAUTICAL_RESPONSES = [
@@ -85,9 +79,13 @@ class Sailing(ResponseModule):
         "Follow the ghost lights, {title}! Some navigational aids transcend mere physics.",
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
+        # Load settings from config.yaml, with sane defaults
+        self.TARGET_USER = config.get("target_user", "witeshark2")
+        self.COOLDOWN = config.get("cooldown", 5.0)
+
         # Initialize state with default values
         self.set_state("triggers_responded", self.get_state("triggers_responded", 0))
         self.set_state("responses_given", self.get_state("responses_given", []))

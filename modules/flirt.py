@@ -7,21 +7,21 @@ import functools
 from typing import Optional, Dict, Any, List, Callable, Union
 from .base import ResponseModule, SimpleCommandModule, admin_required
 
-def setup(bot):
-    return Flirt(bot)
+def setup(bot, config):
+    return Flirt(bot, config)
 
 class Flirt(ResponseModule, SimpleCommandModule):
     name = "flirt"
-    version = "2.1.0"
+    version = "2.2.0" # version bumped
     description = "Polite and professional flirt handling."
-    
-    # Configuration
-    GLOBAL_COOLDOWN = 30.0  # seconds between any flirt responses
-    PER_USER_COOLDOWN = 60.0  # seconds before same user can trigger again
 
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
+        # Load settings from config.yaml, with sane defaults
+        self.GLOBAL_COOLDOWN = config.get("global_cooldown", 30.0)
+        self.PER_USER_COOLDOWN = config.get("per_user_cooldown", 60.0)
+
         # Initialize state
         self.set_state("total_flirts_received", self.get_state("total_flirts_received", 0))
         self.set_state("responses_given", self.get_state("responses_given", 0))

@@ -10,19 +10,14 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
-    return Adventure(bot)
+def setup(bot, config):
+    return Adventure(bot, config)
 
 class Adventure(SimpleCommandModule):
     name = "adventure"
-    version = "2.2.0" # version bumped
+    version = "2.3.0" # version bumped
     description = "A choose-your-own-adventure game for the channel."
     
-    # Configuration constants
-    VOTE_WINDOW_SEC = 75
-    STORY_SENTENCES_PER_ROUND = 3
-    MAX_HISTORY_ENTRIES = 50
-
     # Adventure locations
     PLACES = [
         "the Neon Bazaar", "the Clockwork Conservatory", "the Signal Archives", 
@@ -81,12 +76,14 @@ class Adventure(SimpleCommandModule):
     RE_VOTE_1 = re.compile(r"^\s*!?1[.,!\s]*\s*$")
     RE_VOTE_2 = re.compile(r"^\s*!?2[.,!\s]*\s*$")
 
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
-        # Get state using bot's method
-        self.st = self.get_state()
-        
+        # Load settings from config.yaml, with sane defaults
+        self.VOTE_WINDOW_SEC = config.get("vote_window_seconds", 75)
+        self.STORY_SENTENCES_PER_ROUND = config.get("story_sentences_per_round", 3)
+        self.MAX_HISTORY_ENTRIES = 50 # This one can stay hardcoded for now
+
         # Initialize state with defaults
         self.set_state("current", self.get_state("current", None))
         self.set_state("history", self.get_state("history", []))

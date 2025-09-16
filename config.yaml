@@ -1,0 +1,41 @@
+# Jeeves Bot Configuration
+
+# Cooldowns are in seconds, timers are in hours unless specified
+adventure:
+    vote_window_seconds: 75
+    story_sentences_per_round: 3
+
+chatter:
+    cooldowns:
+        animal: 3600
+        weather: 1800
+        tech: 900
+        food: 1200
+        greeting: 300
+
+flirt:
+    global_cooldown: 30.0
+    per_user_cooldown: 60.0
+
+memos:
+    max_deliver_per_burst: 3
+    max_pending_per_user: 3
+
+roadtrip:
+    join_window_seconds: 120
+    trigger_probability: 0.25
+    hours_between_trips:
+        min: 3
+        max: 18
+    messages_for_trigger:
+        min: 35
+        max: 85
+
+sailing:
+    target_user: "witeshark2"
+    cooldown: 5.0
+
+# General module cooldowns
+cooldowns:
+    fortune: 10.0
+    help: 10.0

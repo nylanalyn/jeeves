@@ -11,21 +11,13 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
-    return Roadtrip(bot)
+def setup(bot, config):
+    return Roadtrip(bot, config)
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "2.2.0" # <-- version updated
+    version = "2.3.0" # version bumped
     description = "Schedules surprise roadtrips for channel members."
-    
-    MIN_HOURS_BETWEEN_TRIPS = 3
-    MAX_HOURS_BETWEEN_TRIPS = 18
-    MIN_MESSAGES_FOR_TRIGGER = 35
-    MAX_MESSAGES_FOR_TRIGGER = 85
-    TRIGGER_PROBABILITY = 0.25
-    JOIN_WINDOW_SECONDS = 120
-    MAX_HISTORY_ENTRIES = 20
 
     LOCATIONS = [
         "the riverside park", "the old museum", "the observatory", "the seaside pier", 
@@ -43,9 +35,18 @@ class Roadtrip(SimpleCommandModule):
         "Splendid idea, {title}; the vehicle awaits.",
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
+        # Load settings from config.yaml, with sane defaults
+        self.MIN_HOURS_BETWEEN_TRIPS = config.get("hours_between_trips", {}).get("min", 3)
+        self.MAX_HOURS_BETWEEN_TRIPS = config.get("hours_between_trips", {}).get("max", 18)
+        self.MIN_MESSAGES_FOR_TRIGGER = config.get("messages_for_trigger", {}).get("min", 35)
+        self.MAX_MESSAGES_FOR_TRIGGER = config.get("messages_for_trigger", {}).get("max", 85)
+        self.TRIGGER_PROBABILITY = config.get("trigger_probability", 0.25)
+        self.JOIN_WINDOW_SECONDS = config.get("join_window_seconds", 120)
+        self.MAX_HISTORY_ENTRIES = 20 # This one can stay hardcoded for now
+
         self.set_state("messages_since_last", self.get_state("messages_since_last", 0))
         self.set_state("next_trip_earliest", self.get_state("next_trip_earliest", self._compute_next_trip_time().isoformat()))
         self.set_state("next_trip_message_threshold", self.get_state("next_trip_message_threshold", self._compute_message_threshold()))

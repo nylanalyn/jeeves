@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # jeeves.py — modular IRC butler core with base.py integration
 
-import os, sys, time, json, re, ssl, signal, threading, traceback, importlib.util, base64
+import os, sys, time, json, re, ssl, signal, threading, traceback, importlib.util, base64, yaml
 from pathlib import Path
 from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
@@ -14,6 +14,19 @@ ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = Path.home() / ".config" / "jeeves"
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 STATE_PATH = CONFIG_DIR / "state.json"
+CONFIG_PATH = ROOT / "config.yaml"
+
+def load_config():
+    """Loads the YAML configuration file."""
+    if not CONFIG_PATH.exists():
+        print(f"[boot] warning: config.yaml not found, using default values.", file=sys.stderr)
+        return {}
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"[boot] error loading config.yaml: {e}", file=sys.stderr)
+        return {}
 
 def load_env_files():
     env_files = [
@@ -172,8 +185,9 @@ class PluginManager:
                 if not hasattr(mod, "setup"):
                     print(f"[plugins] skipping {name}: no setup() function found.", file=sys.stderr)
                     continue
-
-                instance = mod.setup(self.bot)
+                
+                module_config = self.bot.config.get(name, {})
+                instance = mod.setup(self.bot, module_config)
                 self.plugins[name] = instance
                 self.modules[name] = mod
                 loaded_modules.append(name)
@@ -245,7 +259,7 @@ class ConnectionManager:
 
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
-    def __init__(self, server, port, channel, nickname, username=None, password=None):
+    def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
         ssl_factory = Factory(wrapper=ssl.wrap_socket)
         super().__init__([(server, port)], nickname, nickname, connect_factory=ssl_factory)
 
@@ -253,6 +267,7 @@ class Jeeves(SingleServerIRCBot):
         self.port = port
         self.primary_channel = channel
         self.nickname = nickname
+        self.config = config or {}
 
         # Store the name pattern for modules to use
         self.JEEVES_NAME_RE = JEEVES_NAME_RE
@@ -480,7 +495,7 @@ class Jeeves(SingleServerIRCBot):
         # Admin reload command
         if self.is_admin(username) and msg.strip().lower() == "!reload":
             ok = self.pm.load_all()
-            connection.privmsg(room, "All modules reloaded as requested." if ok else "Reload had errors; check logs.")
+            connection.privmsg(room, "Reloaded." if ok else "Reload had errors; check logs.")
             return
 
         # Process through all plugins
@@ -567,12 +582,13 @@ def main():
     user = os.getenv("JEEVES_USER", "").strip() or None
     passwd = os.getenv("JEEVES_PASS", "").strip() or None
 
+    config = load_config()
     retry_count = 0
     max_retries = 10
 
     while True:
         try:
-            bot = Jeeves(server, port, channel, nick, user, passwd)
+            bot = Jeeves(server, port, channel, nick, user, passwd, config=config)
             bot.start()
         except KeyboardInterrupt:
             print("[core] interrupted", file=sys.stderr)

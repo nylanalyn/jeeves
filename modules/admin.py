@@ -8,15 +8,15 @@ import sys
 from typing import Optional, Tuple, Dict, Any
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot): 
-    return Admin(bot)
+def setup(bot, config): # MODIFIED: Added config argument
+    return Admin(bot, config)
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.3.0" # version bumped
+    version = "2.3.0"
     description = "Administrative bot controls."
     
-    def __init__(self, bot):
+    def __init__(self, bot, config): # MODIFIED: Added config argument
         super().__init__(bot)
         # Initialize state
         self.set_state("commands_used", self.get_state("commands_used", 0))

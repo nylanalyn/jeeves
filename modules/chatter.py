@@ -13,12 +13,12 @@ from .base import ResponseModule, SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
-    return Chatter(bot)
+def setup(bot, config):
+    return Chatter(bot, config)
 
 class Chatter(SimpleCommandModule, ResponseModule):
     name = "chatter"
-    version = "2.1.0"
+    version = "2.2.0" # version bumped
     description = "Provides scheduled messages and conversational responses."
 
     # Enhanced pattern matching for better detection
@@ -87,9 +87,19 @@ class Chatter(SimpleCommandModule, ResponseModule):
         "Welcome, {title}. How may I be of assistance today?",
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
+        # Load cooldowns from config.yaml, with sane defaults
+        config_cooldowns = config.get("cooldowns", {})
+        self._response_cooldowns = {
+            "animal":   config_cooldowns.get("animal", 3600),
+            "weather":  config_cooldowns.get("weather", 1800),
+            "tech":     config_cooldowns.get("tech", 900),
+            "food":     config_cooldowns.get("food", 1200),
+            "greeting": config_cooldowns.get("greeting", 300),
+        }
+
         self.set_state("last_daily", self.get_state("last_daily", None))
         self.set_state("last_weekly", self.get_state("last_weekly", None))
         self.set_state("last_animals", self.get_state("last_animals", None))
@@ -99,21 +109,6 @@ class Chatter(SimpleCommandModule, ResponseModule):
         self.set_state("schedule_times", self.get_state("schedule_times", {}))
         self.set_state("user_interactions", self.get_state("user_interactions", {}))
         self.save_state()
-        
-        def get_cooldown(env_var, default):
-            val = os.getenv(env_var, default)
-            try:
-                return int(val)
-            except (ValueError, TypeError):
-                return default
-        
-        self._response_cooldowns = {
-            "animal":   get_cooldown("JEEVES_CHATTER_COOLDOWN_ANIMAL", 3600),
-            "weather":  get_cooldown("JEEVES_CHATTER_COOLDOWN_WEATHER", 1800),
-            "tech":     get_cooldown("JEEVES_CHATTER_COOLDOWN_TECH", 900),
-            "food":     get_cooldown("JEEVES_CHATTER_COOLDOWN_FOOD", 1200),
-            "greeting": get_cooldown("JEEVES_CHATTER_COOLDOWN_GREETING", 300),
-        }
         
         self._register_responses()
         self._register_commands()
@@ -156,7 +151,7 @@ class Chatter(SimpleCommandModule, ResponseModule):
     def _handle_contextual_response(self, response_type: str, msg: str, username: str) -> Optional[str]:
         cooldown = self._response_cooldowns.get(response_type, 300)
 
-        # ADD THIS CHECK: If cooldown is negative, the response is disabled.
+        # If cooldown is negative, the response is disabled.
         if cooldown < 0:
             return None
 
@@ -172,7 +167,6 @@ class Chatter(SimpleCommandModule, ResponseModule):
             "greeting": self.GREETING_RESPONSES,
         }.get(response_type, [])
     
-        # This check is needed in case you uncomment a response type but the list is empty
         if not responses:
             return None
 
@@ -183,23 +177,6 @@ class Chatter(SimpleCommandModule, ResponseModule):
         self.set_state("response_counts", counts)
         self.save_state()
     
-        return response_text
-            
-        responses = {
-            "animal": self.ANIMAL_RESPONSES,
-            "weather": self.WEATHER_RESPONSES,
-            #"tech": self.TECH_RESPONSES,
-            #"food": self.FOOD_RESPONSES,
-            #"greeting": self.GREETING_RESPONSES,
-        }.get(response_type, [])
-        
-        response_text = self._format_line(random.choice(responses), username)
-        
-        counts = self.get_state("response_counts")
-        counts[response_type] = counts.get(response_type, 0) + 1
-        self.set_state("response_counts", counts)
-        self.save_state()
-        
         return response_text
     
     def on_load(self):

@@ -10,17 +10,14 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
-    return Memos(bot)
+def setup(bot, config):
+    return Memos(bot, config)
 
 class Memos(SimpleCommandModule):
     name = "memos"
-    version = "2.1.0"
+    version = "2.2.0" # version bumped
     description = "Provides memo functionality for leaving messages for users."
     
-    MAX_DELIVER_PER_BURST = 3
-    MAX_PENDING_PER_USER = 3
-
     ACKS = [
         "Indeed, {title}; I shall make a precise note of it.",
         "Very good, {title}. Your message is recorded.",
@@ -35,8 +32,13 @@ class Memos(SimpleCommandModule):
         "Message for {to} from {from_}: {text}",
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
+        
+        # Load settings from config.yaml, with sane defaults
+        self.MAX_DELIVER_PER_BURST = config.get("max_deliver_per_burst", 3)
+        self.MAX_PENDING_PER_USER = config.get("max_pending_per_user", 3)
+
         self.set_state("pending", self.get_state("pending", {}))
         self.set_state("created_count", self.get_state("created_count", 0))
         self.set_state("delivered_count", self.get_state("delivered_count", 0))
@@ -73,9 +75,9 @@ class Memos(SimpleCommandModule):
 
         self.set_state("delivered_count", self.get_state("delivered_count") + len(to_deliver))
         self.set_state("last_delivered_at", datetime.now(UTC).isoformat())
+        self._set_bucket(key, remainder) # Moved before save_state for atomicity
         self.save_state()
 
-        self._set_bucket(key, remainder)
         return True
 
     # --- helpers ---

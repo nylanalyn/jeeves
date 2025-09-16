@@ -11,8 +11,8 @@ from .base import SimpleCommandModule, ResponseModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
-    return Courtesy(bot)
+def setup(bot, config): # MODIFIED: Added config argument
+    return Courtesy(bot, config)
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
@@ -43,7 +43,7 @@ class Courtesy(SimpleCommandModule):
         "questioning":"neutral",
     }
 
-    def __init__(self, bot):
+    def __init__(self, bot, config): # MODIFIED: Added config argument
         super().__init__(bot)
         
         self.set_state("profiles", self.get_state("profiles", {}))

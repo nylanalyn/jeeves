@@ -4,26 +4,28 @@ import re
 import random
 import os
 import functools
-import time # <-- ADDED THIS LINE
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from .base import SimpleCommandModule, ResponseModule, admin_required
 
-def setup(bot):
-    return Fortune(bot)
+def setup(bot, config):
+    return Fortune(bot, config)
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
-    version = "1.1.0"
+    version = "1.2.0" # version bumped
     description = "Provides fortunes from a fortune cookie."
     
     FORTUNE_DIR = Path(__file__).parent.parent / "fortunes"
-    COOLDOWN_SECONDS = 10.0
     CATEGORIES = ["spooky", "happy", "sad", "silly"]
     
-    def __init__(self, bot):
+    def __init__(self, bot, config):
         super().__init__(bot)
         
+        # Load settings from config.yaml, with sane defaults
+        self.COOLDOWN_SECONDS = config.get("cooldown_seconds", 10.0)
+
         self.set_state("fortunes_given", self.get_state("fortunes_given", 0))
         self.set_state("category_counts", self.get_state("category_counts", {cat: 0 for cat in self.CATEGORIES}))
         self.set_state("users_served", self.get_state("users_served", []))

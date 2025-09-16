@@ -1,3 +1,4 @@
 irc
 schedule
 requests
+pyyaml

@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.2.0" # version bumped
+    version = "2.3.0" # version bumped
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
@@ -35,35 +35,28 @@ class Help(SimpleCommandModule):
         )
         
     def _register_commands(self):
-        # Admin stats command (registered as a command, not a response)
         self.register_command(r"^\s*!help\s+stats\s*$", self._cmd_stats,
-                              admin_only=True, description="Show help module statistics.")
+                              name="help stats", admin_only=True, description="Show help module statistics.")
         self.register_command(r"^\s*!help\s*$", self._cmd_help,
-                              description="Show available commands.")
+                              name="help", description="Show available commands.")
         self.register_command(r"^\s*!help\s+(\S+)\s*$", self._cmd_help_command,
-                              description="Show help for a specific command.")
+                              name="help command", description="Show help for a specific command.")
 
-    def _get_all_commands(self, is_admin: bool) -> Dict[str, str]:
+    def _get_all_commands(self, is_admin: bool) -> Dict[str, Dict[str, Any]]:
         """Dynamically builds a dictionary of commands from all loaded modules."""
         all_commands = {}
-        # Access the bot's plugin manager to find other modules
-        for module_name, module_instance in self.bot.pm.plugins.items():
-            # Check if the module has the _commands attribute from ModuleBase
+        for module_instance in self.bot.pm.plugins.values():
             if hasattr(module_instance, "_commands"):
                 for cmd_info in module_instance._commands.values():
                     if cmd_info.get("admin_only") and not is_admin:
-                        continue # Skip admin commands for non-admins
-
-                    # Extract the command name from the regex pattern
-                    # This is a simple example; you might need a more robust way
-                    pattern_str = cmd_info["pattern"].pattern
-                    command_name = re.search(r'\^\\s\*!(\w+)', pattern_str)
-                    if command_name:
-                        name = command_name.group(1)
-                        description = cmd_info.get("description", "No description available.")
-                        if cmd_info.get("admin_only"):
-                            name += "*" # Mark admin commands
-                        all_commands[name] = description
+                        continue
+                    
+                    cmd_name = cmd_info.get("name")
+                    if cmd_name:
+                        all_commands[cmd_name] = {
+                            "description": cmd_info.get("description", "No description available."),
+                            "admin_only": cmd_info.get("admin_only", False)
+                        }
         return all_commands
 
     def _can_give_help(self, username: str) -> bool:
@@ -89,51 +82,30 @@ class Help(SimpleCommandModule):
         self.save_state()
 
     def _get_command_list(self, is_admin: bool) -> str:
-        # This gets the fresh, dynamic list of commands every time.
         commands_dict = self._get_all_commands(is_admin)
-    
-        # Get the names (keys) and sort them
-        all_cmds = sorted(commands_dict.keys())
-    
-        # We need to manually check for admin commands to add the '*'
-        final_cmd_list = []
-        for cmd in all_cmds:
-            # A simple way to re-check if it's admin-only for the marker
-            # This is a bit inefficient but clear.
-            if is_admin and self._get_command_help(cmd, True) and self._is_command_admin_only(cmd):
-                 final_cmd_list.append(f"{cmd}*")
-            else:
-                 final_cmd_list.append(cmd)
-             
-        return ", ".join(final_cmd_list)
-
-    def _is_command_admin_only(self, command: str) -> bool:
-        """Checks if a specific command is registered as admin_only."""
-        for module_instance in self.bot.pm.plugins.values():
-            if hasattr(module_instance, "_commands"):
-                for cmd_info in module_instance._commands.values():
-                    pattern_str = cmd_info["pattern"].pattern
-                    match = re.search(r'^\s*!(\w+)', pattern_str)
-                    if match and match.group(1) == command:
-                        return cmd_info.get("admin_only", False)
-        return False
+        command_names = []
+        for name, info in commands_dict.items():
+            display_name = name
+            if info.get("admin_only"):
+                display_name += "*"
+            command_names.append(display_name)
+        return ", ".join(sorted(command_names))
 
     def _get_command_help(self, command: str, is_admin: bool) -> Optional[str]:
         if command.startswith("!"): command = command[1:]
         command = command.lower()
     
-        commands_dict = self._get_all_commands(is_admin)
-        return commands_dict.get(command)
+        all_commands = self._get_all_commands(is_admin)
+        cmd_info = all_commands.get(command)
+        return cmd_info.get("description") if cmd_info else None
 
     def on_privmsg(self, connection, event):
         msg = event.arguments[0] if event.arguments else ""
         username = event.source.split('!')[0]
         is_admin = self.bot.is_admin(username)
         
-        # Check cooldown
         if not self._can_give_help(username): return False
         
-        # Simple patterns for private messages (no ! prefix needed)
         help_simple = re.match(r"^\s*help\s*$", msg, re.IGNORECASE)
         help_command = re.match(r"^\s*help\s+(\S+)\s*$", msg, re.IGNORECASE)
         
@@ -164,15 +136,14 @@ class Help(SimpleCommandModule):
         if super().on_pubmsg(connection, event, msg, username):
             return True
         
-        # Check cooldown for natural language
         if not self._can_give_help(username):
             return False
             
-        # General help request (natural language)
         if self.RE_NL_HELP.search(msg):
             title = self.bot.title_for(username)
-            available_note = " (admin commands marked with *)" if self.bot.is_admin(username) else ""
-            cmd_list = self._get_command_list(self.bot.is_admin(username))
+            is_admin = self.bot.is_admin(username)
+            available_note = " (admin commands marked with *)" if is_admin else ""
+            cmd_list = self._get_command_list(is_admin)
             self.safe_privmsg(username, f"Available commands, {title}: {cmd_list}{available_note}")
             self.safe_privmsg(username, f"Use !help <command> for details on any command. I also respond to natural language - just address me by name!")
             self.safe_reply(connection, event, f"{username}, command list sent privately. Use !help <command> for specific help.")

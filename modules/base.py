@@ -26,7 +26,7 @@ class ModuleBase(ABC):
     
     # Module metadata - override in subclasses
     name = "base"
-    version = "1.0.0"
+    version = "1.1.0" # version bumped
     description = "Base module class"
     dependencies: List[str] = []  # List of required module names
     
@@ -92,7 +92,8 @@ class ModuleBase(ABC):
 
     # ---- Command Registration System ----
     def register_command(self, pattern: Union[str, re.Pattern], 
-                        handler: Callable, 
+                        handler: Callable,
+                        name: str,
                         admin_only: bool = False,
                         cooldown: float = 0.0,
                         description: str = "") -> None:
@@ -102,6 +103,7 @@ class ModuleBase(ABC):
         Args:
             pattern: Regex pattern (string or compiled) to match
             handler: Function to call when pattern matches
+            name: The canonical, user-facing name of the command (e.g., "gif")
             admin_only: Whether command requires admin privileges
             cooldown: Cooldown in seconds between uses per user
             description: Help text for the command
@@ -109,10 +111,11 @@ class ModuleBase(ABC):
         if isinstance(pattern, str):
             pattern = re.compile(pattern, re.IGNORECASE)
         
-        command_id = f"{self.name}_{len(self._commands)}"
+        command_id = f"{self.name}_{name}" # Use name for a more stable ID
         self._commands[command_id] = {
             "pattern": pattern,
             "handler": handler,
+            "name": name.lower(),
             "admin_only": admin_only,
             "cooldown": cooldown,
             "description": description,

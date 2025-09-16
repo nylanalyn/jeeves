@@ -480,7 +480,7 @@ class Jeeves(SingleServerIRCBot):
         # Admin reload command
         if self.is_admin(username) and msg.strip().lower() == "!reload":
             ok = self.pm.load_all()
-            connection.privmsg(room, "Reloaded." if ok else "Reload had errors; check logs.")
+            connection.privmsg(room, "All modules reloaded as requested." if ok else "Reload had errors; check logs.")
             return
 
         # Process through all plugins

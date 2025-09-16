@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.3.3" # version bumped
+    version = "2.3.4" # version bumped
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
@@ -133,6 +133,41 @@ class Help(SimpleCommandModule):
             self._cmd_help(connection, event, msg, username, None)
             return True
         
+        return False
+
+    def on_privmsg(self, connection, event):
+        """CORRECTED private message handler."""
+        msg = event.arguments[0] if event.arguments else ""
+        username = event.source.split('!')[0]
+        is_admin = self.bot.is_admin(username)
+
+        if not self._can_give_help(username):
+            return False
+
+        # Check for 'help <command>' first
+        help_command_match = re.match(r"^\s*help\s+(\S+)\s*$", msg, re.IGNORECASE)
+        if help_command_match:
+            command = help_command_match.group(1)
+            help_lines = self._get_command_help(command, is_admin)
+            
+            if help_lines:
+                for line in help_lines:
+                    self.safe_privmsg(username, line)
+                self._mark_help_given(username, is_command_lookup=True)
+            else:
+                cmd_list = self._get_command_list(is_admin)
+                self.safe_privmsg(username, f"Unknown command. Available commands: {cmd_list}")
+            return True
+
+        # Check for general 'help' second
+        help_simple_match = re.match(r"^\s*help\s*$", msg, re.IGNORECASE)
+        if help_simple_match:
+            cmd_list = self._get_command_list(is_admin)
+            self.safe_privmsg(username, f"Available commands: {cmd_list}")
+            self.safe_privmsg(username, "Use 'help <command>' for details on a specific command.")
+            self._mark_help_given(username)
+            return True
+
         return False
 
     @admin_required

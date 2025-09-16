@@ -13,14 +13,16 @@ def setup(bot, config):
 
 class Gif(SimpleCommandModule):
     name = "gif"
-    version = "1.0.1" # version bumped
+    version = "1.0.2" # version bumped
     description = "Searches Giphy for a GIF and posts the link."
 
     API_KEY = os.getenv("GIPHY_API_KEY")
     
     def __init__(self, bot, config):
-        super().__init__(bot)
+        # Define COOLDOWN before calling the parent's __init__
         self.COOLDOWN = config.get("cooldown", 10.0)
+        
+        super().__init__(bot)
         
         self.set_state("gifs_requested", self.get_state("gifs_requested", 0))
         self.set_state("gifs_found", self.get_state("gifs_found", 0))
@@ -41,22 +43,32 @@ class Gif(SimpleCommandModule):
             description="Show GIF module statistics."
         )
 
-    # ... (rest of the functions remain the same)
     def _get_gif_url(self, query: str) -> Optional[str]:
         self.set_state("gifs_requested", self.get_state("gifs_requested") + 1)
         self.save_state()
+
         api_url = f"https://api.giphy.com/v1/gifs/search"
-        params = {'api_key': self.API_KEY, 'q': query, 'limit': 25, 'rating': 'pg-13', 'lang': 'en'}
+        params = {
+            'api_key': self.API_KEY,
+            'q': query,
+            'limit': 25,
+            'rating': 'pg-13',
+            'lang': 'en'
+        }
+
         try:
             response = requests.get(api_url, params=params, timeout=10)
             response.raise_for_status()
             data = response.json()
+
             if data and data['data']:
                 gif_obj = random.choice(data['data'])
                 self.set_state("gifs_found", self.get_state("gifs_found") + 1)
                 self.save_state()
                 return gif_obj['images']['original']['url']
+            
             return None
+            
         except requests.exceptions.RequestException as e:
             self._record_error(f"Giphy API request failed for query '{query}': {e}")
             return None
@@ -68,13 +80,16 @@ class Gif(SimpleCommandModule):
         if not self.API_KEY:
             self.safe_reply(connection, event, f"{username}, I'm sorry, but the GIF service is not configured correctly.")
             return True
+
         query = match.group(1).strip()
         gif_url = self._get_gif_url(query)
         title = self.bot.title_for(username)
+
         if gif_url:
             self.safe_reply(connection, event, f"{title} {username}, for '{query}': {gif_url}")
         else:
             self.safe_reply(connection, event, f"My apologies, {title}, I could not find a suitable GIF for '{query}'.")
+        
         return True
 
     @admin_required
@@ -82,5 +97,9 @@ class Gif(SimpleCommandModule):
         requested = self.get_state("gifs_requested", 0)
         found = self.get_state("gifs_found", 0)
         success_rate = (found / requested * 100) if requested > 0 else 0
-        self.safe_reply(connection, event, f"GIF stats: {found}/{requested} successful requests ({success_rate:.1f}% success rate).")
+        
+        self.safe_reply(
+            connection, event,
+            f"GIF stats: {found}/{requested} successful requests ({success_rate:.1f}% success rate)."
+        )
         return True

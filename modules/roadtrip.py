@@ -16,12 +16,24 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "2.3.1" # version bumped
+    version = "2.3.2" # version bumped
     description = "Schedules surprise roadtrips for channel members."
 
-    # ... (LOCATIONS and TRIGGER_MESSAGES remain the same)
-    LOCATIONS = [ "the riverside park", "the old museum", "the observatory", "the seaside pier", "the midnight diner", "the botanical gardens", "the antique arcade", "the lighthouse", "the market square", "the hilltop ruins", "the art-house cinema", "the railway depot", "the speakeasy", "the planetarium", "the neon alley", "the tea pavilion", "the bookshop maze", "the clocktower", "the rooftops", "the brothel", "the funfair", "the stormbreak causeway", ]
-    TRIGGER_MESSAGES = [ "Of course, {title}; I'll prepare the car.", "Very good, {title}; I shall ready the motor.", "An excellent notion, {title}; let me fetch the keys.", "Splendid idea, {title}; the vehicle awaits.", ]
+    LOCATIONS = [
+        "the riverside park", "the old museum", "the observatory", "the seaside pier", 
+        "the midnight diner", "the botanical gardens", "the antique arcade", "the lighthouse", 
+        "the market square", "the hilltop ruins", "the art-house cinema", "the railway depot", 
+        "the speakeasy", "the planetarium", "the neon alley", "the tea pavilion", 
+        "the bookshop maze", "the clocktower", "the rooftops", "the brothel", "the funfair",
+        "the stormbreak causeway",
+    ]
+
+    TRIGGER_MESSAGES = [
+        "Of course, {title}; I'll prepare the car.",
+        "Very good, {title}; I shall ready the motor.",
+        "An excellent notion, {title}; let me fetch the keys.",
+        "Splendid idea, {title}; the vehicle awaits.",
+    ]
 
     def __init__(self, bot, config):
         super().__init__(bot)
@@ -34,14 +46,17 @@ class Roadtrip(SimpleCommandModule):
         self.JOIN_WINDOW_SECONDS = config.get("join_window_seconds", 120)
         self.MAX_HISTORY_ENTRIES = 20
 
-        # ... (rest of the __init__ function remains the same)
         self.set_state("messages_since_last", self.get_state("messages_since_last", 0))
         self.set_state("next_trip_earliest", self.get_state("next_trip_earliest", self._compute_next_trip_time().isoformat()))
         self.set_state("next_trip_message_threshold", self.get_state("next_trip_message_threshold", self._compute_message_threshold()))
         self.set_state("current_rsvp", self.get_state("current_rsvp", None))
         self.set_state("history", self.get_state("history", []))
-        self.set_state("stats", self.get_state("stats", {"trips_triggered": 0, "trips_completed": 0, "total_participants": 0, "messages_at_triggers": [], "most_popular_destination": None, "average_participants": 0.0}))
+        self.set_state("stats", self.get_state("stats", {
+            "trips_triggered": 0, "trips_completed": 0, "total_participants": 0,
+            "messages_at_triggers": [], "most_popular_destination": None, "average_participants": 0.0
+        }))
         self.save_state()
+
         self._rsvp_pattern = re.compile(rf"^\s*coming\s+{self.bot.JEEVES_NAME_RE}!?\s*\.?\s*$", re.IGNORECASE)
         self._rsvp_alt_pattern = re.compile(r"^\s*!me\s*$", re.IGNORECASE)
 
@@ -52,8 +67,7 @@ class Roadtrip(SimpleCommandModule):
                               name="roadtrip stats", admin_only=True, description="Show roadtrip statistics.")
         self.register_command(r"^\s*!roadtrip\s+trigger\s*$", self._cmd_trigger,
                               name="roadtrip trigger", admin_only=True, description="Force a roadtrip to start.")
-    
-    # ... (rest of the functions remain the same)
+
     def on_load(self):
         super().on_load()
         schedule.clear(f"{self.name}-close")
@@ -75,11 +89,16 @@ class Roadtrip(SimpleCommandModule):
     def on_pubmsg(self, connection, event, msg, username):
         if super().on_pubmsg(connection, event, msg, username):
             return True
+        
         if self._try_collect_rsvp(msg, username, event.target):
             return True
+        
         self._increment_message_count()
+        
         if self._should_trigger_roadtrip():
-            self._open_rsvp_window(connection, event.target)
+            # Pass the full event object, not just the target string
+            self._open_rsvp_window(connection, event)
+
         return False
 
     def _compute_next_trip_time(self) -> datetime:
@@ -120,11 +139,22 @@ class Roadtrip(SimpleCommandModule):
         destination = random.choice(self.LOCATIONS)
         trigger_msg = random.choice(self.TRIGGER_MESSAGES)
         title = self.bot.title_for("nobody")
+        
+        # Now event is the full event object, so event.target is valid
         self.safe_reply(connection, event, trigger_msg.format(title=title))
-        self.safe_reply(connection, event, f"Shall we? I've in mind a little excursion to {destination}. Say \"coming jeeves!\" or \"!me\" within {self.JOIN_WINDOW_SECONDS} seconds to be shown to the car.")
+        self.safe_reply(connection, event,
+                        f"Shall we? I've in mind a little excursion to {destination}. "
+                        f'Say "coming jeeves!" or "!me" within {self.JOIN_WINDOW_SECONDS} seconds to be shown to the car.')
+        
         now = datetime.now(UTC)
         close_time = time.time() + self.JOIN_WINDOW_SECONDS
-        rsvp_state = {"destination": destination, "room": event.target, "participants": [], "triggered_at": now.isoformat(), "close_epoch": close_time, "messages_at_trigger": self.get_state("messages_since_last", 0)}
+        
+        rsvp_state = {
+            "destination": destination, "room": event.target, "participants": [],
+            "triggered_at": now.isoformat(), "close_epoch": close_time,
+            "messages_at_trigger": self.get_state("messages_since_last", 0)
+        }
+        
         self.set_state("current_rsvp", rsvp_state)
         self.save_state()
         schedule.every(self.JOIN_WINDOW_SECONDS).seconds.do(self._close_rsvp_window_scheduled).tag(f"{self.name}-close")
@@ -147,7 +177,12 @@ class Roadtrip(SimpleCommandModule):
         room = current_rsvp["room"]
         participants = list(dict.fromkeys(current_rsvp.get("participants", [])))
         destination = current_rsvp["destination"]
-        history_entry = {"date_iso": current_rsvp["triggered_at"], "participants": participants, "messages_at_trigger": current_rsvp["messages_at_trigger"], "destination": destination, "room": room, "participant_count": len(participants)}
+        history_entry = {
+            "date_iso": current_rsvp["triggered_at"], "participants": participants,
+            "messages_at_trigger": current_rsvp["messages_at_trigger"],
+            "destination": destination, "room": room,
+            "participant_count": len(participants)
+        }
         history = self.get_state("history", [])
         history.append(history_entry)
         if len(history) > self.MAX_HISTORY_ENTRIES: history = history[-self.MAX_HISTORY_ENTRIES:]
@@ -227,7 +262,14 @@ class Roadtrip(SimpleCommandModule):
         threshold = self.get_state("next_trip_message_threshold", 0)
         time_ok = "✓" if self._time_gate_passed() else "✗"
         msg_ok = "✓" if self._message_gate_passed() else "✗"
-        lines = [f"Triggered: {triggered}", f"Completed: {completed}", f"Total participants: {total_participants}", f"Avg participants: {avg_participants:.1f}", f"Popular destination: {popular_dest}", f"Messages: {messages_count}/{threshold} {msg_ok}", f"Time gate: {time_ok}"]
+        lines = [
+            f"Triggered: {triggered}", f"Completed: {completed}",
+            f"Total participants: {total_participants}",
+            f"Avg participants: {avg_participants:.1f}",
+            f"Popular destination: {popular_dest}",
+            f"Messages: {messages_count}/{threshold} {msg_ok}",
+            f"Time gate: {time_ok}"
+        ]
         self.safe_reply(connection, event, f"Roadtrip stats: {'; '.join(lines)}")
         return True
 
@@ -236,5 +278,5 @@ class Roadtrip(SimpleCommandModule):
         if self.get_state("current_rsvp"):
             self.safe_reply(connection, event, "A roadtrip RSVP window is already active.")
         else:
-            self._open_rsvp_window(connection, event.target)
+            self._open_rsvp_window(connection, event)
         return True

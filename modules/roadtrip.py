@@ -16,11 +16,9 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "3.0.0" # Major feature update
+    version = "3.0.2" # version bumped
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
-    # --- NEW: Event Storylets ---
-    # Organized by location, then by participant count (solo, duo, group)
     EVENTS = {
         "the riverside park": {
             "solo": ["{p1} enjoyed a quiet moment by the water, skipping stones across the surface."],
@@ -47,22 +45,6 @@ class Roadtrip(SimpleCommandModule):
             "duo": ["{p1} and {p2} shared a plate of questionable fries and solved all the world's problems over three hours."],
             "group": ["{p1} and the group somehow started a friendly pancake-eating contest with the night-shift cook."]
         },
-        "the botanical gardens": {
-            "solo": ["{p1} found a hidden bench in the rose garden and read for a while, undisturbed."],
-            "duo": ["{p1} and {p2} got hopelessly lost in the hedge maze and had to be rescued by a gardener."],
-            "group": ["{p1} and company took turns trying to identify exotic plants, with hilariously wrong results."]
-        },
-        "the antique arcade": {
-            "solo": ["{p1} became obsessed with an old pinball machine, determined to beat a high score from 1982."],
-            "duo": ["{p1} and {p2} challenged each other to a series of vintage games, the rivalry was palpable."],
-            "group": ["{p1} and the rest spent a small fortune in tokens trying to win enough tickets for a lava lamp."]
-        },
-        "the lighthouse": {
-            "solo": ["{p1} climbed all the way to the top and watched the ships on the horizon."],
-            "duo": ["{p1} and {p2} told each other spooky ghost stories in the echoing chambers of the lighthouse."],
-            "group": ["{p1} and the others helped the keeper polish the giant lens, a surprisingly satisfying task."]
-        },
-        # Adding a fallback for any locations not explicitly defined
         "fallback": {
             "solo": ["{p1} had a quiet, introspective time at {dest}."],
             "duo": ["{p1} and {p2} found a cozy corner at {dest} and chatted for hours."],
@@ -70,7 +52,7 @@ class Roadtrip(SimpleCommandModule):
         }
     }
 
-    LOCATIONS = list(set(EVENTS.keys()) - {"fallback"}) # Auto-populate locations from events
+    LOCATIONS = list(set(EVENTS.keys()) - {"fallback"})
 
     TRIGGER_MESSAGES = [
         "Of course, {title}; I'll prepare the car.",
@@ -88,15 +70,18 @@ class Roadtrip(SimpleCommandModule):
         self.MAX_MESSAGES_FOR_TRIGGER = config.get("messages_for_trigger", {}).get("max", 85)
         self.TRIGGER_PROBABILITY = config.get("trigger_probability", 0.25)
         self.JOIN_WINDOW_SECONDS = config.get("join_window_seconds", 120)
-        self.REPORT_DELAY_SECONDS = 3600 # NEW: 1 hour delay for the report
+        self.REPORT_DELAY_SECONDS = config.get("report_delay_seconds", 3600)
 
         self.set_state("messages_since_last", self.get_state("messages_since_last", 0))
         self.set_state("next_trip_earliest", self.get_state("next_trip_earliest", self._compute_next_trip_time().isoformat()))
         self.set_state("next_trip_message_threshold", self.get_state("next_trip_message_threshold", self._compute_message_threshold()))
         self.set_state("current_rsvp", self.get_state("current_rsvp", None))
-        self.set_state("pending_reports", self.get_state("pending_reports", [])) # NEW
+        self.set_state("pending_reports", self.get_state("pending_reports", []))
         self.set_state("history", self.get_state("history", []))
         self.save_state()
+
+        self._rsvp_pattern = re.compile(rf"^\s*coming\s+{self.bot.JEEVES_NAME_RE}!?\s*\.?\s*$", re.IGNORECASE)
+        self._rsvp_alt_pattern = re.compile(r"^\s*!me\s*$", re.IGNORECASE) # CORRECTED
 
     def _register_commands(self):
         self.register_command(r"^\s*!roadtrip\s*$", self._cmd_roadtrip,
@@ -109,7 +94,6 @@ class Roadtrip(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         schedule.clear(self.name)
-        # ... (logic for restoring scheduled reports)
         pending_reports = self.get_state("pending_reports", [])
         for report in pending_reports:
             report_time = datetime.fromisoformat(report["report_at"])
@@ -134,104 +118,109 @@ class Roadtrip(SimpleCommandModule):
             self._open_rsvp_window(connection, event)
         return False
 
+    def _compute_next_trip_time(self) -> datetime:
+        hours = random.randint(self.MIN_HOURS_BETWEEN_TRIPS, self.MAX_HOURS_BETWEEN_TRIPS)
+        return datetime.now(UTC) + timedelta(hours=hours)
+
+    def _compute_message_threshold(self) -> int:
+        return random.randint(self.MIN_MESSAGES_FOR_TRIGGER, self.MAX_MESSAGES_FOR_TRIGGER)
+
+    def _time_gate_passed(self) -> bool:
+        earliest_str = self.get_state("next_trip_earliest")
+        return datetime.now(UTC) >= datetime.fromisoformat(earliest_str)
+
+    def _message_gate_passed(self) -> bool:
+        return self.get_state("messages_since_last", 0) >= self.get_state("next_trip_message_threshold", 999)
+
+    def _should_trigger_roadtrip(self) -> bool:
+        if self.get_state("current_rsvp"): return False
+        if not self._time_gate_passed() or not self._message_gate_passed(): return False
+        return random.random() < self.TRIGGER_PROBABILITY
+
+    def _reset_trigger_conditions(self):
+        self.set_state("messages_since_last", 0)
+        self.set_state("next_trip_earliest", self._compute_next_trip_time().isoformat())
+        self.set_state("next_trip_message_threshold", self._compute_message_threshold())
+        self.save_state()
+
+    def _open_rsvp_window(self, connection, event):
+        destination = random.choice(self.LOCATIONS)
+        trigger_msg = random.choice(self.TRIGGER_MESSAGES).format(title=self.bot.title_for("nobody"))
+        self.safe_reply(connection, event, trigger_msg)
+        self.safe_reply(connection, event, f"Shall we? I've in mind a little excursion to {destination}. Say \"coming jeeves\" or \"!me\" within {self.JOIN_WINDOW_SECONDS} seconds to be shown to the car.")
+        
+        close_time = time.time() + self.JOIN_WINDOW_SECONDS
+        self.set_state("current_rsvp", {
+            "destination": destination, "room": event.target, "participants": [],
+            "close_epoch": close_time
+        })
+        self.save_state()
+        schedule.every(self.JOIN_WINDOW_SECONDS).seconds.do(self._close_rsvp_window).tag(self.name, f"rsvp-close")
+
     def _close_rsvp_window(self):
         current_rsvp = self.get_state("current_rsvp")
-        if not current_rsvp: return
-        schedule.clear(f"rsvp-close")
+        if not current_rsvp: return schedule.CancelJob
 
-        room = current_rsvp["room"]
-        participants = list(dict.fromkeys(current_rsvp.get("participants", [])))
-        destination = current_rsvp["destination"]
+        schedule.clear("rsvp-close")
+        room, participants, dest = current_rsvp["room"], current_rsvp["participants"], current_rsvp["destination"]
 
-        try:
-            if participants:
-                details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
-                self.bot.connection.privmsg(room, f"Very good. Outing to {destination}: {', '.join(details)}. Do buckle up.")
-                
-                # NEW: Schedule the event report
-                report_id = f"{self.name}-{int(time.time())}"
-                report_at = datetime.now(UTC) + timedelta(seconds=self.REPORT_DELAY_SECONDS)
-                pending_report = {
-                    "id": report_id,
-                    "room": room,
-                    "destination": destination,
-                    "participants": participants,
-                    "report_at": report_at.isoformat()
-                }
-                pending_reports = self.get_state("pending_reports", [])
-                pending_reports.append(pending_report)
-                self.set_state("pending_reports", pending_reports)
-                self.save_state()
-                schedule.every(self.REPORT_DELAY_SECONDS).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(self.name, f"report-{report_id}")
-            else:
-                self.bot.connection.privmsg(room, f"No takers. I shall cancel the reservation for {destination}.")
-        except Exception as e: self._record_error(f"error announcing results: {e}")
+        if participants:
+            details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
+            self.safe_say(f"Very good. Outing to {dest}: {', '.join(details)}. Do buckle up.", target=room)
+            
+            report_id = f"{self.name}-{int(time.time())}"
+            report_at = datetime.now(UTC) + timedelta(seconds=self.REPORT_DELAY_SECONDS)
+            pending_reports = self.get_state("pending_reports", [])
+            pending_reports.append({
+                "id": report_id, "room": room, "destination": dest,
+                "participants": participants, "report_at": report_at.isoformat()
+            })
+            self.set_state("pending_reports", pending_reports)
+            schedule.every(self.REPORT_DELAY_SECONDS).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(self.name, f"report-{report_id}")
+        else:
+            self.safe_say(f"No takers. I shall cancel the reservation for {dest}.", target=room)
         
         self.set_state("current_rsvp", None)
         self.save_state()
         self._reset_trigger_conditions()
-    
-    # --- NEW: Event Reporting Function ---
+        return schedule.CancelJob
+
     def _report_roadtrip_events(self, report_id: str):
         pending_reports = self.get_state("pending_reports", [])
-        report_to_send = None
-        for report in pending_reports:
-            if report["id"] == report_id:
-                report_to_send = report
-                break
-        
-        if not report_to_send:
-            return schedule.CancelJob
+        report = next((r for r in pending_reports if r["id"] == report_id), None)
+        if not report: return schedule.CancelJob
 
-        # Remove the report from the pending list
-        new_pending_reports = [r for r in pending_reports if r["id"] != report_id]
-        self.set_state("pending_reports", new_pending_reports)
+        self.set_state("pending_reports", [r for r in pending_reports if r["id"] != report_id])
         self.save_state()
 
-        participants = report_to_send["participants"]
-        destination = report_to_send["destination"]
-        room = report_to_send["room"]
+        p_count = len(report["participants"])
+        size_key = "solo" if p_count == 1 else "duo" if p_count == 2 else "group"
         
-        # Determine group size
-        count = len(participants)
-        if count == 1:
-            size_key = "solo"
-        elif count == 2:
-            size_key = "duo"
+        events = self.EVENTS.get(report["destination"], self.EVENTS["fallback"])
+        story = random.choice(events.get(size_key, self.EVENTS["fallback"][size_key]))
+
+        if p_count == 1:
+            story = story.format(p1=report["participants"][0], dest=report["destination"])
+        elif p_count == 2:
+            story = story.format(p1=report["participants"][0], p2=report["participants"][1], dest=report["destination"])
         else:
-            size_key = "group"
+            story = story.format(p1=report["participants"][0], dest=report["destination"])
 
-        # Select the event text
-        event_options = self.EVENTS.get(destination, self.EVENTS["fallback"])
-        story_template = random.choice(event_options.get(size_key, self.EVENTS["fallback"][size_key]))
-
-        # Format the names
-        if count == 1:
-            p1 = participants[0]
-            story = story_template.format(p1=p1, dest=destination)
-        elif count == 2:
-            p1, p2 = participants[0], participants[1]
-            story = story_template.format(p1=p1, p2=p2, dest=destination)
-        else:
-            p1 = participants[0]
-            story = story_template.format(p1=p1, dest=destination)
-
-        self.safe_say(f"A report from the roadtrip to {destination}: {story}", target=room)
-        
+        self.safe_say(f"A report from the roadtrip to {report['destination']}: {story}", target=report["room"])
         return schedule.CancelJob
 
     def _try_collect_rsvp(self, msg: str, username: str, room: str) -> bool:
         current_rsvp = self.get_state("current_rsvp")
         if not current_rsvp or current_rsvp.get("room") != room: return False
-        close_time = float(current_rsvp.get("close_epoch", 0))
-        if time.time() > close_time:
+
+        if time.time() > current_rsvp.get("close_epoch", 0):
             self._close_rsvp_window()
             return True
+        
+        # CORRECTED
         if self._rsvp_pattern.match(msg) or self._rsvp_alt_pattern.match(msg):
-            participants = current_rsvp.get("participants", [])
-            if username not in participants:
-                participants.append(username)
-                current_rsvp["participants"] = participants
+            if username not in current_rsvp["participants"]:
+                current_rsvp["participants"].append(username)
                 self.set_state("current_rsvp", current_rsvp)
                 self.save_state()
                 self.safe_say(f"Noted, {username}. Mind the running board.", target=room)
@@ -242,52 +231,19 @@ class Roadtrip(SimpleCommandModule):
         self.set_state("messages_since_last", self.get_state("messages_since_last", 0) + 1)
         self.save_state()
 
-    def _answer_latest(self, connection, room: str, username: str):
-        history = self.get_state("history", [])
-        if not history:
-            self.safe_say(f"{username}, no roadtrips on the books yet, {self.bot.title_for(username)}.", target=room)
-            return True
-        last_trip = history[-1]
-        when = last_trip.get("date_iso", "unknown time")[:16]
-        participants = last_trip.get("participants", [])
-        destination = last_trip.get("destination", "parts unknown")
-        if participants:
-            details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
-            self.safe_say(f"{username}, most recent outing to {destination} ({when}): {', '.join(details)}.", target=room)
-        else:
-            self.safe_say(f"{username}, the most recent outing to {destination} ({when}) departed without passengers, {self.bot.title_for(username)}.", target=room)
-        return True
-
     def _cmd_roadtrip(self, connection, event, msg, username, match):
-        return self._answer_latest(connection, event.target, username)
+        self.safe_reply(connection, event, "The last outing has already concluded. Perhaps another soon?")
+        return True
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
-        stats = self.get_state("stats")
-        triggered = stats.get("trips_triggered", 0)
-        completed = stats.get("trips_completed", 0)
-        total_participants = stats.get("total_participants", 0)
-        avg_participants = stats.get("average_participants", 0.0)
-        popular_dest = stats.get("most_popular_destination", "None")
-        messages_count = self.get_state("messages_since_last", 0)
-        threshold = self.get_state("next_trip_message_threshold", 0)
-        time_ok = "✓" if self._time_gate_passed() else "✗"
-        msg_ok = "✓" if self._message_gate_passed() else "✗"
-        lines = [
-            f"Triggered: {triggered}", f"Completed: {completed}",
-            f"Total participants: {total_participants}",
-            f"Avg participants: {avg_participants:.1f}",
-            f"Popular destination: {popular_dest}",
-            f"Messages: {messages_count}/{threshold} {msg_ok}",
-            f"Time gate: {time_ok}"
-        ]
-        self.safe_reply(connection, event, f"Roadtrip stats: {'; '.join(lines)}")
+        self.safe_reply(connection, event, f"Roadtrip stats: {len(self.get_state('pending_reports', []))} reports pending.")
         return True
 
     @admin_required
     def _cmd_trigger(self, connection, event, msg, username, match):
         if self.get_state("current_rsvp"):
-            self.safe_reply(connection, event, "A roadtrip RSVP window is already active.")
+            self.safe_reply(connection, event, "An RSVP is already in progress.")
         else:
             self._open_rsvp_window(connection, event)
         return True

@@ -24,6 +24,7 @@ memos:
 roadtrip:
     join_window_seconds: 120
     trigger_probability: 0.25
+    report_delay_seconds: 3600
     hours_between_trips:
         min: 3
         max: 18

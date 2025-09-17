@@ -16,50 +16,101 @@ def setup(bot, config):
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
-    version = "2.2.1" # version bumped
-    description = "User courtesy and pronoun management with nick tracking"
+    version = "2.3.0" # version bumped
+    description = "User courtesy, pronoun, and ignore list management"
 
-    # ... (PRONOUN_MAP and GENDER_MAP remain the same)
     PRONOUN_MAP = {"he/him":"he/him","hehim":"he/him","he":"he/him", "she/her":"she/her","sheher":"she/her","she":"she/her", "they/them":"they/them","theythem":"they/them","they":"they/them", "xe/xem":"xe/xem","xexem":"xe/xem", "ze/zir":"ze/zir","zezir":"ze/zir", "fae/faer":"fae/faer","faefer":"fae/faer", "e/em":"e/em","eem":"e/em", "per/per":"per/per","perper":"per/per", "ve/ver":"ve/ver","vever":"ve/ver", "it/its":"it/its","itits":"it/its", "they/xe":"they/xe","she/they":"she/they","he/they":"he/they", "any":"any","any/all":"any/all", }
     GENDER_MAP = {"male":"sir","man":"sir","boy":"sir","masculine":"sir","masc":"sir","m":"sir", "female":"madam","woman":"madam","girl":"madam","feminine":"madam","fem":"madam","f":"madam", "nonbinary":"neutral","non-binary":"neutral","nb":"neutral","enby":"neutral", "neutral":"neutral","agender":"neutral","genderfluid":"neutral","genderqueer":"neutral", "demiboy":"neutral","demigirl":"neutral","bigender":"neutral","pangender":"neutral", "questioning":"neutral", }
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        # ... (rest of the __init__ function remains the same)
+        
         self.set_state("profiles", self.get_state("profiles", {}))
         self.set_state("nick_aliases", self.get_state("nick_aliases", {}))
         self.set_state("prompted_users", self.get_state("prompted_users", {}))
+        self.set_state("ignored_users", self.get_state("ignored_users", [])) # NEW
+        
         for key in ["profiles_created", "profiles_updated", "profiles_deleted", "natural_language_uses", "command_uses"]:
             self.set_state(key, self.get_state(key, 0))
         for key in ["most_common_pronouns", "most_common_titles", "users_who_set_profiles"]:
             self.set_state(key, self.get_state(key, {}))
         self.save_state()
+
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
         self.RE_GENDER_SET = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:i\s*am|i'?m)\s*(?:a\s+)?({self._gender_pattern()})\b", re.IGNORECASE)
         self.RE_PRONOUNS_SET = re.compile(r"\b(?:my\s+pronouns\s+are|pronouns[:\s]+)\s*([a-zA-Z/\- ]{2,40})\b", re.IGNORECASE)
         self.RE_NO_ASSUME = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:don't\s+assume\s+my\s+gender|use\s+neutral)\b", re.IGNORECASE)
 
     def _register_commands(self):
-        self.register_command(r"^\s*!gender\s+(.+)\s*$", self._cmd_gender, 
-                              name="gender", description="Set your gender/title")
-        self.register_command(r"^\s*!pronouns\s+(.+)\s*$", self._cmd_pronouns,
-                              name="pronouns", description="Set your pronouns")
-        self.register_command(r"^\s*!whoami\s*$", self._cmd_whoami,
-                              name="whoami", description="Show your profile")
-        self.register_command(r"^\s*!profile\s+(\S+)\s*$", self._cmd_profile,
-                              name="profile", description="Show someone's profile")
-        self.register_command(r"^\s*!forgetme\s*$", self._cmd_forget,
-                              name="forgetme", description="Delete your profile")
-        self.register_command(r"^\s*!courtesy\s+stats\s*$", self._cmd_stats, 
-                              name="courtesy stats", admin_only=True, description="Show courtesy statistics")
-    
-    # ... (rest of the functions remain the same)
+        # Existing Commands
+        self.register_command(r"^\s*!gender\s+(.+)\s*$", self._cmd_gender, name="gender", description="Set your gender/title")
+        self.register_command(r"^\s*!pronouns\s+(.+)\s*$", self._cmd_pronouns, name="pronouns", description="Set your pronouns")
+        self.register_command(r"^\s*!whoami\s*$", self._cmd_whoami, name="whoami", description="Show your profile")
+        self.register_command(r"^\s*!profile\s+(\S+)\s*$", self._cmd_profile, name="profile", description="Show someone's profile")
+        self.register_command(r"^\s*!forgetme\s*$", self._cmd_forget, name="forgetme", description="Delete your profile")
+        self.register_command(r"^\s*!courtesy\s+stats\s*$", self._cmd_stats, name="courtesy stats", admin_only=True, description="Show courtesy statistics")
+        
+        # NEW Commands
+        self.register_command(r"^\s*!ignore(?:\s+(\S+))?\s*$", self._cmd_ignore, name="ignore", description="Add yourself or another user to the ignore list. Admin required to ignore others.")
+        self.register_command(r"^\s*!unignore(?:\s+(\S+))?\s*$", self._cmd_unignore, name="unignore", description="Remove yourself or another user from the ignore list. Admin required to unignore others.")
+
+    # --- NEW Public Method for Jeeves Core ---
+    def is_user_ignored(self, username: str) -> bool:
+        """Checks if a user's canonical nick is in the ignore list."""
+        canonical_nick = self._canonical_nick(username)
+        ignored_list = self.get_state("ignored_users", [])
+        return canonical_nick in ignored_list
+
+    # --- NEW Command Handlers ---
+    def _cmd_ignore(self, connection, event, msg, username, match):
+        target_nick = match.group(1)
+        
+        if target_nick and not self.bot.is_admin(username):
+            self.safe_reply(connection, event, f"{username}, you do not have permission to ignore other users.")
+            return True
+        
+        victim = target_nick or username
+        canonical_nick = self._canonical_nick(victim)
+        
+        ignored_list = self.get_state("ignored_users", [])
+        if canonical_nick not in ignored_list:
+            ignored_list.append(canonical_nick)
+            self.set_state("ignored_users", ignored_list)
+            self.save_state()
+            self.safe_reply(connection, event, f"Very good. I shall henceforth ignore {victim}.")
+        else:
+            self.safe_reply(connection, event, f"{victim} is already on the ignore list.")
+        return True
+
+    def _cmd_unignore(self, connection, event, msg, username, match):
+        target_nick = match.group(1)
+        
+        if target_nick and not self.bot.is_admin(username):
+            self.safe_reply(connection, event, f"{username}, you do not have permission to unignore other users.")
+            return True
+            
+        victim = target_nick or username
+        canonical_nick = self._canonical_nick(victim)
+        
+        ignored_list = self.get_state("ignored_users", [])
+        if canonical_nick in ignored_list:
+            ignored_list.remove(canonical_nick)
+            self.set_state("ignored_users", ignored_list)
+            self.save_state()
+            self.safe_reply(connection, event, f"As you wish. I will no longer ignore {victim}.")
+        else:
+            self.safe_reply(connection, event, f"{victim} was not on the ignore list.")
+        return True
+
+    # --- Existing methods below (unchanged) ---
     def on_pubmsg(self, connection, event, msg: str, username: str) -> bool:
         if super().on_pubmsg(connection, event, msg, username):
             return True
+
         if self._should_prompt_user(username):
             if self.is_mentioned(msg) or msg.strip().startswith("!"):
                 self.schedule_delayed_action(2.0, self._prompt_user, connection, event, username)
+        
         if self.RE_GENDER_SET.search(msg):
             match = self.RE_GENDER_SET.search(msg)
             gender = match.group(1).lower().strip()
@@ -69,6 +120,7 @@ class Courtesy(SimpleCommandModule):
             self.save_state()
             self.safe_reply(connection, event, f"{username}, noted. I shall address you as {title.capitalize()}.")
             return True
+        
         if self.RE_PRONOUNS_SET.search(msg):
             match = self.RE_PRONOUNS_SET.search(msg)
             pronouns = self._normalize_pronouns(match.group(1))
@@ -77,14 +129,16 @@ class Courtesy(SimpleCommandModule):
             self.save_state()
             self.safe_reply(connection, event, f"{username}, noted. I shall use {pronouns} henceforth.")
             return True
+        
         if self.RE_NO_ASSUME.search(msg):
             self._set_user_profile(username, title="neutral", pronouns="they/them")
             self.set_state("natural_language_uses", self.get_state("natural_language_uses") + 1)
             self.save_state()
             self.safe_reply(connection, event, f"{username}, as you wish. I shall keep to neutral address.")
             return True
+        
         return False
-
+        
     def _gender_pattern(self) -> str:
         genders = "|".join(re.escape(g) for g in self.GENDER_MAP.keys())
         return f"(?:{genders})"
@@ -100,6 +154,12 @@ class Courtesy(SimpleCommandModule):
             current = aliases[current]
         return current
 
+    def on_nick(self, connection, event, old_nick: str, new_nick: str):
+        try:
+            self._link_nicks(old_nick, new_nick)
+        except Exception as e:
+            self._record_error(f"Error linking nicks {old_nick}->{new_nick}: {e}")
+            
     def _link_nicks(self, old_nick: str, new_nick: str):
         old_canonical = self._canonical_nick(old_nick)
         new_lower = new_nick.lower().strip()
@@ -161,7 +221,7 @@ class Courtesy(SimpleCommandModule):
         self.save_state()
 
     def _prompt_user(self, connection, event, username: str):
-        prompts = [f"Good day, {username}! I use neutral address by default. You may say 'Jeeves, I am [male/female/nonbinary]' or use '!gender male' and '!pronouns he/him'.", f"Welcome, {username}! I shall address you as Mx. unless you specify otherwise. Try 'my pronouns are they/them' or '!pronouns she/her'.", f"Greetings, {username}! If you'd prefer sir/madam or specific pronouns, let me know: 'Jeeves, I am a woman' or '!gender female' both work.",]
+        prompts = [ f"Good day, {username}! I use neutral address by default. You may say 'Jeeves, I am [male/female/nonbinary]' or use '!gender male' and '!pronouns he/him'.", f"Welcome, {username}! I shall address you as Mx. unless you specify otherwise. Try 'my pronouns are they/them' or '!pronouns she/her'.", f"Greetings, {username}! If you'd prefer sir/madam or specific pronouns, let me know: 'Jeeves, I am a woman' or '!gender female' both work.", ]
         self.safe_reply(connection, event, random.choice(prompts))
         self._mark_user_prompted(username)
 
@@ -232,15 +292,9 @@ class Courtesy(SimpleCommandModule):
     def _cmd_stats(self, connection, event, msg, username, match):
         profiles = self.get_state("profiles", {})
         pron_stats = self.get_state("most_common_pronouns", {})
-        lines = [f"Profiles: {len(profiles)}", f"Created: {self.get_state('profiles_created', 0)}", f"Updated: {self.get_state('profiles_updated', 0)}", f"Natural lang: {self.get_state('natural_language_uses', 0)}", f"Commands: {self.get_state('command_uses', 0)}",]
+        lines = [ f"Profiles: {len(profiles)}", f"Created: {self.get_state('profiles_created', 0)}", f"Updated: {self.get_state('profiles_updated', 0)}", f"Natural lang: {self.get_state('natural_language_uses', 0)}", f"Commands: {self.get_state('command_uses', 0)}", ]
         if pron_stats:
             top = sorted(pron_stats.items(), key=lambda x: x[1], reverse=True)[:3]
             lines.append("Top pronouns: " + ", ".join(f"{p}({c})" for p, c in top))
         self.safe_reply(connection, event, "Courtesy stats: " + "; ".join(lines))
         return True
-
-    def on_nick(self, connection, event, old_nick: str, new_nick: str):
-        try:
-            self._link_nicks(old_nick, new_nick)
-        except Exception as e:
-            self._record_error(f"Error linking nicks {old_nick}->{new_nick}: {e}")

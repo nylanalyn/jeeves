@@ -1,12 +1,12 @@
 # modules/roadtrip.py
-# Enhanced surprise roadtrips using the SimpleCommandModule framework
+# Enhanced surprise roadtrips with delayed event reporting
 import random
 import re
 import time
 import schedule
 import functools
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
@@ -16,17 +16,61 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "2.3.2" # version bumped
-    description = "Schedules surprise roadtrips for channel members."
+    version = "3.0.0" # Major feature update
+    description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
-    LOCATIONS = [
-        "the riverside park", "the old museum", "the observatory", "the seaside pier", 
-        "the midnight diner", "the botanical gardens", "the antique arcade", "the lighthouse", 
-        "the market square", "the hilltop ruins", "the art-house cinema", "the railway depot", 
-        "the speakeasy", "the planetarium", "the neon alley", "the tea pavilion", 
-        "the bookshop maze", "the clocktower", "the rooftops", "the brothel", "the funfair",
-        "the stormbreak causeway",
-    ]
+    # --- NEW: Event Storylets ---
+    # Organized by location, then by participant count (solo, duo, group)
+    EVENTS = {
+        "the riverside park": {
+            "solo": ["{p1} enjoyed a quiet moment by the water, skipping stones across the surface."],
+            "duo": ["{p1} and {p2} had a long conversation on a park bench, watching the boats go by."],
+            "group": ["{p1} and the others started an impromptu game of frisbee that went on for hours."]
+        },
+        "the old museum": {
+            "solo": ["{p1} spent a thoughtful afternoon wandering the halls, completely losing track of time."],
+            "duo": ["{p1} and {p2} got into a surprisingly intense debate about modern art in front of a very confusing sculpture."],
+            "group": ["{p1} and the group accidentally set off a minor alarm in the dinosaur exhibit, but played it cool."]
+        },
+        "the observatory": {
+            "solo": ["{p1} looked through the grand telescope and felt a profound sense of cosmic insignificance, but in a good way."],
+            "duo": ["{p1} and {p2} stayed up late, pointing out constellations to each other, both real and imagined."],
+            "group": ["{p1} and the others watched a stunning meteor shower from the observatory dome."]
+        },
+        "the seaside pier": {
+            "solo": ["{p1} ate a truly questionable hot dog while watching the waves crash against the pylons."],
+            "duo": ["{p1} and {p2} tried their luck at the arcade games and left with a giant, impractical stuffed animal."],
+            "group": ["{p1} and the group bravely rode the rickety old Ferris wheel, offering thrilling views and mild terror."]
+        },
+        "the midnight diner": {
+            "solo": ["{p1} drank lukewarm coffee and listened to the old jukebox play forgotten songs."],
+            "duo": ["{p1} and {p2} shared a plate of questionable fries and solved all the world's problems over three hours."],
+            "group": ["{p1} and the group somehow started a friendly pancake-eating contest with the night-shift cook."]
+        },
+        "the botanical gardens": {
+            "solo": ["{p1} found a hidden bench in the rose garden and read for a while, undisturbed."],
+            "duo": ["{p1} and {p2} got hopelessly lost in the hedge maze and had to be rescued by a gardener."],
+            "group": ["{p1} and company took turns trying to identify exotic plants, with hilariously wrong results."]
+        },
+        "the antique arcade": {
+            "solo": ["{p1} became obsessed with an old pinball machine, determined to beat a high score from 1982."],
+            "duo": ["{p1} and {p2} challenged each other to a series of vintage games, the rivalry was palpable."],
+            "group": ["{p1} and the rest spent a small fortune in tokens trying to win enough tickets for a lava lamp."]
+        },
+        "the lighthouse": {
+            "solo": ["{p1} climbed all the way to the top and watched the ships on the horizon."],
+            "duo": ["{p1} and {p2} told each other spooky ghost stories in the echoing chambers of the lighthouse."],
+            "group": ["{p1} and the others helped the keeper polish the giant lens, a surprisingly satisfying task."]
+        },
+        # Adding a fallback for any locations not explicitly defined
+        "fallback": {
+            "solo": ["{p1} had a quiet, introspective time at {dest}."],
+            "duo": ["{p1} and {p2} found a cozy corner at {dest} and chatted for hours."],
+            "group": ["{p1} and the group explored {dest} and generally had a lovely time."]
+        }
+    }
+
+    LOCATIONS = list(set(EVENTS.keys()) - {"fallback"}) # Auto-populate locations from events
 
     TRIGGER_MESSAGES = [
         "Of course, {title}; I'll prepare the car.",
@@ -44,21 +88,15 @@ class Roadtrip(SimpleCommandModule):
         self.MAX_MESSAGES_FOR_TRIGGER = config.get("messages_for_trigger", {}).get("max", 85)
         self.TRIGGER_PROBABILITY = config.get("trigger_probability", 0.25)
         self.JOIN_WINDOW_SECONDS = config.get("join_window_seconds", 120)
-        self.MAX_HISTORY_ENTRIES = 20
+        self.REPORT_DELAY_SECONDS = 3600 # NEW: 1 hour delay for the report
 
         self.set_state("messages_since_last", self.get_state("messages_since_last", 0))
         self.set_state("next_trip_earliest", self.get_state("next_trip_earliest", self._compute_next_trip_time().isoformat()))
         self.set_state("next_trip_message_threshold", self.get_state("next_trip_message_threshold", self._compute_message_threshold()))
         self.set_state("current_rsvp", self.get_state("current_rsvp", None))
+        self.set_state("pending_reports", self.get_state("pending_reports", [])) # NEW
         self.set_state("history", self.get_state("history", []))
-        self.set_state("stats", self.get_state("stats", {
-            "trips_triggered": 0, "trips_completed": 0, "total_participants": 0,
-            "messages_at_triggers": [], "most_popular_destination": None, "average_participants": 0.0
-        }))
         self.save_state()
-
-        self._rsvp_pattern = re.compile(rf"^\s*coming\s+{self.bot.JEEVES_NAME_RE}!?\s*\.?\s*$", re.IGNORECASE)
-        self._rsvp_alt_pattern = re.compile(r"^\s*!me\s*$", re.IGNORECASE)
 
     def _register_commands(self):
         self.register_command(r"^\s*!roadtrip\s*$", self._cmd_roadtrip,
@@ -70,144 +108,117 @@ class Roadtrip(SimpleCommandModule):
 
     def on_load(self):
         super().on_load()
-        schedule.clear(f"{self.name}-close")
-        current_rsvp = self.get_state("current_rsvp")
-        if current_rsvp:
-            open_until = float(current_rsvp.get("close_epoch", 0))
-            now = time.time()
-            if now >= open_until:
-                self._close_rsvp_window()
+        schedule.clear(self.name)
+        # ... (logic for restoring scheduled reports)
+        pending_reports = self.get_state("pending_reports", [])
+        for report in pending_reports:
+            report_time = datetime.fromisoformat(report["report_at"])
+            now = datetime.now(UTC)
+            if now >= report_time:
+                self._report_roadtrip_events(report["id"])
             else:
-                remaining_seconds = int(open_until - now)
-                if remaining_seconds > 0:
-                    schedule.every(remaining_seconds).seconds.do(self._close_rsvp_window_scheduled).tag(f"{self.name}-close")
+                remaining_seconds = (report_time - now).total_seconds()
+                schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
 
     def on_unload(self):
         super().on_unload()
-        schedule.clear(f"{self.name}-close")
+        schedule.clear(self.name)
 
     def on_pubmsg(self, connection, event, msg, username):
         if super().on_pubmsg(connection, event, msg, username):
             return True
-        
         if self._try_collect_rsvp(msg, username, event.target):
             return True
-        
         self._increment_message_count()
-        
         if self._should_trigger_roadtrip():
-            # Pass the full event object, not just the target string
             self._open_rsvp_window(connection, event)
-
         return False
-
-    def _compute_next_trip_time(self) -> datetime:
-        hours = random.randint(self.MIN_HOURS_BETWEEN_TRIPS, self.MAX_HOURS_BETWEEN_TRIPS)
-        return datetime.now(UTC) + timedelta(hours=hours)
-
-    def _compute_message_threshold(self) -> int:
-        return random.randint(self.MIN_MESSAGES_FOR_TRIGGER, self.MAX_MESSAGES_FOR_TRIGGER)
-
-    def _time_gate_passed(self) -> bool:
-        try:
-            earliest_str = self.get_state("next_trip_earliest")
-            if not earliest_str: return True
-            earliest = datetime.fromisoformat(earliest_str)
-            return datetime.now(UTC) >= earliest
-        except (ValueError, TypeError):
-            self.set_state("next_trip_earliest", self._compute_next_trip_time().isoformat())
-            self.save_state()
-            return False
-
-    def _message_gate_passed(self) -> bool:
-        message_count = self.get_state("messages_since_last", 0)
-        threshold = self.get_state("next_trip_message_threshold", 0)
-        return message_count >= threshold
-
-    def _should_trigger_roadtrip(self) -> bool:
-        if self.get_state("current_rsvp"): return False
-        if not self._time_gate_passed() or not self._message_gate_passed(): return False
-        return random.random() < self.TRIGGER_PROBABILITY
-
-    def _reset_trigger_conditions(self):
-        self.set_state("messages_since_last", 0)
-        self.set_state("next_trip_earliest", self._compute_next_trip_time().isoformat())
-        self.set_state("next_trip_message_threshold", self._compute_message_threshold())
-        self.save_state()
-
-    def _open_rsvp_window(self, connection, event):
-        destination = random.choice(self.LOCATIONS)
-        trigger_msg = random.choice(self.TRIGGER_MESSAGES)
-        title = self.bot.title_for("nobody")
-        
-        # Now event is the full event object, so event.target is valid
-        self.safe_reply(connection, event, trigger_msg.format(title=title))
-        self.safe_reply(connection, event,
-                        f"Shall we? I've in mind a little excursion to {destination}. "
-                        f'Say "coming jeeves!" or "!me" within {self.JOIN_WINDOW_SECONDS} seconds to be shown to the car.')
-        
-        now = datetime.now(UTC)
-        close_time = time.time() + self.JOIN_WINDOW_SECONDS
-        
-        rsvp_state = {
-            "destination": destination, "room": event.target, "participants": [],
-            "triggered_at": now.isoformat(), "close_epoch": close_time,
-            "messages_at_trigger": self.get_state("messages_since_last", 0)
-        }
-        
-        self.set_state("current_rsvp", rsvp_state)
-        self.save_state()
-        schedule.every(self.JOIN_WINDOW_SECONDS).seconds.do(self._close_rsvp_window_scheduled).tag(f"{self.name}-close")
-        stats = self.get_state("stats")
-        stats["trips_triggered"] = stats.get("trips_triggered", 0) + 1
-        messages_list = stats.get("messages_at_triggers", [])
-        messages_list.append(rsvp_state["messages_at_trigger"])
-        stats["messages_at_triggers"] = messages_list[-20:]
-        self.set_state("stats", stats)
-        self.save_state()
-
-    def _close_rsvp_window_scheduled(self):
-        self._close_rsvp_window()
-        return schedule.CancelJob
 
     def _close_rsvp_window(self):
         current_rsvp = self.get_state("current_rsvp")
         if not current_rsvp: return
-        schedule.clear(f"{self.name}-close")
+        schedule.clear(f"rsvp-close")
+
         room = current_rsvp["room"]
         participants = list(dict.fromkeys(current_rsvp.get("participants", [])))
         destination = current_rsvp["destination"]
-        history_entry = {
-            "date_iso": current_rsvp["triggered_at"], "participants": participants,
-            "messages_at_trigger": current_rsvp["messages_at_trigger"],
-            "destination": destination, "room": room,
-            "participant_count": len(participants)
-        }
-        history = self.get_state("history", [])
-        history.append(history_entry)
-        if len(history) > self.MAX_HISTORY_ENTRIES: history = history[-self.MAX_HISTORY_ENTRIES:]
-        stats = self.get_state("stats")
-        stats["trips_completed"] = stats.get("trips_completed", 0) + 1
-        stats["total_participants"] = stats.get("total_participants", 0) + len(participants)
-        completed = stats["trips_completed"]
-        if completed > 0: stats["average_participants"] = stats["total_participants"] / completed
-        dest_counts = {}
-        for h in history:
-            dest = h.get("destination")
-            if dest: dest_counts[dest] = dest_counts.get(dest, 0) + 1
-        if dest_counts: stats["most_popular_destination"] = max(dest_counts, key=dest_counts.get)
-        self.set_state("history", history)
-        self.set_state("current_rsvp", None)
-        self.set_state("stats", stats)
-        self.save_state()
+
         try:
             if participants:
                 details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
                 self.bot.connection.privmsg(room, f"Very good. Outing to {destination}: {', '.join(details)}. Do buckle up.")
+                
+                # NEW: Schedule the event report
+                report_id = f"{self.name}-{int(time.time())}"
+                report_at = datetime.now(UTC) + timedelta(seconds=self.REPORT_DELAY_SECONDS)
+                pending_report = {
+                    "id": report_id,
+                    "room": room,
+                    "destination": destination,
+                    "participants": participants,
+                    "report_at": report_at.isoformat()
+                }
+                pending_reports = self.get_state("pending_reports", [])
+                pending_reports.append(pending_report)
+                self.set_state("pending_reports", pending_reports)
+                self.save_state()
+                schedule.every(self.REPORT_DELAY_SECONDS).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(self.name, f"report-{report_id}")
             else:
                 self.bot.connection.privmsg(room, f"No takers. I shall cancel the reservation for {destination}.")
         except Exception as e: self._record_error(f"error announcing results: {e}")
+        
+        self.set_state("current_rsvp", None)
+        self.save_state()
         self._reset_trigger_conditions()
+    
+    # --- NEW: Event Reporting Function ---
+    def _report_roadtrip_events(self, report_id: str):
+        pending_reports = self.get_state("pending_reports", [])
+        report_to_send = None
+        for report in pending_reports:
+            if report["id"] == report_id:
+                report_to_send = report
+                break
+        
+        if not report_to_send:
+            return schedule.CancelJob
+
+        # Remove the report from the pending list
+        new_pending_reports = [r for r in pending_reports if r["id"] != report_id]
+        self.set_state("pending_reports", new_pending_reports)
+        self.save_state()
+
+        participants = report_to_send["participants"]
+        destination = report_to_send["destination"]
+        room = report_to_send["room"]
+        
+        # Determine group size
+        count = len(participants)
+        if count == 1:
+            size_key = "solo"
+        elif count == 2:
+            size_key = "duo"
+        else:
+            size_key = "group"
+
+        # Select the event text
+        event_options = self.EVENTS.get(destination, self.EVENTS["fallback"])
+        story_template = random.choice(event_options.get(size_key, self.EVENTS["fallback"][size_key]))
+
+        # Format the names
+        if count == 1:
+            p1 = participants[0]
+            story = story_template.format(p1=p1, dest=destination)
+        elif count == 2:
+            p1, p2 = participants[0], participants[1]
+            story = story_template.format(p1=p1, p2=p2, dest=destination)
+        else:
+            p1 = participants[0]
+            story = story_template.format(p1=p1, dest=destination)
+
+        self.safe_say(f"A report from the roadtrip to {destination}: {story}", target=room)
+        
+        return schedule.CancelJob
 
     def _try_collect_rsvp(self, msg: str, username: str, room: str) -> bool:
         current_rsvp = self.get_state("current_rsvp")

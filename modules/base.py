@@ -6,7 +6,7 @@ import time
 import threading
 import functools
 import requests
-import sys # <-- ADDED BACK
+import sys
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from abc import ABC, abstractmethod
@@ -24,7 +24,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.2.3" # version bumped
+    version = "1.2.3"
     description = "Base module class"
     
     def __init__(self, bot):
@@ -39,7 +39,6 @@ class ModuleBase(ABC):
         self._user_cooldowns = {}
         self._load_state()
 
-    # --- Lifecycle Methods ---
     def on_load(self) -> None:
         """Called when module is loaded. Can be overridden in subclasses."""
         pass
@@ -48,7 +47,6 @@ class ModuleBase(ABC):
         """Called when module is unloaded. Can be overridden in subclasses."""
         self.save_state(force=True)
 
-    # --- HTTP Method ---
     def requests_retry_session(self, retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
         session = session or requests.Session()
         retry = Retry(total=retries, read=retries, connect=retries, backoff_factor=backoff_factor, status_forcelist=status_forcelist)
@@ -57,7 +55,6 @@ class ModuleBase(ABC):
         session.mount('https://', adapter)
         return session
 
-    # --- State Management ---
     def _load_state(self):
         with self._state_lock:
             self._state_cache = self.bot.get_module_state(self.name).copy()
@@ -83,7 +80,6 @@ class ModuleBase(ABC):
                 self.bot.update_module_state(self.name, self._state_cache)
                 self._state_dirty = False
 
-    # --- Command Registration ---
     def register_command(self, pattern: Union[str, re.Pattern], 
                         handler: Callable, name: str, admin_only: bool = False,
                         cooldown: float = 0.0, description: str = "") -> None:
@@ -106,7 +102,6 @@ class ModuleBase(ABC):
             return True
         return False
 
-    # --- Utility Methods ---
     def is_mentioned(self, msg: str) -> bool:
         pattern = re.compile(self.bot.JEEVES_NAME_RE, re.IGNORECASE)
         return bool(pattern.search(msg))
@@ -129,7 +124,6 @@ class ModuleBase(ABC):
             return False
 
     def safe_privmsg(self, username: str, text: str) -> bool:
-        """Safely send private message with error handling."""
         try:
             self.bot.connection.privmsg(username, text)
             return True
@@ -137,7 +131,6 @@ class ModuleBase(ABC):
             self._record_error(f"Failed to send privmsg to {username}: {e}")
             return False
 
-    # --- Core Handlers ---
     def on_pubmsg(self, connection, event, msg: str, username: str) -> bool:
         try:
             if self._dispatch_commands(connection, event, msg, username):
@@ -163,10 +156,8 @@ class ModuleBase(ABC):
         return False
         
     def _record_error(self, error_msg: str) -> None:
-        """Record an error for debugging."""
         print(f"[{self.name}] ERROR: {error_msg}", file=sys.stderr)
 
-# --- Specialized Base Classes ---
 class SimpleCommandModule(ModuleBase):
     def __init__(self, bot):
         super().__init__(bot)

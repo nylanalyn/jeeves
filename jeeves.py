@@ -56,7 +56,7 @@ load_env_files()
 MODULES_DIR = ROOT / "modules"
 MODULES_DIR.mkdir(exist_ok=True)
 
-def get_admin_nicks():
+def get_admin_nicks_from_env():
     return {n.strip().lower() for n in os.getenv("JEEVES_ADMINS", "").split(",") if n.strip()}
 
 JEEVES_NAME_RE = r"(?:jeeves|jeevesbot)"
@@ -113,8 +113,7 @@ class StateManager:
 
     def _save_now(self):
         with self._lock:
-            if not self._dirty:
-                return
+            if not self._dirty: return
             try:
                 tmp = self.path.with_suffix(".tmp")
                 tmp.write_text(json.dumps(self._state, indent=2, sort_keys=True))
@@ -138,51 +137,35 @@ class PluginManager:
         self.modules = {}
 
     def load_all(self):
-        """Load all modules"""
         for py in sorted(MODULES_DIR.glob("*.py")):
             name = py.stem
-            if name == "__init__":
-                continue
+            if name in ("__init__", "base"): continue
             try:
                 spec = importlib.util.spec_from_file_location(f"modules.{name}", py)
                 mod = importlib.util.module_from_spec(spec)
                 sys.modules[f"modules.{name}"] = mod
                 spec.loader.exec_module(mod)
-
-                if not hasattr(mod, "setup"):
-                    continue
-
-                module_config = self.bot.config.get(name, {})
-                instance = mod.setup(self.bot, module_config)
-                self.plugins[name] = instance
-
+                if hasattr(mod, "setup"):
+                    module_config = self.bot.config.get(name, {})
+                    instance = mod.setup(self.bot, module_config)
+                    self.plugins[name] = instance
             except Exception as e:
                 print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
-                print(traceback.format_exc(), file=sys.stderr)
-
         for name, obj in self.plugins.items():
-            if hasattr(obj, "on_load"):
-                obj.on_load()
+            if hasattr(obj, "on_load"): obj.on_load()
         
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
         ssl_factory = Factory(wrapper=ssl.wrap_socket)
         super().__init__([(server, port)], nickname, nickname, connect_factory=ssl_factory)
-
         self.server = server
         self.port = port
         self.primary_channel = channel
         self.nickname = nickname
         self.config = config or {}
         self.JEEVES_NAME_RE = JEEVES_NAME_RE
-
-        env_user = os.getenv("JEEVES_USER", "").strip()
-        env_pass = os.getenv("JEEVES_PASS", "").strip()
-        self.sasl_user = (username or env_user).strip()
-        self.sasl_pass = (password or env_pass).strip()
         self.nickserv_pass = os.getenv("JEEVES_NICKSERV_PASS", "").strip()
-        
         self.pm = PluginManager(self)
         self.joined_channels = set()
 
@@ -192,18 +175,29 @@ class Jeeves(SingleServerIRCBot):
     def update_module_state(self, name, updates):
         state_manager.update_module_state(name, updates)
 
-    def is_admin(self, nick):
-        return nick.lower() in get_admin_nicks()
-
-    def is_ignored(self, username: str) -> bool:
-        """Checks if a user is on the ignore list via the courtesy module."""
+    def is_admin(self, event_source: str) -> bool:
+        """Secure admin check using nick and hostname."""
         try:
-            courtesy = self.pm.plugins.get("courtesy")
-            if courtesy and hasattr(courtesy, "is_user_ignored"):
-                return courtesy.is_user_ignored(username)
-        except Exception as e:
-            print(f"[core] Error checking ignore status for {username}: {e}", file=sys.stderr)
-        return False
+            nick = event_source.split('!')[0].lower()
+            host = event_source.split('@')[1]
+        except IndexError:
+            return False
+
+        admin_nicks_from_env = get_admin_nicks_from_env()
+        if nick not in admin_nicks_from_env:
+            return False
+
+        courtesy_state = self.get_module_state("courtesy")
+        admin_hostnames = courtesy_state.get("admin_hostnames", {})
+
+        if nick in admin_hostnames:
+            return admin_hostnames[nick] == host
+        else:
+            print(f"[core] Registering new admin host for {nick}: {host}", file=sys.stderr)
+            admin_hostnames[nick] = host
+            self.update_module_state("courtesy", {"admin_hostnames": admin_hostnames})
+            self.connection.privmsg(nick, f"For security, I have registered your hostname ({host}) for admin access. This is a one-time process.")
+            return True
 
     def title_for(self, nick):
         try:
@@ -212,8 +206,7 @@ class Jeeves(SingleServerIRCBot):
                 profile = courtesy._get_user_profile(nick)
                 if profile and "title" in profile:
                     return {"sir":"Sir","madam":"Madam","neutral":"Mx."}.get(profile["title"], "Mx.")
-        except Exception:
-            pass
+        except Exception: pass
         return "Mx."
 
     def pronouns_for(self, nick):
@@ -223,9 +216,17 @@ class Jeeves(SingleServerIRCBot):
                 profile = courtesy._get_user_profile(nick)
                 if profile and "pronouns" in profile:
                     return profile["pronouns"]
-        except Exception:
-            pass
+        except Exception: pass
         return "they/them"
+
+    def is_ignored(self, username: str) -> bool:
+        """Checks if a user is on the ignore list via the courtesy module."""
+        try:
+            courtesy = self.pm.plugins.get("courtesy")
+            if courtesy and hasattr(courtesy, "is_user_ignored"):
+                return courtesy.is_user_ignored(username)
+        except Exception: pass
+        return False
 
     def on_welcome(self, connection, event):
         if self.nickserv_pass:
@@ -239,21 +240,18 @@ class Jeeves(SingleServerIRCBot):
             self.joined_channels.add(event.target)
 
     def on_nick(self, connection, event):
-        old_nick = event.source.nick
-        new_nick = event.target
+        old_nick, new_nick = event.source.nick, event.target
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "on_nick"):
                 obj.on_nick(connection, event, old_nick, new_nick)
 
     def on_pubmsg(self, connection, event):
-        msg = event.arguments[0]
-        username = event.source.nick
+        msg, username = event.arguments[0], event.source.nick
         
-        # Global ignore check
         if not msg.strip().lower().startswith("!unignore") and self.is_ignored(username):
             return
 
-        if self.is_admin(username) and msg.strip().lower() == "!reload":
+        if self.is_admin(event.source) and msg.strip().lower() == "!reload":
             self.pm.load_all()
             connection.privmsg(event.target, "Reloaded.")
             return
@@ -265,8 +263,7 @@ class Jeeves(SingleServerIRCBot):
                         break
                 except Exception as e:
                     print(f"[plugins] {name} error: {e}\n{traceback.format_exc()}", file=sys.stderr)
-                    if hasattr(obj, "_record_error"):
-                        obj._record_error(str(e))
+                    if hasattr(obj, "_record_error"): obj._record_error(str(e))
                         
     def _ensure_scheduler_thread(self):
         def loop():

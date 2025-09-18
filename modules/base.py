@@ -24,7 +24,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.2.3"
+    version = "1.2.4" # version bumped
     description = "Base module class"
     
     def __init__(self, bot):
@@ -91,6 +91,15 @@ class ModuleBase(ABC):
             "admin_only": admin_only, "cooldown": cooldown, "description": description,
             "uses": 0, "last_used": None
         }
+
+    def check_rate_limit(self, key: str, limit: float) -> bool:
+        """Check if rate limit allows action."""
+        now = time.time()
+        last_time = self._rate_limits.get(key, 0)
+        if now - last_time >= limit:
+            self._rate_limits[key] = now
+            return True
+        return False
 
     def check_user_cooldown(self, username: str, command: str, cooldown: float) -> bool:
         if cooldown <= 0: return True

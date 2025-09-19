@@ -137,6 +137,18 @@ class PluginManager:
         self.modules = {}
 
     def load_all(self):
+        # Unload existing plugins first for a clean reload
+        for name, obj in self.plugins.items():
+            if hasattr(obj, "on_unload"):
+                try:
+                    obj.on_unload()
+                except Exception as e:
+                    print(f"[plugins] error unloading {name}: {e}", file=sys.stderr)
+
+        self.plugins = {}
+        self.modules = {}
+        loaded_names = []
+
         for py in sorted(MODULES_DIR.glob("*.py")):
             name = py.stem
             if name in ("__init__", "base"): continue
@@ -149,10 +161,14 @@ class PluginManager:
                     module_config = self.bot.config.get(name, {})
                     instance = mod.setup(self.bot, module_config)
                     self.plugins[name] = instance
+                    loaded_names.append(name)
             except Exception as e:
                 print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
+        
         for name, obj in self.plugins.items():
             if hasattr(obj, "on_load"): obj.on_load()
+        
+        return loaded_names
         
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
@@ -167,13 +183,22 @@ class Jeeves(SingleServerIRCBot):
         self.JEEVES_NAME_RE = JEEVES_NAME_RE
         self.nickserv_pass = os.getenv("JEEVES_NICKSERV_PASS", "").strip()
         self.pm = PluginManager(self)
-        self.joined_channels = set()
+        
+        # Load joined channels from state, defaulting to the primary channel.
+        core_state = state_manager.get_state().get("core", {})
+        self.joined_channels = set(core_state.get("joined_channels", [self.primary_channel]))
 
     def get_module_state(self, name):
         return state_manager.get_module_state(name)
 
     def update_module_state(self, name, updates):
         state_manager.update_module_state(name, updates)
+
+    def _update_joined_channels_state(self):
+        """Saves the current list of joined channels to the state file."""
+        core_state = state_manager.get_state().get("core", {})
+        core_state["joined_channels"] = list(self.joined_channels)
+        state_manager.update_state({"core": core_state})
 
     def is_admin(self, event_source: str) -> bool:
         """Secure admin check using nick and hostname."""
@@ -207,7 +232,7 @@ class Jeeves(SingleServerIRCBot):
                 if profile and "title" in profile:
                     return {"sir":"Sir","madam":"Madam","neutral":"Mx."}.get(profile["title"], "Mx.")
         except Exception: pass
-        return "Mx."
+        return nick # Default to the user's nickname if no title is set
 
     def pronouns_for(self, nick):
         try:
@@ -231,13 +256,33 @@ class Jeeves(SingleServerIRCBot):
     def on_welcome(self, connection, event):
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
-        connection.join(self.primary_channel)
-        self.pm.load_all()
+        
+        # Join all channels from the last known state.
+        for channel in list(self.joined_channels):
+            connection.join(channel)
+            
+        loaded_modules = self.pm.load_all()
+        print(f"[core] modules loaded: {', '.join(sorted(loaded_modules))}", file=sys.stderr)
         self._ensure_scheduler_thread()
 
     def on_join(self, connection, event):
         if event.source.nick == self.connection.get_nickname():
             self.joined_channels.add(event.target)
+            self._update_joined_channels_state()
+
+    def on_part(self, connection, event):
+        if event.source.nick == self.connection.get_nickname():
+            if event.target in self.joined_channels:
+                self.joined_channels.remove(event.target)
+                self._update_joined_channels_state()
+
+    def on_kick(self, connection, event):
+        # The event target is the user being kicked. The channel is the first argument.
+        if event.target == self.connection.get_nickname():
+            kicked_from_channel = event.arguments[0]
+            if kicked_from_channel in self.joined_channels:
+                self.joined_channels.remove(kicked_from_channel)
+                self._update_joined_channels_state()
 
     def on_nick(self, connection, event):
         old_nick, new_nick = event.source.nick, event.target
@@ -252,8 +297,8 @@ class Jeeves(SingleServerIRCBot):
             return
 
         if self.is_admin(event.source) and msg.strip().lower() == "!reload":
-            self.pm.load_all()
-            connection.privmsg(event.target, "Reloaded.")
+            loaded_modules = self.pm.load_all()
+            connection.privmsg(event.target, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
             return
 
         for name, obj in self.pm.plugins.items():
@@ -295,3 +340,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
-    version = "2.3.4" # version bumped
+    version = "2.3.5" # version bumped
     description = "User courtesy, pronoun, and ignore list management"
 
     PRONOUN_MAP = {"he/him":"he/him","hehim":"he/him","he":"he/him", "she/her":"she/her","sheher":"she/her","she":"she/her", "they/them":"they/them","theythem":"they/them","they":"they/them", "xe/xem":"xe/xem","xexem":"xe/xem", "ze/zir":"ze/zir","zezir":"ze/zir", "fae/faer":"fae/faer","faefer":"fae/faer", "e/em":"e/em","eem":"e/em", "per/per":"per/per","perper":"per/per", "ve/ver":"ve/ver","vever":"ve/ver", "it/its":"it/its","itits":"it/its", "they/xe":"they/xe","she/they":"she/they","he/they":"he/they", "any":"any","any/all":"any/all", }
@@ -39,7 +39,6 @@ class Courtesy(SimpleCommandModule):
 
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
         self.RE_GENDER_SET = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:i\s*am|i'?m)\s*(?:a\s+)?({self._gender_pattern()})\b", re.IGNORECASE)
-        # CORRECTED: This regex now requires Jeeves' name to be mentioned.
         self.RE_PRONOUNS_SET = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:my\s+pronouns\s+are|pronouns[:\s]+)\s*([a-zA-Z/\- ]{{2,40}})\b", re.IGNORECASE)
         self.RE_NO_ASSUME = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:don't\s+assume\s+my\s+gender|use\s+neutral)\b", re.IGNORECASE)
 
@@ -73,7 +72,6 @@ class Courtesy(SimpleCommandModule):
         pronoun_match = self.RE_PRONOUNS_SET.search(msg)
         if pronoun_match:
             pronouns_str = pronoun_match.group(1).strip()
-            # Avoid capturing sentence fragments
             if len(pronouns_str.split()) > 4: return False
             pronouns = self._normalize_pronouns(pronouns_str)
             self._set_user_profile(username, pronouns=pronouns)
@@ -82,13 +80,11 @@ class Courtesy(SimpleCommandModule):
             self.save_state()
             return True
             
-        # Check for "don't assume"
         if self.RE_NO_ASSUME.search(msg):
             self._set_user_profile(username, title="neutral")
             self.safe_reply(connection, event, f"My apologies, {username}. I shall use neutral address for you.")
             return True
             
-        # If the user has spoken, but doesn't have a profile, prompt them.
         if self._should_prompt_user(username):
             self._prompt_user(connection, event, username)
 
@@ -202,16 +198,26 @@ class Courtesy(SimpleCommandModule):
         return nick_lower
         
     def _normalize_pronouns(self, s: str) -> str:
-        cleaned = s.strip().lower().replace(" ", "").replace("_", "").replace("-", "")
-        if cleaned in self.PRONOUN_MAP: return self.PRONOUN_MAP[cleaned]
-        if "/" in cleaned:
-            parts = cleaned.split("/")
-            if len(parts) == 2:
-                candidate = f"{parts[0]}/{parts[1]}"
-                return self.PRONOUN_MAP.get(candidate, candidate)
-        if len(cleaned) <= 20 and re.match(r"^[a-z/]+$", cleaned):
-            return cleaned
-        return "they/them"
+        """Normalizes a pronoun string, allowing for spaces and common separators."""
+        user_input_cleaned = s.strip().lower()
+        
+        # Replace common separators like " and " or "," with "/"
+        standardized = re.sub(r'(\s+and\s+|\s*,\s*|\s+or\s+)', '/', user_input_cleaned)
+        
+        # Create a spaceless version for checking against the map, e.g., "she her" -> "sheher"
+        spaceless_for_check = standardized.replace(" ", "").replace("/", "").replace("_", "").replace("-", "")
+        
+        if spaceless_for_check in self.PRONOUN_MAP:
+            return self.PRONOUN_MAP[spaceless_for_check]
+
+        # If no map match, validate the user's original (but cleaned) input
+        if len(user_input_cleaned) <= 40 and re.match(r"^[a-z/\s]+$", user_input_cleaned):
+            # Prefer the standardized version if it looks like a pair
+            if '/' in standardized:
+                return standardized
+            return user_input_cleaned
+
+        return "they/them" # Fallback
 
     def _normalize_gender_to_title(self, gender: str) -> str:
         return self.GENDER_MAP.get(gender.lower().strip(), "neutral")

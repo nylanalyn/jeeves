@@ -81,7 +81,7 @@ class Gif(SimpleCommandModule):
         title = self.bot.title_for(username)
 
         if gif_url:
-            self.safe_reply(connection, event, f"{title} {username}, for '{query}': {gif_url}")
+            self.safe_reply(connection, event, f"{title}, for '{query}': {gif_url}")
         else:
             self.safe_reply(connection, event, f"My apologies, {title}, I could not find a suitable GIF for '{query}'.")
         

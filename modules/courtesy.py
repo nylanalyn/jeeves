@@ -52,6 +52,40 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!ignore(?:\s+(\S+))?\s*$", self._cmd_ignore, name="ignore", description="Add user to the ignore list. Admin required to ignore others.")
         self.register_command(r"^\s*!unignore(?:\s+(\S+))?\s*$", self._cmd_unignore, name="unignore", description="Remove user from the ignore list. Admin required to unignore others.")
 
+    def on_pubmsg(self, connection, event, msg, username):
+        # First, handle any commands this module has.
+        if super().on_pubmsg(connection, event, msg, username):
+            return True
+
+        # Second, handle natural language for setting gender/pronouns.
+        m_gender = self.RE_GENDER_SET.search(msg)
+        if m_gender:
+            gender = m_gender.group(1).strip()
+            title = self._normalize_gender_to_title(gender)
+            self._set_user_profile(username, title=title)
+            display_title = self.bot.title_for(username)
+            self.safe_reply(connection, event, f"{username}, noted. I shall address you as {display_title}.")
+            return True
+
+        m_pronouns = self.RE_PRONOUNS_SET.search(msg)
+        if m_pronouns:
+            pronouns = self._normalize_pronouns(m_pronouns.group(1))
+            self._set_user_profile(username, pronouns=pronouns)
+            self.safe_reply(connection, event, f"{username}, noted. Your pronouns are set to {pronouns}.")
+            return True
+            
+        m_no_assume = self.RE_NO_ASSUME.search(msg)
+        if m_no_assume:
+            self._set_user_profile(username, title="neutral")
+            self.safe_reply(connection, event, f"{username}, understood. I will use neutral address for you.")
+            return True
+
+        # Third, do the new prompting logic if no other NL matched.
+        if self._should_prompt_user(username):
+            self._prompt_user(connection, event, username)
+        
+        return False
+
     def is_user_ignored(self, username: str) -> bool:
         return self._canonical_nick(username) in self.get_state("ignored_users", [])
 
@@ -106,7 +140,7 @@ class Courtesy(SimpleCommandModule):
     def _cmd_whoami(self, connection, event, msg, username, match):
         profile = self._get_user_profile(username)
         if profile:
-            title = profile.get("title", "neutral")
+            title = self.bot.title_for(username)
             pronouns = profile.get("pronouns", "they/them")
             updated = profile.get("updated_count", 1)
             self.safe_reply(connection, event, f"{username}, I have you as title={title}, pronouns={pronouns} (updated {updated} times).")
@@ -118,7 +152,7 @@ class Courtesy(SimpleCommandModule):
         who = match.group(1)
         profile = self._get_user_profile(who)
         if profile:
-            title = profile.get("title", "neutral")
+            title = self.bot.title_for(who)
             pronouns = profile.get("pronouns", "they/them")
             self.safe_reply(connection, event, f"{who}: title={title}, pronouns={pronouns}")
         else:
@@ -223,6 +257,6 @@ class Courtesy(SimpleCommandModule):
         self.save_state()
 
     def _prompt_user(self, connection, event, username: str):
-        prompts = [ f"Good day, {username}! I use neutral address by default. You may say 'Jeeves, I am [male/female/nonbinary]' or use '!gender male' and '!pronouns he/him'.", f"Welcome, {username}! I shall address you as Mx. unless you specify otherwise. Try 'my pronouns are they/them' or '!pronouns she/her'.", f"Greetings, {username}! If you'd prefer sir/madam or specific pronouns, let me know: 'Jeeves, I am a woman' or '!gender female' both work.", ]
+        prompts = [ f"Good day, {username}! I use your nickname by default. You may say 'Jeeves, I am male' or use '!gender female' to set a formal title (Sir/Madam).", f"Welcome, {username}! I shall address you by your nickname unless you specify otherwise. Try 'my pronouns are they/them' or '!gender nonbinary' for 'Mx.'.", f"Greetings, {username}! If you'd prefer a formal title like Sir or Madam, please let me know. 'Jeeves, I am a woman' or '!gender male' both work.", ]
         self.safe_reply(connection, event, random.choice(prompts))
         self._mark_user_prompted(username)

@@ -34,7 +34,6 @@ class Sailing(ResponseModule):
         self.register_command(r"^\s*!sailing\s+stats\s*$", self._cmd_stats, 
                               name="sailing stats", admin_only=True, description="Show sailing module statistics.")
 
-    # ... (rest of the functions remain the same)
     def _get_sailing_response(self, msg: str, username: str) -> Optional[str]:
         if username.lower() != self.TARGET_USER.lower():
             return None
@@ -53,7 +52,7 @@ class Sailing(ResponseModule):
         recent_responses.append(chosen_response)
         self.set_state("responses_given", recent_responses[-10:])
         self.save_state()
-        return f"{username}, {formatted_response}"
+        return formatted_response
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):

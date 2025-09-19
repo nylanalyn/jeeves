@@ -84,7 +84,7 @@ class Weather(SimpleCommandModule, ResponseModule):
             response = self.http_session.get(weather_url, headers=headers, timeout=10) # Use the session
             response.raise_for_status()
             return response.json()
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+                except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
             self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
 
@@ -100,7 +100,7 @@ class Weather(SimpleCommandModule, ResponseModule):
             report_time_utc = datetime.fromisoformat(data['properties']['timeseries'][0]['time'])
             formatted_time = report_time_utc.strftime('%H:%M %Z')
             title = self.bot.title_for(username)
-            return (f"{title} {username}, the weather in {location_name} is currently: {summary}. "
+            return (f"{title}, the weather in {location_name} is currently: {summary}. "
                     f"Temperature: {temp_str}. Wind: {wind_speed_mph} mph. (Reported at {formatted_time})")
         except (KeyError, IndexError) as e:
             self._record_error(f"Failed to format weather report: {e}")

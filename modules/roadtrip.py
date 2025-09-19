@@ -55,10 +55,10 @@ class Roadtrip(SimpleCommandModule):
     LOCATIONS = list(set(EVENTS.keys()) - {"fallback"})
 
     TRIGGER_MESSAGES = [
-        "Of course, {title}; I'll prepare the car.",
-        "Very good, {title}; I shall ready the motor.",
-        "An excellent notion, {title}; let me fetch the keys.",
-        "Splendid idea, {title}; the vehicle awaits.",
+        "Of course! ; I'll prepare the car.",
+        "Very good! ; I shall ready the motor.",
+        "An excellent notion ; let me fetch the keys.",
+        "Splendid idea ; the vehicle awaits.",
     ]
 
     def __init__(self, bot, config):

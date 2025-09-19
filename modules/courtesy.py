@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
-    version = "2.3.3"
+    version = "2.3.4" # version bumped
     description = "User courtesy, pronoun, and ignore list management"
 
     PRONOUN_MAP = {"he/him":"he/him","hehim":"he/him","he":"he/him", "she/her":"she/her","sheher":"she/her","she":"she/her", "they/them":"they/them","theythem":"they/them","they":"they/them", "xe/xem":"xe/xem","xexem":"xe/xem", "ze/zir":"ze/zir","zezir":"ze/zir", "fae/faer":"fae/faer","faefer":"fae/faer", "e/em":"e/em","eem":"e/em", "per/per":"per/per","perper":"per/per", "ve/ver":"ve/ver","vever":"ve/ver", "it/its":"it/its","itits":"it/its", "they/xe":"they/xe","she/they":"she/they","he/they":"he/they", "any":"any","any/all":"any/all", }
@@ -39,7 +39,8 @@ class Courtesy(SimpleCommandModule):
 
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
         self.RE_GENDER_SET = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:i\s*am|i'?m)\s*(?:a\s+)?({self._gender_pattern()})\b", re.IGNORECASE)
-        self.RE_PRONOUNS_SET = re.compile(r"\b(?:my\s+pronouns\s+are|pronouns[:\s]+)\s*([a-zA-Z/\- ]{2,40})\b", re.IGNORECASE)
+        # CORRECTED: This regex now requires Jeeves' name to be mentioned.
+        self.RE_PRONOUNS_SET = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:my\s+pronouns\s+are|pronouns[:\s]+)\s*([a-zA-Z/\- ]{{2,40}})\b", re.IGNORECASE)
         self.RE_NO_ASSUME = re.compile(rf"\b{name_pat}[,!\s]*\s*(?:don't\s+assume\s+my\s+gender|use\s+neutral)\b", re.IGNORECASE)
 
     def _register_commands(self):
@@ -53,37 +54,44 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!unignore(?:\s+(\S+))?\s*$", self._cmd_unignore, name="unignore", description="Remove user from the ignore list. Admin required to unignore others.")
 
     def on_pubmsg(self, connection, event, msg, username):
-        # First, handle any commands this module has.
         if super().on_pubmsg(connection, event, msg, username):
-            return True
+            return True # A command was handled
 
-        # Second, handle natural language for setting gender/pronouns.
-        m_gender = self.RE_GENDER_SET.search(msg)
-        if m_gender:
-            gender = m_gender.group(1).strip()
+        # Check for natural language gender setting
+        gender_match = self.RE_GENDER_SET.search(msg)
+        if gender_match:
+            gender = gender_match.group(1).strip()
             title = self._normalize_gender_to_title(gender)
             self._set_user_profile(username, title=title)
             display_title = self.bot.title_for(username)
-            self.safe_reply(connection, event, f"{username}, noted. I shall address you as {display_title}.")
+            self.safe_reply(connection, event, f"Very good, {username}. I shall address you as {display_title} henceforth.")
+            self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
+            self.save_state()
             return True
 
-        m_pronouns = self.RE_PRONOUNS_SET.search(msg)
-        if m_pronouns:
-            pronouns = self._normalize_pronouns(m_pronouns.group(1))
+        # Check for natural language pronoun setting
+        pronoun_match = self.RE_PRONOUNS_SET.search(msg)
+        if pronoun_match:
+            pronouns_str = pronoun_match.group(1).strip()
+            # Avoid capturing sentence fragments
+            if len(pronouns_str.split()) > 4: return False
+            pronouns = self._normalize_pronouns(pronouns_str)
             self._set_user_profile(username, pronouns=pronouns)
-            self.safe_reply(connection, event, f"{username}, noted. Your pronouns are set to {pronouns}.")
+            self.safe_reply(connection, event, f"Noted, {username}. Your pronouns are set to {pronouns}.")
+            self.set_state("natural_language_uses", self.get_state("natural_language_uses", 0) + 1)
+            self.save_state()
             return True
             
-        m_no_assume = self.RE_NO_ASSUME.search(msg)
-        if m_no_assume:
+        # Check for "don't assume"
+        if self.RE_NO_ASSUME.search(msg):
             self._set_user_profile(username, title="neutral")
-            self.safe_reply(connection, event, f"{username}, understood. I will use neutral address for you.")
+            self.safe_reply(connection, event, f"My apologies, {username}. I shall use neutral address for you.")
             return True
-
-        # Third, do the new prompting logic if no other NL matched.
+            
+        # If the user has spoken, but doesn't have a profile, prompt them.
         if self._should_prompt_user(username):
             self._prompt_user(connection, event, username)
-        
+
         return False
 
     def is_user_ignored(self, username: str) -> bool:
@@ -140,7 +148,7 @@ class Courtesy(SimpleCommandModule):
     def _cmd_whoami(self, connection, event, msg, username, match):
         profile = self._get_user_profile(username)
         if profile:
-            title = self.bot.title_for(username)
+            title = profile.get("title", "neutral")
             pronouns = profile.get("pronouns", "they/them")
             updated = profile.get("updated_count", 1)
             self.safe_reply(connection, event, f"{username}, I have you as title={title}, pronouns={pronouns} (updated {updated} times).")
@@ -152,7 +160,7 @@ class Courtesy(SimpleCommandModule):
         who = match.group(1)
         profile = self._get_user_profile(who)
         if profile:
-            title = self.bot.title_for(who)
+            title = profile.get("title", "neutral")
             pronouns = profile.get("pronouns", "they/them")
             self.safe_reply(connection, event, f"{who}: title={title}, pronouns={pronouns}")
         else:
@@ -257,6 +265,7 @@ class Courtesy(SimpleCommandModule):
         self.save_state()
 
     def _prompt_user(self, connection, event, username: str):
-        prompts = [ f"Good day, {username}! I use your nickname by default. You may say 'Jeeves, I am male' or use '!gender female' to set a formal title (Sir/Madam).", f"Welcome, {username}! I shall address you by your nickname unless you specify otherwise. Try 'my pronouns are they/them' or '!gender nonbinary' for 'Mx.'.", f"Greetings, {username}! If you'd prefer a formal title like Sir or Madam, please let me know. 'Jeeves, I am a woman' or '!gender male' both work.", ]
+        prompts = [ f"Good day, {username}! I use neutral address by default. You may say 'Jeeves, I am [male/female/nonbinary]' or use '!gender male' and '!pronouns he/him'.", f"Welcome, {username}! I shall address you as Mx. unless you specify otherwise. Try 'my pronouns are they/them' or '!pronouns she/her'.", f"Greetings, {username}! If you'd prefer sir/madam or specific pronouns, let me know: 'Jeeves, I am a woman' or '!gender female' both work.", ]
         self.safe_reply(connection, event, random.choice(prompts))
         self._mark_user_prompted(username)
+

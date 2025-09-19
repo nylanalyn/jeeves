@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
-    version = "2.3.5" # version bumped
+    version = "2.3.6" # version bumped
     description = "User courtesy, pronoun, and ignore list management"
 
     PRONOUN_MAP = {"he/him":"he/him","hehim":"he/him","he":"he/him", "she/her":"she/her","sheher":"she/her","she":"she/her", "they/them":"they/them","theythem":"they/them","they":"they/them", "xe/xem":"xe/xem","xexem":"xe/xem", "ze/zir":"ze/zir","zezir":"ze/zir", "fae/faer":"fae/faer","faefer":"fae/faer", "e/em":"e/em","eem":"e/em", "per/per":"per/per","perper":"per/per", "ve/ver":"ve/ver","vever":"ve/ver", "it/its":"it/its","itits":"it/its", "they/xe":"they/xe","she/they":"she/they","he/they":"he/they", "any":"any","any/all":"any/all", }
@@ -51,6 +51,9 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!courtesy\s+stats\s*$", self._cmd_stats, name="courtesy stats", admin_only=True, description="Show courtesy statistics")
         self.register_command(r"^\s*!ignore(?:\s+(\S+))?\s*$", self._cmd_ignore, name="ignore", description="Add user to the ignore list. Admin required to ignore others.")
         self.register_command(r"^\s*!unignore(?:\s+(\S+))?\s*$", self._cmd_unignore, name="unignore", description="Remove user from the ignore list. Admin required to unignore others.")
+        # Admin commands to set user profiles
+        self.register_command(r"^\s*!setgender\s+(\S+)\s+(.+)\s*$", self._cmd_set_gender, name="setgender", admin_only=True, description="[Admin] Set a user's gender/title.")
+        self.register_command(r"^\s*!setpronouns\s+(\S+)\s+(.+)\s*$", self._cmd_set_pronouns, name="setpronouns", admin_only=True, description="[Admin] Set a user's pronouns.")
 
     def on_pubmsg(self, connection, event, msg, username):
         if super().on_pubmsg(connection, event, msg, username):
@@ -139,6 +142,23 @@ class Courtesy(SimpleCommandModule):
         pronouns = self._normalize_pronouns(match.group(1))
         self._set_user_profile(username, pronouns=pronouns)
         self.safe_reply(connection, event, f"{username}, recorded: {pronouns}.")
+        return True
+
+    @admin_required
+    def _cmd_set_gender(self, connection, event, msg, username, match):
+        target_user, gender_str = match.groups()
+        title = self._normalize_gender_to_title(gender_str.strip())
+        self._set_user_profile(target_user, title=title)
+        display_title = self.bot.title_for(target_user)
+        self.safe_reply(connection, event, f"Very good. {target_user}'s title has been set to {display_title}.")
+        return True
+
+    @admin_required
+    def _cmd_set_pronouns(self, connection, event, msg, username, match):
+        target_user, pronouns_str = match.groups()
+        pronouns = self._normalize_pronouns(pronouns_str.strip())
+        self._set_user_profile(target_user, pronouns=pronouns)
+        self.safe_reply(connection, event, f"Noted. {target_user}'s pronouns have been set to {pronouns}.")
         return True
 
     def _cmd_whoami(self, connection, event, msg, username, match):
@@ -252,6 +272,7 @@ class Courtesy(SimpleCommandModule):
         if title is not None: profile["title"] = title
         if pronouns is not None: profile["pronouns"] = pronouns
         profile["updated_at"] = datetime.now(UTC).isoformat()
+        profile['updated_count'] = profile.get('updated_count', 0) + 1 # Track updates
         profiles[profile_key] = profile
         self.set_state("profiles", profiles)
         self.save_state()

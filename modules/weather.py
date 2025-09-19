@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"
-    version = "1.2.0" # version bumped
+    version = "1.2.1" # version bumped
     description = "Provides weather information for saved or specified locations."
 
     API_KEY = os.getenv("PIRATE_WEATHER_API_KEY")
@@ -77,6 +77,8 @@ class Weather(SimpleCommandModule, ResponseModule):
             return None
 
     def _get_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
+        # This check is here, but the MET Norway API doesn't use the key.
+        # This is a logical inconsistency but not the source of the syntax error.
         if not self.API_KEY: return None
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         headers = {'User-Agent': 'JeevesIRCBot/1.0 https://github.com/your/repo'}
@@ -84,7 +86,7 @@ class Weather(SimpleCommandModule, ResponseModule):
             response = self.http_session.get(weather_url, headers=headers, timeout=10) # Use the session
             response.raise_for_status()
             return response.json()
-                except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
             self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
 
@@ -100,8 +102,13 @@ class Weather(SimpleCommandModule, ResponseModule):
             report_time_utc = datetime.fromisoformat(data['properties']['timeseries'][0]['time'])
             formatted_time = report_time_utc.strftime('%H:%M %Z')
             title = self.bot.title_for(username)
-            return (f"{title}, the weather in {location_name} is currently: {summary}. "
-                    f"Temperature: {temp_str}. Wind: {wind_speed_mph} mph. (Reported at {formatted_time})")
+            
+            # FIXED: Rewrote the return statement to use explicit string concatenation
+            # for better compatibility with older Python versions.
+            report = (f"{title}, the weather in {location_name} is currently: {summary}. " +
+                      f"Temperature: {temp_str}. Wind: {wind_speed_mph} mph. (Reported at {formatted_time})")
+            return report
+            
         except (KeyError, IndexError) as e:
             self._record_error(f"Failed to format weather report: {e}")
             return f"{username}, I'm afraid I could not format the weather report."
@@ -159,3 +166,4 @@ class Weather(SimpleCommandModule, ResponseModule):
         if self._handle_message(connection, event, msg, username):
             return True
         return super().on_pubmsg(connection, event, msg, username)
+

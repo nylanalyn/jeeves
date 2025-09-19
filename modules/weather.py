@@ -15,18 +15,13 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"
-    version = "1.2.1" # version bumped
+    version = "1.2.2" # version bumped
     description = "Provides weather information for saved or specified locations."
-
-    API_KEY = os.getenv("PIRATE_WEATHER_API_KEY")
 
     def __init__(self, bot, config):
         super().__init__(bot)
         self.set_state("user_locations", self.get_state("user_locations", {}))
         self.save_state()
-
-        if not self.API_KEY:
-            self._record_error("PIRATE_WEATHER_API_KEY environment variable is not set.")
         
         # Create a resilient session for making API calls
         self.http_session = self.requests_retry_session()
@@ -77,9 +72,6 @@ class Weather(SimpleCommandModule, ResponseModule):
             return None
 
     def _get_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
-        # This check is here, but the MET Norway API doesn't use the key.
-        # This is a logical inconsistency but not the source of the syntax error.
-        if not self.API_KEY: return None
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         headers = {'User-Agent': 'JeevesIRCBot/1.0 https://github.com/your/repo'}
         try:
@@ -166,4 +158,5 @@ class Weather(SimpleCommandModule, ResponseModule):
         if self._handle_message(connection, event, msg, username):
             return True
         return super().on_pubmsg(connection, event, msg, username)
+
 

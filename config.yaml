@@ -8,10 +8,10 @@ adventure:
 chatter:
     cooldowns:
         animal: 3600
-        weather: 1800
-        tech: 900
-        food: 1200
-        greeting: 300
+        weather: -1
+        tech: -1
+        food: -1
+        greeting: -1
 
 flirt:
     global_cooldown: 30.0
@@ -35,6 +35,10 @@ roadtrip:
 sailing:
     target_user: "witeshark2"
     cooldown: 5.0
+
+shorten:
+    min_length_for_auto_shorten: 70
+    cooldown: 10.0
 
 # General module cooldowns
 cooldowns:

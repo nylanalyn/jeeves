@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# jeeves.py — modular IRC butler core with base.py integration
+# jeeves.py — modular IRC butler core
 
 import os, sys, time, json, re, ssl, signal, threading, traceback, importlib.util, base64, yaml
 from pathlib import Path

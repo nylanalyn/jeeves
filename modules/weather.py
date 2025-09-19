@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"
-    version = "1.2.2" # version bumped
+    version = "1.2.2"
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot, config):
@@ -94,9 +94,7 @@ class Weather(SimpleCommandModule, ResponseModule):
             report_time_utc = datetime.fromisoformat(data['properties']['timeseries'][0]['time'])
             formatted_time = report_time_utc.strftime('%H:%M %Z')
             title = self.bot.title_for(username)
-            
-            # FIXED: Rewrote the return statement to use explicit string concatenation
-            # for better compatibility with older Python versions.
+
             report = (f"{title}, the weather in {location_name} is currently: {summary}. " +
                       f"Temperature: {temp_str}. Wind: {wind_speed_mph} mph. (Reported at {formatted_time})")
             return report

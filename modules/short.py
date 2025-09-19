@@ -10,7 +10,7 @@ def setup(bot, config):
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "1.0.1" # version bumped
+    version = "1.0.1"
     description = "Shortens long URLs."
 
     # A robust regex to find URLs in a message.
@@ -57,13 +57,9 @@ class Shorten(SimpleCommandModule):
         return False
 
     def _get_short_url(self, long_url: str) -> Optional[str]:
-        """
-        This is a placeholder for a real URL shortening service.
-        You can replace the contents of this function with an API call
-        to a service like TinyURL, bit.ly, etc.
-        """
+
         try:
-            # EXAMPLE USING TINYURL'S API (no key required)
+            # USING TINYURL'S API
             api_url = f"http://tinyurl.com/api-create.php?url={requests.utils.quote(long_url)}"
             response = self.http_session.get(api_url, timeout=10)
             response.raise_for_status()

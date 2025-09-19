@@ -15,10 +15,10 @@ def setup(bot, config):
 
 class Memos(SimpleCommandModule):
     name = "memos"
-    version = "2.2.1" # version bumped
+    version = "2.2.1"
     description = "Provides memo functionality for leaving messages for users."
     
-    # ... (ACKS and DELIVER_LINES remain the same)
+
     ACKS = [ "Indeed, {title}; I shall make a precise note of it.", "Very good, {title}. Your message is recorded.", "Quite so, {title}; I shall see that it is delivered.", "At once, {title}. I have filed the memorandum.", "Consider it noted and queued with care, {title}.", ]
     DELIVER_LINES = [ "Ah, {to}! {from_} left you a message; {says}: {text}", "{to}, a note from {from_}: {text}", "Message for {to} from {from_}: {text}", ]
 
@@ -42,7 +42,6 @@ class Memos(SimpleCommandModule):
         self.register_command(r"^\s*!memos\s+stats\s*$", self._cmd_stats,
                               name="memos stats", admin_only=True, description="Show memo statistics.")
 
-    # ... (rest of the functions remain the same)
     def on_pubmsg(self, connection, event, msg, username):
         if super().on_pubmsg(connection, event, msg, username):
             return True

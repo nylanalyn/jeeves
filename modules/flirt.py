@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Flirt(ResponseModule, SimpleCommandModule):
     name = "flirt"
-    version = "2.2.1" # version bumped
+    version = "2.2.1"
     description = "Polite and professional flirt handling."
 
     def __init__(self, bot, config):

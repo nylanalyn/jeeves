@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "3.0.2" # version bumped
+    version = "3.0.2"
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
     EVENTS = {
@@ -55,10 +55,10 @@ class Roadtrip(SimpleCommandModule):
     LOCATIONS = list(set(EVENTS.keys()) - {"fallback"})
 
     TRIGGER_MESSAGES = [
-        "Of course! ; I'll prepare the car.",
-        "Very good! ; I shall ready the motor.",
-        "An excellent notion ; let me fetch the keys.",
-        "Splendid idea ; the vehicle awaits.",
+        "Of course! I'll prepare the car.",
+        "Very good! I shall ready the motor.",
+        "An excellent notion let me fetch the keys.",
+        "Splendid idea the vehicle awaits.",
     ]
 
     def __init__(self, bot, config):

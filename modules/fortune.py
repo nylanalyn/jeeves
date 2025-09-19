@@ -14,7 +14,7 @@ def setup(bot, config):
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
-    version = "1.2.1" # version bumped
+    version = "1.2.1"
     description = "Provides fortunes from a fortune cookie."
     
     FORTUNE_DIR = Path(__file__).parent.parent / "fortunes"
@@ -23,7 +23,6 @@ class Fortune(SimpleCommandModule):
     def __init__(self, bot, config):
         super().__init__(bot)
         self.COOLDOWN_SECONDS = config.get("cooldown_seconds", 10.0)
-        # ... (rest of the __init__ function remains the same)
         self.set_state("fortunes_given", self.get_state("fortunes_given", 0))
         self.set_state("category_counts", self.get_state("category_counts", {cat: 0 for cat in self.CATEGORIES}))
         self.set_state("users_served", self.get_state("users_served", []))
@@ -41,7 +40,6 @@ class Fortune(SimpleCommandModule):
         self.register_command(r"^\s*!fortune\s+reload\s*$", self._cmd_reload,
                               name="fortune reload", admin_only=True, description="Reload fortune files.")
     
-    # ... (rest of the functions remain the same)
     def _cmd_fortune(self, connection, event, msg, username, match):
         if not self._can_give_fortune(username):
             self.safe_reply(connection, event, f"{username}, please wait a moment before requesting another fortune.")

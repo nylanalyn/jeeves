@@ -12,10 +12,9 @@ def setup(bot, config):
 
 class Replies(SimpleCommandModule):
     name = "replies"
-    version = "2.1.1" # version bumped
+    version = "2.1.1"
     description = "Answers general, advice, and philosophical questions."
 
-    # ... (YES_LINES, NO_LINES, etc. remain the same)
     YES_LINES = [ "Indeed, {title}.", "At once, {title}.", "Very good, {title}.", "As you wish, {title}.", "Quite so, {title}.", "Naturally, {title}.", "I shall see to it, {title}.", "Absolutely, {title}.", "Without question, {title}.", "Most certainly, {title}.", "I believe so, {title}.", "Undoubtedly, {title}." ]
     NO_LINES = [ "I fear not, {title}.", "Alas, no, {title}.", "Regrettably not, {title}.", "That would be unwise, {title}.", "I must decline, {title}.", "Unfortunately, no, {title}.", "On this occasion, I cannot, {title}.", "I think not, {title}.", "Most unlikely, {title}.", "I should advise against it, {title}.", "Not in my professional opinion, {title}.", "I rather doubt it, {title}." ]
     MAYBE_LINES = [ "Perhaps, {title}.", "It is possible, {title}.", "Time will tell, {title}.", "Hard to say, {title}.", "One cannot be certain, {title}.", "Possibly, {title}, though I wouldn't wager the silver on it.", "I should not like to speculate, {title}.", "The signs are unclear, {title}.", "It remains to be seen, {title}.", "That depends on several factors, {title}.", "I find myself undecided, {title}.", "The matter requires consideration, {title}." ]
@@ -24,7 +23,6 @@ class Replies(SimpleCommandModule):
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        # ... (rest of the __init__ function remains the same)
         self.set_state("questions_answered", self.get_state("questions_answered", 0))
         self.set_state("response_type_counts", self.get_state("response_type_counts", {"yes": 0, "no": 0, "maybe": 0, "advice": 0, "philosophical": 0}))
         self.set_state("users_helped", self.get_state("users_helped", []))
@@ -35,7 +33,6 @@ class Replies(SimpleCommandModule):
         self.register_command(r"^\s*!replies\s+stats\s*$", self._cmd_stats,
                               name="replies stats", admin_only=True, description="Show statistics on questions answered.")
 
-    # ... (rest of the functions remain the same)
     def on_pubmsg(self, connection, event, msg, username):
         if super().on_pubmsg(connection, event, msg, username):
             return True

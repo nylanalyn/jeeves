@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.3.4" # version bumped
+    version = "2.3.4"
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
@@ -136,7 +136,7 @@ class Help(SimpleCommandModule):
         return False
 
     def on_privmsg(self, connection, event):
-        """CORRECTED private message handler."""
+        """private message handler."""
         msg = event.arguments[0] if event.arguments else ""
         username = event.source.split('!')[0]
         is_admin = self.bot.is_admin(username)

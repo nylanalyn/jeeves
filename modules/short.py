@@ -1,7 +1,9 @@
 # modules/shorten.py
-# A module for shortening long URLs, both manually and automatically.
+# URL shortener with automatic trigger for long URLs, using a self-hosted Shlink instance.
+import os
 import re
 import requests
+import json
 from typing import Optional
 from .base import SimpleCommandModule
 
@@ -10,84 +12,90 @@ def setup(bot, config):
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "1.0.1"
-    description = "Shortens long URLs."
+    version = "2.0.0"
+    description = "Shortens URLs using a self-hosted Shlink instance."
 
-    # A robust regex to find URLs in a message.
-    URL_REGEX = re.compile(
-        r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-    )
+    URL_PATTERN = re.compile(r'(https?://\S+)')
+    SHLINK_API_URL = os.getenv("SHLINK_API_URL")
+    SHLINK_API_KEY = os.getenv("SHLINK_API_KEY")
 
     def __init__(self, bot, config):
-        # Define attributes BEFORE calling the parent's __init__
-        # to ensure they are available when _register_commands is called.
-        self.MIN_LENGTH_FOR_AUTO_SHORTEN = config.get("min_length_for_auto_shorten", 70)
-        self.COOLDOWN = config.get("cooldown", 10.0)
-        
+        self.COOLDOWN = config.get("cooldown_seconds", 10.0)
+        self.MIN_LENGTH = config.get("min_length_for_auto_shorten", 70)
         super().__init__(bot)
+
+        if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
+            self._record_error("SHLINK_API_URL or SHLINK_API_KEY environment variables are not set.")
         
-        self.set_state("urls_shortened", self.get_state("urls_shortened", 0))
-        self.save_state()
         self.http_session = self.requests_retry_session()
 
     def _register_commands(self):
         self.register_command(
             r"^\s*!shorten\s+(https?://\S+)\s*$", self._cmd_shorten,
             name="shorten", cooldown=self.COOLDOWN,
-            description="Shorten a URL. Usage: !shorten <URL>"
+            description="Shorten a URL. Usage: !shorten <url>"
         )
 
-    def on_pubmsg(self, connection, event, msg, username):
-        # First, handle any commands this module has.
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
+    def _shorten_url(self, url_to_shorten: str) -> Optional[str]:
+        if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
+            return None
 
-        # Then, check for long URLs to shorten automatically.
-        match = self.URL_REGEX.search(msg)
-        if match:
-            url = match.group(0)
-            if len(url) > self.MIN_LENGTH_FOR_AUTO_SHORTEN:
-                if self.check_rate_limit("auto_shorten", self.COOLDOWN):
-                    short_url = self._get_short_url(url)
-                    if short_url:
-                        title = self.bot.title_for(username)
-                        self.safe_reply(connection, event,
-                            f"I took the liberty of shortening that for you, {title}: {short_url}")
-                        return True
-        return False
-
-    def _get_short_url(self, long_url: str) -> Optional[str]:
+        api_endpoint = f"{self.SHLINK_API_URL.rstrip('/')}/rest/v2/short-urls"
+        headers = {
+            "X-Api-Key": self.SHLINK_API_KEY,
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "longUrl": url_to_shorten,
+            "findIfExists": True
+        }
 
         try:
-            # USING TINYURL'S API
-            api_url = f"http://tinyurl.com/api-create.php?url={requests.utils.quote(long_url)}"
-            response = self.http_session.get(api_url, timeout=10)
+            response = self.http_session.post(api_endpoint, headers=headers, json=payload, timeout=10)
             response.raise_for_status()
-            
-            # The response body is the short URL
-            short_url = response.text
-            
-            if short_url and short_url.startswith("http"):
-                 self.set_state("urls_shortened", self.get_state("urls_shortened", 0) + 1)
-                 self.save_state()
-                 return short_url
-            else:
-                self._record_error(f"API returned an invalid short URL: {short_url}")
-                return None
-
+            data = response.json()
+            return data.get("shortUrl")
         except requests.exceptions.RequestException as e:
-            self._record_error(f"URL shortening API request failed: {e}")
+            self._record_error(f"Shlink API request failed: {e}")
+            return None
+        except (KeyError, json.JSONDecodeError) as e:
+            self._record_error(f"Failed to parse Shlink response: {e}")
             return None
 
     def _cmd_shorten(self, connection, event, msg, username, match):
         long_url = match.group(1)
-        short_url = self._get_short_url(long_url)
-        title = self.bot.title_for(username)
-
-        if short_url:
-            self.safe_reply(connection, event, f"As you wish, {title}: {short_url}")
-        else:
-            self.safe_reply(connection, event, f"My apologies, {title}, I was unable to shorten that URL.")
+        short_url = self._shorten_url(long_url)
         
+        if short_url:
+            self.safe_reply(connection, event, f"{username}, your shortened link: {short_url}")
+        else:
+            self.safe_reply(connection, event, f"{username}, I'm afraid I could not shorten that URL at this time.")
         return True
+
+    def on_pubmsg(self, connection, event, msg, username):
+        if super().on_pubmsg(connection, event, msg, username):
+            return True
+
+        # Automatic shortening logic
+        if self.MIN_LENGTH <= 0:
+            return False
+
+        match = self.URL_PATTERN.search(msg)
+        if match:
+            url = match.group(1)
+            # Avoid shortening URLs that are already short
+            if "://" in self.SHLINK_API_URL and self.SHLINK_API_URL.split("://")[1] in url:
+                return False
+
+            if len(url) > self.MIN_LENGTH:
+                # Check rate limit to avoid spamming the channel
+                if not self.check_rate_limit("auto_shorten", 30.0):
+                     return False
+                
+                short_url = self._shorten_url(url)
+                if short_url:
+                    title = self.bot.title_for(username)
+                    self.safe_reply(connection, event, f"I took the liberty of shortening that for you, {title}: {short_url}")
+                    return True
+        return False
 

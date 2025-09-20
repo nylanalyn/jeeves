@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Help(SimpleCommandModule):
     name = "help"
-    version = "2.3.4"
+    version = "2.4.0" # version bumped for refactor
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
@@ -122,10 +122,7 @@ class Help(SimpleCommandModule):
         
         return help_lines
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
-        
+    def on_ambient_message(self, connection, event, msg, username):
         if not self._can_give_help(username):
             return False
             

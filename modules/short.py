@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "2.0.0"
+    version = "2.1.0" # version bumped for refactor
     description = "Shortens URLs using a self-hosted Shlink instance."
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
@@ -72,10 +72,7 @@ class Shorten(SimpleCommandModule):
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not shorten that URL at this time.")
         return True
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
-
+    def on_ambient_message(self, connection, event, msg, username):
         # Automatic shortening logic
         if self.MIN_LENGTH <= 0:
             return False
@@ -98,4 +95,3 @@ class Shorten(SimpleCommandModule):
                     self.safe_reply(connection, event, f"I took the liberty of shortening that for you, {title}: {short_url}")
                     return True
         return False
-

@@ -14,7 +14,7 @@ def setup(bot, config):
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
-    version = "1.2.1"
+    version = "1.3.0" # version bumped for refactor
     description = "Provides fortunes from a fortune cookie."
     
     FORTUNE_DIR = Path(__file__).parent.parent / "fortunes"
@@ -76,9 +76,7 @@ class Fortune(SimpleCommandModule):
         self.safe_reply(connection, event, f"Fortune files reloaded. {total_loaded} fortunes available.")
         return True
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
+    def on_ambient_message(self, connection, event, msg, username):
         if self._can_give_fortune(username) and self.is_mentioned(msg):
             category = self._extract_category_from_message(msg)
             if category or re.search(r"\bfortune", msg, re.IGNORECASE):

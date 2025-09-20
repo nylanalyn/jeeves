@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
-    version = "2.3.7" # version bumped for title inference
+    version = "2.4.0" # version bumped for refactor
     description = "User courtesy, pronoun, and ignore list management"
 
     PRONOUN_MAP = {"he/him":"he/him","hehim":"he/him","he":"he/him", "she/her":"she/her","sheher":"she/her","she":"she/her", "they/them":"they/them","theythem":"they/them","they":"they/them", "xe/xem":"xe/xem","xexem":"xe/xem", "ze/zir":"ze/zir","zezir":"ze/zir", "fae/faer":"fae/faer","faefer":"fae/faer", "e/em":"e/em","eem":"e/em", "per/per":"per/per","perper":"per/per", "ve/ver":"ve/ver","vever":"ve/ver", "it/its":"it/its","itits":"it/its", "they/xe":"they/xe","she/they":"she/they","he/they":"he/they", "any":"any","any/all":"any/all", }
@@ -55,10 +55,7 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!setgender\s+(\S+)\s+(.+)\s*$", self._cmd_set_gender, name="setgender", admin_only=True, description="[Admin] Set a user's gender/title.")
         self.register_command(r"^\s*!setpronouns\s+(\S+)\s+(.+)\s*$", self._cmd_set_pronouns, name="setpronouns", admin_only=True, description="[Admin] Set a user's pronouns.")
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True # A command was handled
-
+    def on_ambient_message(self, connection, event, msg, username):
         # Check for natural language gender setting
         gender_match = self.RE_GENDER_SET.search(msg)
         if gender_match:
@@ -273,10 +270,8 @@ class Courtesy(SimpleCommandModule):
         if title is not None:
             profile["title"] = title
 
-        # --- FIX: Infer title from pronouns if they are set ---
         if pronouns is not None:
             profile["pronouns"] = pronouns
-            # If user sets he/him or she/her, automatically set the corresponding title.
             if pronouns == "he/him":
                 profile["title"] = "sir"
             elif pronouns == "she/her":
@@ -306,3 +301,4 @@ class Courtesy(SimpleCommandModule):
         prompts = [ f"Good day, {username}! I use neutral address by default. You may say 'Jeeves, I am [male/female/nonbinary]' or use '!gender male' and '!pronouns he/him'.", f"Welcome, {username}! I shall address you as Mx. unless you specify otherwise. Try 'my pronouns are they/them' or '!pronouns she/her'.", f"Greetings, {username}! If you'd prefer sir/madam or specific pronouns, let me know: 'Jeeves, I am a woman' or '!gender female' both work.", ]
         self.safe_reply(connection, event, random.choice(prompts))
         self._mark_user_prompted(username)
+

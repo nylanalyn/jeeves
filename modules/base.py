@@ -24,7 +24,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.2.4" # version bumped
+    version = "1.3.0" # version bumped for refactor
     description = "Base module class"
     
     def __init__(self, bot):
@@ -140,16 +140,13 @@ class ModuleBase(ABC):
             self._record_error(f"Failed to send privmsg to {username}: {e}")
             return False
 
-    def on_pubmsg(self, connection, event, msg: str, username: str) -> bool:
-        try:
-            if self._dispatch_commands(connection, event, msg, username):
-                return True
-            if hasattr(self, '_handle_message') and self._handle_message(connection, event, msg, username):
-                return True
-            return False
-        except Exception as e:
-            self._record_error(f"Error in on_pubmsg: {e}")
-            return False
+    def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        """
+        Handles non-command, "ambient" messages in the channel.
+        This should be overridden by modules that listen for natural language.
+        Return True if the message was handled, False otherwise.
+        """
+        return False
 
     def _dispatch_commands(self, connection, event, msg: str, username: str) -> bool:
         for cmd_id, cmd_info in self._commands.items():
@@ -187,7 +184,7 @@ class ResponseModule(ModuleBase):
             pattern = re.compile(pattern, re.IGNORECASE)
         self._response_patterns.append({"pattern": pattern, "response": response, "probability": probability})
     
-    def _handle_message(self, connection, event, msg: str, username: str) -> bool:
+    def on_ambient_message(self, connection, event, msg: str, username:str) -> bool:
         import random
         for item in self._response_patterns:
             if item["pattern"].search(msg) and random.random() <= item["probability"]:

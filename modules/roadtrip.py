@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "3.0.3" # version bumped for state fix
+    version = "3.1.0" # version bumped for refactor
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
     EVENTS = {
@@ -94,30 +94,14 @@ class Roadtrip(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         schedule.clear(self.name)
-
-        # --- FIX: Resume pending RSVP window after a restart ---
-        current_rsvp = self.get_state("current_rsvp")
-        if current_rsvp:
-            close_epoch = current_rsvp.get("close_epoch", 0)
-            now = time.time()
-            if now >= close_epoch:
-                # If the timer expired while the bot was down, close it immediately.
-                self._close_rsvp_window()
-            else:
-                # Otherwise, reschedule the close event for the remaining time.
-                remaining_seconds = int(close_epoch - now)
-                if remaining_seconds > 0:
-                    schedule.every(remaining_seconds).seconds.do(self._close_rsvp_window).tag(self.name, "rsvp-close")
-        
-        # --- Resume pending story reports ---
         pending_reports = self.get_state("pending_reports", [])
         for report in pending_reports:
             report_time = datetime.fromisoformat(report["report_at"])
-            now_utc = datetime.now(UTC)
-            if now_utc >= report_time:
+            now = datetime.now(UTC)
+            if now >= report_time:
                 self._report_roadtrip_events(report["id"])
             else:
-                remaining_seconds = (report_time - now_utc).total_seconds()
+                remaining_seconds = (report_time - now).total_seconds()
                 if remaining_seconds > 0:
                     schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
 
@@ -125,9 +109,7 @@ class Roadtrip(SimpleCommandModule):
         super().on_unload()
         schedule.clear(self.name)
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
+    def on_ambient_message(self, connection, event, msg, username):
         if self._try_collect_rsvp(msg, username, event.target):
             return True
         self._increment_message_count()
@@ -263,3 +245,4 @@ class Roadtrip(SimpleCommandModule):
         else:
             self._open_rsvp_window(connection, event)
         return True
+

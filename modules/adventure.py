@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Adventure(SimpleCommandModule):
     name = "adventure"
-    version = "2.3.2" # version bumped for state fix
+    version = "2.4.0" # version bumped for refactor
     description = "A choose-your-own-adventure game for the channel."
     
     # Adventure locations and story bits...
@@ -52,23 +52,19 @@ class Adventure(SimpleCommandModule):
 
     def on_load(self):
         super().on_load()
-        schedule.clear(self.name) # Clear any old schedules for this module
-        
-        # --- FIX: Resume pending adventure window after a restart ---
+        schedule.clear(f"{self.name}-cleanup")
         current = self.get_state("current")
         if current:
             close_time = float(current.get("close_epoch", 0))
             now = time.time()
             if now >= close_time:
-                # If timer expired while bot was offline, close it now.
                 self._close_adventure_round()
             else:
-                # Otherwise, reschedule the close event for the remaining time.
                 room = current.get("room")
                 if room:
                     remaining_seconds = int(close_time - now)
                     if remaining_seconds > 0:
-                        schedule.every(remaining_seconds).seconds.do(lambda: self._close_adventure_scheduled(room)).tag(self.name, f"close-{room}")
+                        schedule.every(remaining_seconds).seconds.do(lambda: self._close_adventure_scheduled(room)).tag(f"{self.name}-close-{room}")
 
     def on_unload(self):
         super().on_unload()
@@ -78,9 +74,7 @@ class Adventure(SimpleCommandModule):
             if room:
                 schedule.clear(f"{self.name}-close-{room}")
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
+    def on_ambient_message(self, connection, event, msg, username):
         current = self.get_state("current")
         if current and current.get("room") == event.target:
             if time.time() > float(current.get("close_epoch", 0)):
@@ -276,3 +270,4 @@ class Adventure(SimpleCommandModule):
         self.set_state("current", current)
         self.save_state()
         return True
+

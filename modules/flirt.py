@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Flirt(ResponseModule, SimpleCommandModule):
     name = "flirt"
-    version = "2.2.1"
+    version = "2.3.0" # version bumped for refactor
     description = "Polite and professional flirt handling."
 
     def __init__(self, bot, config):
@@ -21,7 +21,6 @@ class Flirt(ResponseModule, SimpleCommandModule):
         self.GLOBAL_COOLDOWN = config.get("global_cooldown", 30.0)
         self.PER_USER_COOLDOWN = config.get("per_user_cooldown", 60.0)
 
-        # ... (rest of the __init__ function remains the same)
         self.set_state("total_flirts_received", self.get_state("total_flirts_received", 0))
         self.set_state("responses_given", self.get_state("responses_given", 0))
         self.set_state("intent_counts", self.get_state("intent_counts", {}))
@@ -38,7 +37,6 @@ class Flirt(ResponseModule, SimpleCommandModule):
         self.register_command(r"^\s*!flirt\s+reset\s*$", self._cmd_reset,
                               name="flirt reset", admin_only=True, description="Reset flirt cooldowns.")
     
-    # ... (rest of the functions remain the same)
     def _setup_flirt_patterns(self):
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
         self.patterns = {"marry": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(marry\s+me|marry\s+us)\b", re.IGNORECASE), "date": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(date\s+me|go\s+out\s+with\s+me)\b", re.IGNORECASE), "like_me": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(do\s+you\s+like\s+me|do\s+you\s+fancy\s+me)\b", re.IGNORECASE), "love_you": re.compile(rf"\b(i\s+love\s+you[,!\s]*{name_pat}|love\s+you[,!\s]*{name_pat})\b", re.IGNORECASE), "kiss": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(kiss\s+me|mwah|muah|blow\s+a\s+kiss)\b", re.IGNORECASE), "compliment_me": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(am\s+i\s+(cute|handsome|pretty|attractive)|do\s+you\s+think\s+i'?m\s+(cute|handsome|pretty|attractive))\b", re.IGNORECASE), "be_mine": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(be\s+my\s+(boyfriend|girlfriend|partner)|you'?re\s+mine[,!]?\s*{name_pat})\b", re.IGNORECASE), "i_want_you": re.compile(rf"\b(?:{name_pat}[,!\s]*)?i\s+want\s+you\b", re.IGNORECASE), "flirt_generic": re.compile(rf"\b(?:{name_pat}[,!\s]*)?(flirt\s+with\s+me|you'?re\s+(hot|sexy|cute))\b", re.IGNORECASE),}
@@ -91,7 +89,7 @@ class Flirt(ResponseModule, SimpleCommandModule):
         responses_given = stats.get("responses_given", 0)
         if total_received > 0:
             response_rate = (responses_given / total_received) * 100
-        lines = [f"Received: {total_received}", f"Responded: {responses_given} ({response_rate:.1f}%)", f"Unique flirters: {len(stats.get('unique_flirters', []))}",]
+        lines = [f"Received: {total_received}", f"Responded: {responses_given} ({response_rate:.1f}%)", f"Unique flirters: {len(stats.get('unique_flirters', []))}"]
         intent_counts = stats.get("intent_counts", {})
         if intent_counts:
             most_common = max(intent_counts, key=intent_counts.get)
@@ -107,9 +105,3 @@ class Flirt(ResponseModule, SimpleCommandModule):
         self.save_state()
         self.safe_reply(connection, event, "Flirt cooldowns reset.")
         return True
-
-    def on_pubmsg(self, connection, event, msg, username):
-        handled = self._handle_message(connection, event, msg, username)
-        if handled:
-            return True
-        return super().on_pubmsg(connection, event, msg, username)

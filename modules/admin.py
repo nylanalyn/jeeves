@@ -13,7 +13,7 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.3.1" # version bumped
+    version = "2.4.0" # version bumped for refactor
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
@@ -49,17 +49,6 @@ class Admin(SimpleCommandModule):
         # Admin Stats
         self.register_command(r"^\s*!admin\s+stats\s*$", self._cmd_stats,
                               name="admin stats", admin_only=True, description="Show admin command usage stats.")
-
-    def on_pubmsg(self, connection, event, msg, username):
-        # Let the base class handle all registered commands
-        handled = super().on_pubmsg(connection, event, msg, username)
-        
-        if handled:
-            # Update admin module-specific stats
-            self.update_state({"commands_used": self.get_state("commands_used") + 1, "last_used": time.time()})
-            self.save_state()
-            
-        return handled
 
     # --- Command Handlers ---
     @admin_required

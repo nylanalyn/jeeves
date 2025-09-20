@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule, ResponseModule):
     name = "weather"
-    version = "1.2.2"
+    version = "1.3.0" # version bumped for refactor
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot, config):
@@ -54,8 +54,7 @@ class Weather(SimpleCommandModule, ResponseModule):
         weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
         if weather_data:
             report = self._format_weather_report(weather_data, location_obj["query"], username)
-            self.safe_reply(self.bot.connection, self.bot.primary_channel, report)
-            return report # Return to satisfy handler
+            return report
         else:
             return f"{username}, I'm afraid I could not fetch the weather for your location."
 
@@ -151,10 +150,3 @@ class Weather(SimpleCommandModule, ResponseModule):
         locations_set = len(self.get_state("user_locations", {}))
         self.safe_reply(connection, event, f"Weather stats: {locations_set} users have set a location.")
         return True
-
-    def on_pubmsg(self, connection, event, msg, username):
-        if self._handle_message(connection, event, msg, username):
-            return True
-        return super().on_pubmsg(connection, event, msg, username)
-
-

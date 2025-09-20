@@ -18,7 +18,7 @@ def setup(bot, config):
 
 class Chatter(SimpleCommandModule, ResponseModule):
     name = "chatter"
-    version = "2.2.1" # version bumped
+    version = "2.3.0" # version bumped for refactor
     description = "Provides scheduled messages and conversational responses."
 
     # ... (patterns and response lines remain the same)
@@ -65,7 +65,6 @@ class Chatter(SimpleCommandModule, ResponseModule):
         self.register_command(r"^\s*!chatter\s+test\s+weekly\s*$", self._cmd_test_weekly,
                               name="chatter test weekly", admin_only=True, description="Force a weekly message.")
     
-    # ... (rest of the functions remain the same)
     def _register_responses(self):
         self.add_response_pattern(self.ANIMAL_WORDS, lambda msg, user: self._handle_contextual_response("animal", msg, user), probability=0.25)
         self.add_response_pattern(self.WEATHER_WORDS, lambda msg, user: self._handle_contextual_response("weather", msg, user), probability=0.3)

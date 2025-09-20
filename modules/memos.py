@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Memos(SimpleCommandModule):
     name = "memos"
-    version = "2.2.1"
+    version = "2.3.0" # version bumped for refactor
     description = "Provides memo functionality for leaving messages for users."
     
 
@@ -42,9 +42,7 @@ class Memos(SimpleCommandModule):
         self.register_command(r"^\s*!memos\s+stats\s*$", self._cmd_stats,
                               name="memos stats", admin_only=True, description="Show memo statistics.")
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
+    def on_ambient_message(self, connection, event, msg, username):
         key = self._norm(username)
         bucket = self._bucket(key)
         if not bucket:

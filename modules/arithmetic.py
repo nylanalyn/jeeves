@@ -10,7 +10,7 @@ def setup(bot, config):
 
 class Arithmetic(SimpleCommandModule):
     name = "arithmetic"
-    version = "1.0.0"
+    version = "1.1.0" # version bumped for refactor
     description = "Performs calculations with configurable reliability."
 
     def __init__(self, bot, config):
@@ -35,10 +35,7 @@ class Arithmetic(SimpleCommandModule):
         self.register_command(r"^\s*!arithmetic\s+stats\s*$", self._cmd_stats,
                               name="arithmetic stats", admin_only=True, description="Show calculation statistics.")
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True # Handled by a command
-
+    def on_ambient_message(self, connection, event, msg, username):
         match = self.RE_NATURAL_CALC.search(msg)
         if match:
             expression = match.group(1).strip()
@@ -82,23 +79,18 @@ class Arithmetic(SimpleCommandModule):
             self.safe_reply(connection, event, f"I'm afraid that calculation is beyond my station, {self.bot.title_for(username)}.")
 
     def _safe_eval(self, expr):
-        """A simple, safe evaluator for basic arithmetic."""
-        # Limit expression length to prevent abuse
+        """A simple, safe evaluator for basic arithmetic, now with DoS protection."""
         if len(expr) > 100:
-            raise ValueError("Expression is too long.")
-
-        # Extremely limited set of allowed characters - now including '^' for exponentiation.
-        if not re.match(r"^[0-9\s\+\-\*/\.\(\)\^]+$", expr):
+            raise ValueError("Expression is too long for my abacus.")
+        if expr.count('**') > 2 and expr.count('^') > 2:
+            raise ValueError("Such exponentiation is beyond my humble abilities.")
+            
+        expr = expr.replace('^', '**')
+        
+        # Corrected regex to allow for the possibility of `**` being formed.
+        if not re.match(r"^[0-9\s\+\-\*/\.\(\)\^]+$", expr.replace('**', '^')):
             raise ValueError("Invalid characters in expression.")
 
-        # Prevent DoS attacks with multiple exponents (e.g., 9^9^9)
-        if expr.count('^') > 1:
-            raise ValueError("Multiple exponentiation is not permitted.")
-        
-        # Replace user-friendly '^' with Python's '**' for evaluation
-        expr = expr.replace('^', '**')
-
-        # A bit of a cheat, but safer than a full eval
         return eval(expr, {'__builtins__': {}}, {})
 
     @admin_required

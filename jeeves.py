@@ -301,14 +301,29 @@ class Jeeves(SingleServerIRCBot):
             connection.privmsg(event.target, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
             return
 
+        # --- REFACTORED DISPATCH LOGIC ---
+        # 1. First, try to dispatch a command from any module.
+        command_handled = False
         for name, obj in self.pm.plugins.items():
-            if hasattr(obj, "on_pubmsg"):
+            if hasattr(obj, "_dispatch_commands"):
                 try:
-                    if obj.on_pubmsg(connection, event, msg, username):
-                        break
+                    if obj._dispatch_commands(connection, event, msg, username):
+                        command_handled = True
+                        break  # Stop after the first module handles a command
                 except Exception as e:
-                    print(f"[plugins] {name} error: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                    print(f"[plugins] {name} command dispatch error: {e}\n{traceback.format_exc()}", file=sys.stderr)
                     if hasattr(obj, "_record_error"): obj._record_error(str(e))
+        
+        # 2. If no command was handled, then process for ambient/natural language triggers.
+        if not command_handled:
+            for name, obj in self.pm.plugins.items():
+                if hasattr(obj, "on_ambient_message"):
+                    try:
+                        if obj.on_ambient_message(connection, event, msg, username):
+                            break  # Stop after the first module responds
+                    except Exception as e:
+                        print(f"[plugins] {name} ambient message error: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                        if hasattr(obj, "_record_error"): obj._record_error(str(e))
                         
     def _ensure_scheduler_thread(self):
         def loop():
@@ -351,3 +366,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

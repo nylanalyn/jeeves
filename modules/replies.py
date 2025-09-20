@@ -5,14 +5,14 @@ import random
 import functools
 import time 
 from typing import Dict, Any, Optional
-from .base import ResponseModule, SimpleCommandModule, admin_required
+from .base import SimpleCommandModule, admin_required, ModuleBase
 
 def setup(bot, config):
     return Replies(bot, config)
 
 class Replies(SimpleCommandModule):
     name = "replies"
-    version = "2.1.1"
+    version = "2.2.0" # version bumped for refactor
     description = "Answers general, advice, and philosophical questions."
 
     YES_LINES = [ "Indeed, {title}.", "At once, {title}.", "Very good, {title}.", "As you wish, {title}.", "Quite so, {title}.", "Naturally, {title}.", "I shall see to it, {title}.", "Absolutely, {title}.", "Without question, {title}.", "Most certainly, {title}.", "I believe so, {title}.", "Undoubtedly, {title}." ]
@@ -33,14 +33,7 @@ class Replies(SimpleCommandModule):
         self.register_command(r"^\s*!replies\s+stats\s*$", self._cmd_stats,
                               name="replies stats", admin_only=True, description="Show statistics on questions answered.")
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
-        if self._handle_message(connection, event, msg, username):
-            return True
-        return False
-
-    def _handle_message(self, connection, event, msg: str, username: str) -> bool:
+    def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
         philosophy_patterns = [re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+is\s+the\s+meaning|why\s+do\s+we|what\s+is\s+life)", re.IGNORECASE), re.compile(rf"\b{name_pat}[,!\s]*\s*(do\s+you\s+think\s+about|philosophy|existence)", re.IGNORECASE), re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+is\s+truth|what\s+is\s+reality)", re.IGNORECASE)]
         if any(p.search(msg) for p in philosophy_patterns):

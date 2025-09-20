@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "3.0.2"
+    version = "3.0.3" # version bumped for state fix
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
     EVENTS = {
@@ -81,7 +81,7 @@ class Roadtrip(SimpleCommandModule):
         self.save_state()
 
         self._rsvp_pattern = re.compile(rf"^\s*coming\s+{self.bot.JEEVES_NAME_RE}!?\s*\.?\s*$", re.IGNORECASE)
-        self._rsvp_alt_pattern = re.compile(r"^\s*!me\s*$", re.IGNORECASE) # CORRECTED
+        self._rsvp_alt_pattern = re.compile(r"^\s*!me\s*$", re.IGNORECASE)
 
     def _register_commands(self):
         self.register_command(r"^\s*!roadtrip\s*$", self._cmd_roadtrip,
@@ -94,15 +94,32 @@ class Roadtrip(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         schedule.clear(self.name)
+
+        # --- FIX: Resume pending RSVP window after a restart ---
+        current_rsvp = self.get_state("current_rsvp")
+        if current_rsvp:
+            close_epoch = current_rsvp.get("close_epoch", 0)
+            now = time.time()
+            if now >= close_epoch:
+                # If the timer expired while the bot was down, close it immediately.
+                self._close_rsvp_window()
+            else:
+                # Otherwise, reschedule the close event for the remaining time.
+                remaining_seconds = int(close_epoch - now)
+                if remaining_seconds > 0:
+                    schedule.every(remaining_seconds).seconds.do(self._close_rsvp_window).tag(self.name, "rsvp-close")
+        
+        # --- Resume pending story reports ---
         pending_reports = self.get_state("pending_reports", [])
         for report in pending_reports:
             report_time = datetime.fromisoformat(report["report_at"])
-            now = datetime.now(UTC)
-            if now >= report_time:
+            now_utc = datetime.now(UTC)
+            if now_utc >= report_time:
                 self._report_roadtrip_events(report["id"])
             else:
-                remaining_seconds = (report_time - now).total_seconds()
-                schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
+                remaining_seconds = (report_time - now_utc).total_seconds()
+                if remaining_seconds > 0:
+                    schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
 
     def on_unload(self):
         super().on_unload()
@@ -217,7 +234,6 @@ class Roadtrip(SimpleCommandModule):
             self._close_rsvp_window()
             return True
         
-        # CORRECTED
         if self._rsvp_pattern.match(msg) or self._rsvp_alt_pattern.match(msg):
             if username not in current_rsvp["participants"]:
                 current_rsvp["participants"].append(username)

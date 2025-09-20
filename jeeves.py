@@ -330,7 +330,18 @@ def main():
     bot = Jeeves(server, port, channel, nick, user, passwd, config=config)
     
     def on_exit(sig, frame):
+        print("[core] shutdown initiated, saving state...", file=sys.stderr)
+        # --- FIX: Gracefully unload all modules to save their state ---
+        for name, plugin in bot.pm.plugins.items():
+            if hasattr(plugin, "on_unload"):
+                try:
+                    plugin.on_unload()
+                except Exception as e:
+                    print(f"[core] error unloading module {name}: {e}", file=sys.stderr)
+        
+        # Now force the final save of the main state file
         state_manager.force_save()
+        print("[core] state saved. exiting.", file=sys.stderr)
         sys.exit(0)
     
     signal.signal(signal.SIGINT, on_exit)
@@ -340,5 +351,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

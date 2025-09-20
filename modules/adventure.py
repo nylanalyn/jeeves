@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Adventure(SimpleCommandModule):
     name = "adventure"
-    version = "2.3.1" # version bumped
+    version = "2.3.2" # version bumped for state fix
     description = "A choose-your-own-adventure game for the channel."
     
     # Adventure locations and story bits...
@@ -52,19 +52,23 @@ class Adventure(SimpleCommandModule):
 
     def on_load(self):
         super().on_load()
-        schedule.clear(f"{self.name}-cleanup")
+        schedule.clear(self.name) # Clear any old schedules for this module
+        
+        # --- FIX: Resume pending adventure window after a restart ---
         current = self.get_state("current")
         if current:
             close_time = float(current.get("close_epoch", 0))
             now = time.time()
             if now >= close_time:
+                # If timer expired while bot was offline, close it now.
                 self._close_adventure_round()
             else:
+                # Otherwise, reschedule the close event for the remaining time.
                 room = current.get("room")
                 if room:
                     remaining_seconds = int(close_time - now)
                     if remaining_seconds > 0:
-                        schedule.every(remaining_seconds).seconds.do(lambda: self._close_adventure_scheduled(room)).tag(f"{self.name}-close-{room}")
+                        schedule.every(remaining_seconds).seconds.do(lambda: self._close_adventure_scheduled(room)).tag(self.name, f"close-{room}")
 
     def on_unload(self):
         super().on_unload()
@@ -91,7 +95,6 @@ class Adventure(SimpleCommandModule):
         return False
 
     def _cmd_start(self, connection, event, msg, username, match):
-        # ... (rest of the functions remain the same)
         current = self.get_state("current")
         room = event.target
         if current and current.get("room") == room:

@@ -83,11 +83,20 @@ class Arithmetic(SimpleCommandModule):
 
     def _safe_eval(self, expr):
         """A simple, safe evaluator for basic arithmetic."""
-        expr = expr.replace('^', '**') # Allow ^ for exponentiation
-        
-        # Extremely limited set of allowed characters
-        if not re.match(r"^[0-9\s\+\-\*/\.\(\)]+$", expr):
+        # Limit expression length to prevent abuse
+        if len(expr) > 100:
+            raise ValueError("Expression is too long.")
+
+        # Extremely limited set of allowed characters - now including '^' for exponentiation.
+        if not re.match(r"^[0-9\s\+\-\*/\.\(\)\^]+$", expr):
             raise ValueError("Invalid characters in expression.")
+
+        # Prevent DoS attacks with multiple exponents (e.g., 9^9^9)
+        if expr.count('^') > 1:
+            raise ValueError("Multiple exponentiation is not permitted.")
+        
+        # Replace user-friendly '^' with Python's '**' for evaluation
+        expr = expr.replace('^', '**')
 
         # A bit of a cheat, but safer than a full eval
         return eval(expr, {'__builtins__': {}}, {})
@@ -104,3 +113,4 @@ class Arithmetic(SimpleCommandModule):
             f"Observed reliability: {reliability:.1f}%."
         )
         return True
+

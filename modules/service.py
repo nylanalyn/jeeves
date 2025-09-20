@@ -1,182 +1,159 @@
 # modules/bell.py
-# A reaction-based game for Jeeves where users answer a service bell.
+# A reaction game where users "answer" a service bell.
 import random
 import re
-import time
 import schedule
-from datetime import datetime, timezone
-from typing import Optional
+import sys
+import time
+from datetime import datetime
+from typing import Optional, List, Dict, Any
 from .base import SimpleCommandModule, admin_required
-
-UTC = timezone.utc
 
 def setup(bot, config):
     return Bell(bot, config)
 
 class Bell(SimpleCommandModule):
     name = "bell"
-    version = "1.0.0"
+    version = "1.1.0"
     description = "A reaction game to answer the service bell."
-
-    # Different ways Jeeves can announce the bell.
-    RING_ANNOUNCEMENTS = [
-        "The service bell has been rung!",
-        "Ah, the bell. A summons awaits.",
-        "Someone has rung for service!",
-        "The bell sounds. Who shall be the first to attend?",
-        "A sharp ring from the drawing-room bell!"
-    ]
-    
-    # The command to win the game.
-    ANSWER_PATTERN = re.compile(r"^\s*!answer\s*$", re.IGNORECASE)
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        
-        self.MIN_HOURS_BETWEEN_RINGS = config.get("min_hours_between_rings", 2)
-        self.MAX_HOURS_BETWEEN_RINGS = config.get("max_hours_between_rings", 12)
-        self.RESPONSE_WINDOW_SECONDS = config.get("response_window_seconds", 30)
+        self.MIN_HOURS = config.get("min_hours_between_rings", 1)
+        self.MAX_HOURS = config.get("max_hours_between_rings", 8)
+        self.WINDOW = config.get("response_window_seconds", 15)
+        # New: Get the list of allowed channels for the game
+        self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
 
-        # State initialization
         self.set_state("scores", self.get_state("scores", {}))
-        self.set_state("current_round", self.get_state("current_round", None))
-        self.set_state("stats", self.get_state("stats", {"rounds_played": 0, "total_answers": 0}))
+        self.set_state("active_bell", self.get_state("active_bell", None)) # Stores { "end_time": end_time }
         self.save_state()
 
     def _register_commands(self):
+        self.register_command(r"^\s*!answer\s*$", self._cmd_answer,
+                              name="answer", description="Answer the service bell when it rings.")
+        self.register_command(r"^\s*!bell\s+score\s*$", self._cmd_score_self,
+                              name="bell score", description="Check your service bell score.")
+        self.register_command(r"^\s*!bell\s+top\s*$", self._cmd_top,
+                              name="bell top", description="Show the top 5 most attentive users.")
         self.register_command(r"^\s*!bell\s+stats\s*$", self._cmd_stats,
-                              name="bell stats", admin_only=True, description="Show game statistics.")
-        self.register_command(r"^\s*!bell\s+score(?:\s+(\S+))?\s*$", self._cmd_score,
-                              name="bell score", description="Check your score or someone else's. Usage: !bell score [nick]")
-        self.register_command(r"^\s*!bell\s+top(?:\s+(\d+))?\s*$", self._cmd_top,
-                              name="bell top", description="Show the top players. Usage: !bell top [count]")
+                              name="bell stats", admin_only=True, description="Show service bell statistics.")
+        self.register_command(r"^\s*!bell\s+ring\s*$", self._cmd_ring,
+                              name="bell ring", admin_only=True, description="Force the bell to ring now.")
 
     def on_load(self):
         super().on_load()
         schedule.clear(self.name)
-        # If the bot restarts mid-game, cancel it.
-        if self.get_state("current_round"):
-            self.set_state("current_round", None)
-            self.save_state()
-        self._schedule_next_ring()
+        self._schedule_next_bell()
 
     def on_unload(self):
         super().on_unload()
         schedule.clear(self.name)
 
-    def on_pubmsg(self, connection, event, msg, username):
-        if super().on_pubmsg(connection, event, msg, username):
-            return True
+    def _schedule_next_bell(self):
+        if not self.ALLOWED_CHANNELS:
+            print(f"[{self.name}] No allowed_channels configured, so the game will not run.", file=sys.stderr)
+            return
 
-        current_round = self.get_state("current_round")
-        if not current_round or not current_round.get("active"):
-            return False
-
-        if self.ANSWER_PATTERN.match(msg):
-            # We have a winner!
-            reaction_time = time.time() - current_round["start_time"]
-            winner_nick = username
-            
-            # End the round immediately
-            self._end_round(winner=winner_nick, reaction_time=reaction_time)
-            return True
-        return False
-
-    def _schedule_next_ring(self):
-        """Schedules the next time the bell will ring."""
-        delay_hours = random.uniform(self.MIN_HOURS_BETWEEN_RINGS, self.MAX_HOURS_BETWEEN_RINGS)
-        schedule.every(delay_hours).hours.do(self._ring_the_bell).tag(self.name, "next_ring")
+        delay_hours = random.uniform(self.MIN_HOURS, self.MAX_HOURS)
+        schedule.every(delay_hours).hours.do(self._ring_the_bell).tag(self.name, "ring")
 
     def _ring_the_bell(self):
-        """Starts a new round of the game."""
-        # Ensure only one game runs at a time
-        if self.get_state("current_round"):
+        schedule.clear("ring") # Run only once
+        
+        # Ring the bell in all configured channels that the bot is currently in
+        active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
+        
+        if not active_channels:
+            print(f"[{self.name}] Bell was scheduled to ring, but the bot is not in any of the allowed channels.", file=sys.stderr)
+            self._schedule_next_bell() # Reschedule for later
             return schedule.CancelJob
 
-        announcement = random.choice(self.RING_ANNOUNCEMENTS)
-        self.safe_say(announcement)
-
-        new_round = {
-            "room": self.bot.primary_channel,
-            "active": True,
-            "start_time": time.time()
-        }
-        self.set_state("current_round", new_round)
+        for room in active_channels:
+            self.safe_say("The service bell has been rung!", target=room)
+        
+        end_time = time.time() + self.WINDOW
+        self.set_state("active_bell", {"end_time": end_time})
         self.save_state()
 
-        # Schedule the end of the round if no one answers
-        schedule.every(self.RESPONSE_WINDOW_SECONDS).seconds.do(self._end_round).tag(self.name, "end_round")
-        
-        # This job has run, so cancel it. A new one will be scheduled when the round ends.
+        # Schedule the "too slow" message
+        schedule.every(self.WINDOW).seconds.do(self._end_bell_round).tag(self.name, "end")
         return schedule.CancelJob
 
-    def _end_round(self, winner: Optional[str] = None, reaction_time: Optional[float] = None):
-        """Ends the current round, updates scores, and schedules the next one."""
-        schedule.clear("end_round")
-        current_round = self.get_state("current_round")
-        if not current_round: return
-
-        if winner:
-            title = self.bot.title_for(winner)
-            self.safe_say(f"Excellent reflexes, {title}! You answered in {reaction_time:.2f} seconds.")
-            
-            # Update scores
-            scores = self.get_state("scores", {})
-            scores[winner.lower()] = scores.get(winner.lower(), 0) + 1
-            self.set_state("scores", scores)
-            
-            stats = self.get_state("stats")
-            stats["total_answers"] += 1
-            self.set_state("stats", stats)
-
-        else:
-            self.safe_say("It appears no one is available to answer the bell. Very well.")
-
-        stats = self.get_state("stats")
-        stats["rounds_played"] += 1
-        self.set_state("stats", stats)
-        self.set_state("current_round", None)
-        self.save_state()
+    def _end_bell_round(self):
+        if self.get_state("active_bell"):
+            self.set_state("active_bell", None)
+            self.save_state()
+            # Since it rings in multiple channels, we announce the end in all of them
+            active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
+            for room in active_channels:
+                self.safe_say("Too slow. The bell has been silenced.", target=room)
         
-        # Schedule the next game
-        self._schedule_next_ring()
+        self._schedule_next_bell()
         return schedule.CancelJob
 
-    # --- Commands ---
-    @admin_required
-    def _cmd_stats(self, connection, event, msg, username, match):
-        stats = self.get_state("stats")
+    def _cmd_answer(self, connection, event, msg, username, match):
+        active_bell = self.get_state("active_bell")
+        
+        if not active_bell:
+            self.safe_reply(connection, event, f"The bell is silent, {self.bot.title_for(username)}.")
+            return True
+        
+        if time.time() > active_bell["end_time"]:
+            # This case should be rare due to the scheduled end, but it's a good safeguard
+            self.safe_reply(connection, event, f"You are too late, {self.bot.title_for(username)}. The moment has passed.")
+            return True
+
+        # Success!
+        schedule.clear("end")
+        self.set_state("active_bell", None)
+        
         scores = self.get_state("scores", {})
-        unique_players = len(scores)
-        self.safe_reply(connection, event, 
-            f"Bell Game Stats: {stats['rounds_played']} rounds played, "
-            f"{stats['total_answers']} bells answered by {unique_players} unique players.")
+        user_key = username.lower()
+        scores[user_key] = scores.get(user_key, 0) + 1
+        self.set_state("scores", scores)
+        self.save_state()
+
+        self.safe_reply(connection, event, f"Congratulations, {self.bot.title_for(username)}. You answered the bell with admirable promptness.")
+        self._schedule_next_bell()
         return True
 
-    def _cmd_score(self, connection, event, msg, username, match):
-        target_user = match.group(1) or username
-        scores = self.get_state("scores", {})
-        user_score = scores.get(target_user.lower(), 0)
-        
-        if target_user.lower() == username.lower():
-            self.safe_reply(connection, event, f"{username}, you have answered the bell {user_score} time(s).")
-        else:
-            self.safe_reply(connection, event, f"{target_user} has answered the bell {user_score} time(s).")
+    def _cmd_score_self(self, connection, event, msg, username, match):
+        user_key = username.lower()
+        score = self.get_state("scores", {}).get(user_key, 0)
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have answered the bell {score} time{'s' if score != 1 else ''}.")
         return True
 
     def _cmd_top(self, connection, event, msg, username, match):
-        count_str = match.group(1)
-        count = int(count_str) if count_str and count_str.isdigit() else 5
-        
         scores = self.get_state("scores", {})
         if not scores:
-            self.safe_reply(connection, event, "No scores have been recorded yet.")
+            self.safe_reply(connection, event, "No one has yet answered the call of duty.")
             return True
-            
+
         sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-        top_players = sorted_scores[:count]
+        top_five = sorted_scores[:5]
         
-        leaderboard = ", ".join([f"{nick}({score})" for nick, score in top_players])
-        self.safe_reply(connection, event, f"Top {len(top_players)} responders: {leaderboard}")
+        response = "The most attentive members of the household: "
+        response += ", ".join([f"{nick} ({score})" for nick, score in top_five])
+        self.safe_reply(connection, event, response)
+        return True
+
+    @admin_required
+    def _cmd_stats(self, connection, event, msg, username, match):
+        scores = self.get_state("scores", {})
+        total_players = len(scores)
+        total_answers = sum(scores.values())
+        self.safe_reply(connection, event, f"Service Bell Stats: {total_players} users have answered a total of {total_answers} times.")
+        return True
+
+    @admin_required
+    def _cmd_ring(self, connection, event, msg, username, match):
+        if self.get_state("active_bell"):
+            self.safe_reply(connection, event, "The bell is already ringing.")
+            return True
+        
+        schedule.clear("ring") # Cancel any pending scheduled ring
+        self._ring_the_bell()
+        self.safe_reply(connection, event, "As you wish. The bell has been rung.")
         return True
 

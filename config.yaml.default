@@ -1,0 +1,62 @@
+# Jeeves Bot Configuration
+# This is a default configuration file. Copy it to 'config.yaml' and edit it.
+# 'config.yaml' is ignored by git, so your local changes will not be committed.
+
+# Cooldowns are in seconds, timers are in hours unless specified
+adventure:
+    vote_window_seconds: 75
+    story_sentences_per_round: 3
+
+arithmetic:
+    reliability_percent: 85  # Chance (out of 100) to give the correct answer
+    max_fudge_factor: 2      # Maximum amount to add/subtract for whimsical answers
+
+bell:
+    min_hours_between_rings: 1
+    max_hours_between_rings: 8
+    response_window_seconds: 15
+    # A list of channels where the service bell game should be active.
+    # If this list is empty, the game will not run.
+    allowed_channels:
+        - "#your-main-channel"
+        - "#another-active-channel"
+
+chatter:
+    cooldowns:
+        animal: 3600
+        weather: 1800
+        tech: 900
+        food: 1200
+        greeting: 300
+
+flirt:
+    global_cooldown: 30.0
+    per_user_cooldown: 60.0
+
+memos:
+    max_deliver_per_burst: 3
+    max_pending_per_user: 3
+
+roadtrip:
+    join_window_seconds: 120
+    trigger_probability: 0.25
+    report_delay_seconds: 3600
+    hours_between_trips:
+        min: 3
+        max: 18
+    messages_for_trigger:
+        min: 35
+        max: 85
+
+sailing:
+    target_user: "witeshark2"
+    cooldown: 5.0
+
+shorten:
+    min_length_for_auto_shorten: 70
+    cooldown: 5.0
+
+# General module cooldowns
+cooldowns:
+    fortune: 10.0
+    help: 10.0

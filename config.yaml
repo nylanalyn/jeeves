@@ -40,6 +40,10 @@ shorten:
     min_length_for_auto_shorten: 70
     cooldown: 10.0
 
+arithmetic:
+    reliability_percent: 85
+    max_fudge_factor: 2
+
 # General module cooldowns
 cooldowns:
     fortune: 10.0

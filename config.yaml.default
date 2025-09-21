@@ -104,3 +104,12 @@ sailing:
     target_user: "witeshark2"
     cooldown: 5.0
 
+sed:
+    # Controls who can be corrected.
+    # "self" (default): Users can only correct their own last message.
+    # "any": Users can correct the last message from anyone.
+    mode: "self"
+    # How many recent messages to keep in memory per channel.
+    history_size: 20
+    # The template for the correction message.
+    response_template: "Perhaps {user} meant to say: {message}"

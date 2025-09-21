@@ -127,4 +127,3 @@ def merge_scores():
 
 if __name__ == "__main__":
     merge_scores()
-

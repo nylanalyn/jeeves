@@ -55,6 +55,17 @@ sailing:
 shorten:
     min_length_for_auto_shorten: 70
     cooldown: 5.0
+    enabled: false
+
+shorten:
+    min_length_for_auto_shorten: 70
+    cooldown: 5.0
+
+youtube:
+    cooldown_seconds: 30.0 # Sets the cooldown to 30 seconds
+
+titles:
+    enabled: false
 
 # General module cooldowns
 cooldowns:

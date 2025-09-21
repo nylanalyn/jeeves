@@ -149,7 +149,15 @@ class PluginManager:
         self.modules = {}
         loaded_names = []
 
+        blacklist_str = os.getenv("JEEVES_MODULE_BLACKLIST", "")
+        blacklisted_files = {f.strip() for f in blacklist_str.split(',') if f.strip()}
+        if blacklisted_files:
+            print(f"[plugins] Blacklist active. Skipping: {', '.join(sorted(list(blacklisted_files)))}", file=sys.stderr)
+
         for py in sorted(MODULES_DIR.glob("*.py")):
+            if py.name in blacklisted_files:
+                continue
+                
             name = py.stem
             if name in ("__init__", "base"): continue
             try:
@@ -257,7 +265,6 @@ class Jeeves(SingleServerIRCBot):
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
         
-        # Join all channels from the last known state.
         for channel in list(self.joined_channels):
             connection.join(channel)
             
@@ -277,7 +284,6 @@ class Jeeves(SingleServerIRCBot):
                 self._update_joined_channels_state()
 
     def on_kick(self, connection, event):
-        # The event target is the user being kicked. The channel is the first argument.
         if event.target == self.connection.get_nickname():
             kicked_from_channel = event.arguments[0]
             if kicked_from_channel in self.joined_channels:
@@ -296,34 +302,30 @@ class Jeeves(SingleServerIRCBot):
         if not msg.strip().lower().startswith("!unignore") and self.is_ignored(username):
             return
 
-        if self.is_admin(event.source) and msg.strip().lower() == "!reload":
-            loaded_modules = self.pm.load_all()
-            connection.privmsg(event.target, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
-            return
-
-        # --- REFACTORED DISPATCH LOGIC ---
-        # 1. First, try to dispatch a command from any module.
-        command_handled = False
+        # --- Command Dispatch Pass ---
+        command_was_handled = False
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "_dispatch_commands"):
                 try:
                     if obj._dispatch_commands(connection, event, msg, username):
-                        command_handled = True
-                        break  # Stop after the first module handles a command
+                        command_was_handled = True
+                        break
                 except Exception as e:
-                    print(f"[plugins] {name} command dispatch error: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                    print(f"[plugins] {name} command error: {e}\n{traceback.format_exc()}", file=sys.stderr)
                     if hasattr(obj, "_record_error"): obj._record_error(str(e))
         
-        # 2. If no command was handled, then process for ambient/natural language triggers.
-        if not command_handled:
-            for name, obj in self.pm.plugins.items():
-                if hasattr(obj, "on_ambient_message"):
-                    try:
-                        if obj.on_ambient_message(connection, event, msg, username):
-                            break  # Stop after the first module responds
-                    except Exception as e:
-                        print(f"[plugins] {name} ambient message error: {e}\n{traceback.format_exc()}", file=sys.stderr)
-                        if hasattr(obj, "_record_error"): obj._record_error(str(e))
+        if command_was_handled:
+            return
+
+        # --- Ambient Message Pass ---
+        for name, obj in self.pm.plugins.items():
+            if hasattr(obj, "on_ambient_message"):
+                try:
+                    if obj.on_ambient_message(connection, event, msg, username):
+                        break
+                except Exception as e:
+                    print(f"[plugins] {name} ambient error: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                    if hasattr(obj, "_record_error"): obj._record_error(str(e))
                         
     def _ensure_scheduler_thread(self):
         def loop():
@@ -345,18 +347,14 @@ def main():
     bot = Jeeves(server, port, channel, nick, user, passwd, config=config)
     
     def on_exit(sig, frame):
-        print("[core] shutdown initiated, saving state...", file=sys.stderr)
-        # --- FIX: Gracefully unload all modules to save their state ---
-        for name, plugin in bot.pm.plugins.items():
-            if hasattr(plugin, "on_unload"):
+        print("\n[core] shutting down, saving state...", file=sys.stderr)
+        for name, obj in bot.pm.plugins.items():
+            if hasattr(obj, "on_unload"):
                 try:
-                    plugin.on_unload()
+                    obj.on_unload()
                 except Exception as e:
-                    print(f"[core] error unloading module {name}: {e}", file=sys.stderr)
-        
-        # Now force the final save of the main state file
+                    print(f"[plugins] error unloading {name}: {e}", file=sys.stderr)
         state_manager.force_save()
-        print("[core] state saved. exiting.", file=sys.stderr)
         sys.exit(0)
     
     signal.signal(signal.SIGINT, on_exit)

@@ -2,3 +2,5 @@ irc
 schedule
 requests
 pyyaml
+google-api-python-client
+beautifulsoup4

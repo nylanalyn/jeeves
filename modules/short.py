@@ -5,14 +5,14 @@ import re
 import requests
 import json
 from typing import Optional
-from .base import SimpleCommandModule
+from .base import SimpleCommandModule, ModuleBase
 
 def setup(bot, config):
     return Shorten(bot, config)
 
-class Shorten(SimpleCommandModule):
+class Shorten(SimpleCommandModule, ModuleBase):
     name = "shorten"
-    version = "2.1.0" # version bumped for refactor
+    version = "2.0.1" # version bumped
     description = "Shortens URLs using a self-hosted Shlink instance."
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
@@ -20,9 +20,10 @@ class Shorten(SimpleCommandModule):
     SHLINK_API_KEY = os.getenv("SHLINK_API_KEY")
 
     def __init__(self, bot, config):
+        super().__init__(bot)
+        self.enabled = config.get("enabled", True)
         self.COOLDOWN = config.get("cooldown_seconds", 10.0)
         self.MIN_LENGTH = config.get("min_length_for_auto_shorten", 70)
-        super().__init__(bot)
 
         if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
             self._record_error("SHLINK_API_URL or SHLINK_API_KEY environment variables are not set.")
@@ -63,6 +64,9 @@ class Shorten(SimpleCommandModule):
             return None
 
     def _cmd_shorten(self, connection, event, msg, username, match):
+        if not self.enabled:
+            return False
+            
         long_url = match.group(1)
         short_url = self._shorten_url(long_url)
         
@@ -72,7 +76,10 @@ class Shorten(SimpleCommandModule):
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not shorten that URL at this time.")
         return True
 
-    def on_ambient_message(self, connection, event, msg, username):
+    def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        if not self.enabled:
+            return False
+
         # Automatic shortening logic
         if self.MIN_LENGTH <= 0:
             return False
@@ -95,3 +102,4 @@ class Shorten(SimpleCommandModule):
                     self.safe_reply(connection, event, f"I took the liberty of shortening that for you, {title}: {short_url}")
                     return True
         return False
+

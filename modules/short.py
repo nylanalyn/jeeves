@@ -5,14 +5,14 @@ import re
 import requests
 import json
 from typing import Optional
-from .base import SimpleCommandModule, ModuleBase
+from .base import SimpleCommandModule
 
 def setup(bot, config):
     return Shorten(bot, config)
 
-class Shorten(SimpleCommandModule, ModuleBase):
+class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "2.0.1" # version bumped
+    version = "2.0.2" # version bumped
     description = "Shortens URLs using a self-hosted Shlink instance."
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
@@ -20,10 +20,13 @@ class Shorten(SimpleCommandModule, ModuleBase):
     SHLINK_API_KEY = os.getenv("SHLINK_API_KEY")
 
     def __init__(self, bot, config):
-        super().__init__(bot)
+        # Define attributes before calling super().__init__
         self.enabled = config.get("enabled", True)
         self.COOLDOWN = config.get("cooldown_seconds", 10.0)
         self.MIN_LENGTH = config.get("min_length_for_auto_shorten", 70)
+        
+        # Now call the parent constructor, which will safely register commands
+        super().__init__(bot)
 
         if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
             self._record_error("SHLINK_API_URL or SHLINK_API_KEY environment variables are not set.")
@@ -88,7 +91,7 @@ class Shorten(SimpleCommandModule, ModuleBase):
         if match:
             url = match.group(1)
             # Avoid shortening URLs that are already short
-            if "://" in self.SHLINK_API_URL and self.SHLINK_API_URL.split("://")[1] in url:
+            if self.SHLINK_API_URL and "://" in self.SHLINK_API_URL and self.SHLINK_API_URL.split("://")[1] in url:
                 return False
 
             if len(url) > self.MIN_LENGTH:

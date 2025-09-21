@@ -2,14 +2,10 @@
 # This is a default configuration file. Copy it to 'config.yaml' and edit it.
 # 'config.yaml' is ignored by git, so your local changes will not be committed.
 
-# Cooldowns are in seconds, timers are in hours unless specified
+# --- GAME MODULES ---
 adventure:
     vote_window_seconds: 75
     story_sentences_per_round: 3
-
-arithmetic:
-    reliability_percent: 85  # Chance (out of 100) to give the correct answer
-    max_fudge_factor: 2      # Maximum amount to add/subtract for whimsical answers
 
 bell:
     min_hours_between_rings: 1
@@ -19,7 +15,22 @@ bell:
     # If this list is empty, the game will not run.
     allowed_channels:
         - "#your-main-channel"
-        - "#another-active-channel"
+
+roadtrip:
+    join_window_seconds: 120
+    trigger_probability: 0.25
+    report_delay_seconds: 3600
+    hours_between_trips:
+        min: 3
+        max: 18
+    messages_for_trigger:
+        min: 35
+        max: 85
+
+# --- CHAT & RESPONSE MODULES ---
+arithmetic:
+    reliability_percent: 85  # Chance (out of 100) to give the correct answer
+    max_fudge_factor: 2      # Maximum amount to add/subtract for whimsical answers
 
 chatter:
     cooldowns:
@@ -37,37 +48,27 @@ memos:
     max_deliver_per_burst: 3
     max_pending_per_user: 3
 
-roadtrip:
-    join_window_seconds: 120
-    trigger_probability: 0.25
-    report_delay_seconds: 3600
-    hours_between_trips:
-        min: 3
-        max: 18
-    messages_for_trigger:
-        min: 35
-        max: 85
-
 sailing:
     target_user: "witeshark2"
     cooldown: 5.0
 
+# --- UTILITY MODULES ---
 shorten:
+    enabled: true
     min_length_for_auto_shorten: 70
-    cooldown: 5.0
-    enabled: false
-
-shorten:
-    min_length_for_auto_shorten: 70
-    cooldown: 5.0
-
-youtube:
-    cooldown_seconds: 30.0 # Sets the cooldown to 30 seconds
+    cooldown_seconds: 5.0
 
 titles:
-    enabled: false
+    enabled: true
+    cooldown_seconds: 5.0
+    max_download_bytes: 32768 # 32 KB
 
-# General module cooldowns
+youtube:
+    cooldown_seconds: 15.0
+
+# --- GENERAL COOLDOWNS ---
+# Cooldowns here apply to modules that don't have their own specific section.
 cooldowns:
     fortune: 10.0
+    gif: 10.0
     help: 10.0

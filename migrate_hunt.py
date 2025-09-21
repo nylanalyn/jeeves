@@ -25,8 +25,8 @@ def parse_bender_data():
     with open(BENDER_DATA_PATH, 'r') as f:
         content = f.read()
 
-    # Split the file into blocks for each user
-    user_blocks = content.strip().split('--------------------')
+    # Split the file into blocks for each user using a more robust regex split
+    user_blocks = re.split(r'\n-+\n', content.strip())
     
     for block in user_blocks:
         block = block.strip()
@@ -127,3 +127,4 @@ def merge_scores():
 
 if __name__ == "__main__":
     merge_scores()
+

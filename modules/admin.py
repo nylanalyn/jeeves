@@ -13,7 +13,7 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.4.0" # version bumped for refactor
+    version = "2.4.0" # version bumped
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
@@ -30,6 +30,10 @@ class Admin(SimpleCommandModule):
             self.bot.joined_channels = {self.bot.primary_channel}
 
     def _register_commands(self):
+        # Module Management
+        self.register_command(r"^\s*!reload\s*$", self._cmd_reload,
+                              name="reload", admin_only=True, description="Reload all modules from disk.")
+
         # Channel Management
         self.register_command(r"^\s*!join\s+(#\S+)\s*$", self._cmd_join,
                               name="join", admin_only=True, description="Join a channel. Usage: !join #channel")
@@ -50,7 +54,23 @@ class Admin(SimpleCommandModule):
         self.register_command(r"^\s*!admin\s+stats\s*$", self._cmd_stats,
                               name="admin stats", admin_only=True, description="Show admin command usage stats.")
 
+    def _dispatch_commands(self, connection, event, msg, username):
+        # Override to update stats after a command is handled
+        handled = super()._dispatch_commands(connection, event, msg, username)
+        
+        if handled:
+            self.update_state({"commands_used": self.get_state("commands_used") + 1, "last_used": time.time()})
+            self.save_state()
+            
+        return handled
+
     # --- Command Handlers ---
+    @admin_required
+    def _cmd_reload(self, connection, event, msg, username, match):
+        loaded_modules = self.bot.pm.load_all()
+        self.safe_reply(connection, event, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
+        return True
+
     @admin_required
     def _cmd_join(self, connection, event, msg, username, match):
         room_to_join = match.group(1)
@@ -108,3 +128,4 @@ class Admin(SimpleCommandModule):
         ]
         self.safe_reply(connection, event, "; ".join(lines))
         return True
+

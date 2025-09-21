@@ -22,10 +22,10 @@ def parse_bender_data():
     print("Parsing Bender's score file...")
     bender_scores = {}
     
-    with open(BENDER_DATA_PATH, 'r') as f:
+    with open(BENDER_DATA_PATH, 'r', newline=None) as f:
         content = f.read()
 
-    # Split the file into blocks for each user using a more robust regex split
+    # Split the file into blocks for each user
     user_blocks = re.split(r'\n-+\n', content.strip())
     
     for block in user_blocks:
@@ -35,7 +35,8 @@ def parse_bender_data():
 
         lines = block.split('\n')
         user_line = lines[0]
-        match = re.match(r"User: (\S+)", user_line)
+        # Match "Stats for <username>:"
+        match = re.match(r"Stats for (\S+):", user_line)
         if not match:
             continue
         
@@ -47,20 +48,26 @@ def parse_bender_data():
             if not score_line.startswith('-'):
                 continue
 
-            # Example line: "- Ducks Befriended: 1"
-            score_match = re.match(r"-\s*(Ducks|Cats|Puppies)\s+(Befriended|Trapped):\s*(\d+)", score_line)
+            # Match lines like "- Ducks Befriended: 1", "- Cats Buddied: 10", "- Puppies Caged: 1"
+            score_match = re.match(r"-\s*(Ducks|Cats|Puppies)\s+(Befriended|Trapped|Buddied|Caged):\s*(\d+)", score_line)
             if not score_match:
                 continue
 
             animal, action, count_str = score_match.groups()
             count = int(count_str)
             
-            # Map Bender's format to Jeeves's format
+            # Map Bender's varied action names to Jeeves's two actions
             animal_key = animal.lower().rstrip('s') # "Ducks" -> "duck"
-            action_key = "hugged" if action == "Befriended" else "hunted"
             
+            if action in ["Befriended", "Buddied"]:
+                action_key = "hugged"
+            elif action in ["Trapped", "Caged"]:
+                action_key = "hunted"
+            else:
+                continue # Ignore unknown actions
+
             jeeves_key = f"{animal_key}_{action_key}"
-            user_scores[jeeves_key] = count
+            user_scores[jeeves_key] = user_scores.get(jeeves_key, 0) + count
         
         if user_scores:
             bender_scores[username] = user_scores

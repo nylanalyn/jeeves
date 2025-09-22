@@ -15,7 +15,7 @@ titles:
     enabled: true
     cooldown_seconds: 30.0
 sed:
-    mode: "self"  # "self" (default) or "any"
+    mode: "self"  # "self" or "any"
     history_size: 20
 youtube:
     cooldown_seconds: 15.0
@@ -41,6 +41,8 @@ gif:
 hunt:
     min_hours_between_spawns: 2
     max_hours_between_spawns: 10
+    allowed_channels:
+      - "#your-hunt-channel"
     animals:
       - name: "duck"
         ascii_art: " quack  >(.)__ <(.)__ =(.)__"
@@ -58,8 +60,55 @@ quest:
     allowed_channels:
         - "#your-questing-channel"
     cooldown_seconds: 300
-    # Formula for XP to next level. Use 'level' as the variable.
     xp_curve_formula: "level * 100"
+    story_beats:
+        openers:
+            - "{user} enters a dark cave, seeking a {monster}."
+            - "A bounty has been posted for a {monster}. {user} accepts the challenge."
+            - "While strolling through the woods, {user} stumbles upon a {monster}."
+        actions:
+            - "{user} bravely draws their weapon and attacks the {monster}."
+            - "Thinking quickly, {user} sets a clever trap for the {monster}."
+            - "With a mighty roar, {user} charges at the {monster}."
+    monsters:
+        low: # For players level 1-5
+            - name: "Giant Rat"
+              min_level: 1
+              max_level: 3
+              xp_win_min: 15
+              xp_win_max: 30
+              xp_loss_min: 5
+              xp_loss_max: 10
+            - name: "Goblin Scout"
+              min_level: 2
+              max_level: 5
+              xp_win_min: 20
+              xp_win_max: 40
+              xp_loss_min: 8
+              xp_loss_max: 15
+        mid: # For players level 6-15
+            - name: "Orc Berserker"
+              min_level: 6
+              max_level: 10
+              xp_win_min: 50
+              xp_win_max: 100
+              xp_loss_min: 20
+              xp_loss_max: 40
+            - name: "Cave Troll"
+              min_level: 8
+              max_level: 14
+              xp_win_min: 80
+              xp_win_max: 150
+              xp_loss_min: 30
+              xp_loss_max: 60
+        high: # For players level 16+
+            - name: "Young Dragon"
+              min_level: 16
+              max_level: 25
+              xp_win_min: 200
+              xp_win_max: 400
+              xp_loss_min: 75
+              xp_loss_max: 150
 pron:
     cooldown_seconds: 30.0
 roadtrip:
@@ -81,7 +130,7 @@ coffee:
 # --- Social & Chat ---
 chatter:
     cooldowns:
-        animal: 3600       # Set to -1 to disable
+        animal: -1       # Set to -1 to disable
         weather: 1800
         tech: 900
         food: 1200

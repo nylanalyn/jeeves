@@ -54,6 +54,12 @@ hunt:
         ascii_art: "woof  (❍ᴥ❍ʋ)"
         hug_message: "{username} gave the puppy a reassuring cuddle. It's wagging its tail!"
         hunt_message: "{username} put a leash on the puppy. It's probably for the best."
+quest:
+    allowed_channels:
+        - "#your-questing-channel"
+    cooldown_seconds: 300
+    # Formula for XP to next level. Use 'level' as the variable.
+    xp_curve_formula: "level * 100"
 pron:
     cooldown_seconds: 30.0
 roadtrip:

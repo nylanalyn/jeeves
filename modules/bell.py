@@ -5,8 +5,11 @@ import re
 import schedule
 import sys
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from .base import SimpleCommandModule, admin_required
+
+UTC = timezone.utc
 
 def setup(bot, config):
     return Bell(bot, config)
@@ -18,28 +21,38 @@ class Bell(SimpleCommandModule):
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        self._load_config(config)
-
+        self.on_config_reload(config)
         self.set_state("scores", self.get_state("scores", {}))
         self.set_state("active_bell", self.get_state("active_bell", None))
+        self.set_state("next_ring_time", self.get_state("next_ring_time", None)) # For persistence
         self.save_state()
 
-    def _load_config(self, config: Dict[str, Any]):
+    def on_config_reload(self, config):
         self.MIN_HOURS = config.get("min_hours_between_rings", 1)
         self.MAX_HOURS = config.get("max_hours_between_rings", 8)
         self.WINDOW = config.get("response_window_seconds", 15)
         self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
 
-    def on_config_reload(self, new_config: Dict[str, Any]):
-        old_min = self.MIN_HOURS
-        old_max = self.MAX_HOURS
+    def on_load(self):
+        super().on_load()
+        schedule.clear(self.name)
         
-        self._load_config(new_config)
+        next_ring_str = self.get_state("next_ring_time")
+        if next_ring_str:
+            next_ring_time = datetime.fromisoformat(next_ring_str)
+            now = datetime.now(UTC)
 
-        if (old_min, old_max) != (self.MIN_HOURS, self.MAX_HOURS):
-            print(f"[{self.name}] Bell timing changed, rescheduling.", file=sys.stderr)
-            schedule.clear("ring")
+            if now >= next_ring_time:
+                self._ring_the_bell()
+            else:
+                remaining_seconds = (next_ring_time - now).total_seconds()
+                schedule.every(remaining_seconds).seconds.do(self._ring_the_bell).tag(self.name, "ring")
+        elif not self.get_state("active_bell"):
             self._schedule_next_bell()
+
+    def on_unload(self):
+        super().on_unload()
+        schedule.clear(self.name)
 
     def _register_commands(self):
         self.register_command(r"^\s*!answer\s*$", self._cmd_answer,
@@ -53,24 +66,21 @@ class Bell(SimpleCommandModule):
         self.register_command(r"^\s*!bell\s+ring\s*$", self._cmd_ring,
                               name="bell ring", admin_only=True, description="Force the bell to ring now.")
 
-    def on_load(self):
-        super().on_load()
-        schedule.clear(self.name)
-        self._schedule_next_bell()
-
-    def on_unload(self):
-        super().on_unload()
-        schedule.clear(self.name)
-
     def _schedule_next_bell(self):
         if not self.ALLOWED_CHANNELS:
             return
 
         delay_hours = random.uniform(self.MIN_HOURS, self.MAX_HOURS)
+        next_ring_time = datetime.now(UTC) + timedelta(hours=delay_hours)
+        
+        self.set_state("next_ring_time", next_ring_time.isoformat())
+        self.save_state()
+        
         schedule.every(delay_hours).hours.do(self._ring_the_bell).tag(self.name, "ring")
 
     def _ring_the_bell(self):
         schedule.clear("ring")
+        
         active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
         
         if not active_channels:
@@ -82,6 +92,7 @@ class Bell(SimpleCommandModule):
         
         end_time = time.time() + self.WINDOW
         self.set_state("active_bell", {"end_time": end_time})
+        self.set_state("next_ring_time", None) # Clear scheduled time
         self.save_state()
 
         schedule.every(self.WINDOW).seconds.do(self._end_bell_round).tag(self.name, "end")

@@ -106,4 +106,3 @@ class Coffee(SimpleCommandModule):
         self.save_state()
 
         return True
-

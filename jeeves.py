@@ -353,6 +353,16 @@ class Jeeves(SingleServerIRCBot):
                 except Exception as e:
                     print(f"[plugins] ambient error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
                         
+    def on_privmsg(self, connection, event):
+        """Handles private messages by dispatching them to modules."""
+        for name, obj in self.pm.plugins.items():
+            if hasattr(obj, "on_privmsg"):
+                try:
+                    if obj.on_privmsg(connection, event):
+                        break
+                except Exception as e:
+                    print(f"[plugins] privmsg error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+
     def _ensure_scheduler_thread(self):
         def loop():
             while True:

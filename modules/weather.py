@@ -86,19 +86,35 @@ class Weather(SimpleCommandModule):
 
     def _get_weather_report_string(self, data: Dict[str, Any]) -> Optional[str]:
         try:
-            now = data['properties']['timeseries'][0]['data']['instant']['details']
-            summary_data = data['properties']['timeseries'][0]['data'].get('next_1_hours')
+            timeseries0 = data['properties']['timeseries'][0]
+            now = timeseries0['data']['instant']['details']
+            summary_data = timeseries0['data'].get('next_1_hours')
+
+            # Temperature
             temp_c = now.get('air_temperature')
-            wind_speed_mph = int(now.get('wind_speed', 0) * 2.237)
-            summary_code = summary_data['summary'].get('symbol_code', 'no summary') if summary_data and 'summary' in summary_data else 'no summary'
+
+            # Wind speed: MET Norway gives m/s. Convert to mph and kph.
+            wind_speed_ms = float(now.get('wind_speed', 0.0))
+            wind_speed_mph = round(wind_speed_ms * 2.23693629)
+            wind_speed_kph = round(wind_speed_ms * 3.6)
+
+            # Summary
+            summary_code = (summary_data['summary'].get('symbol_code', 'no summary')
+                            if summary_data and 'summary' in summary_data else 'no summary')
             summary = summary_code.replace('_', ' ').capitalize()
+
+            # Temp string (both units already present in your original)
             temp_str = f"{self._c_to_f(temp_c)}°F/{temp_c}°C" if temp_c is not None else "N/A"
-            report_time_utc = datetime.fromisoformat(data['properties']['timeseries'][0]['time'])
+
+            # Report time (kept as in your original)
+            report_time_utc = datetime.fromisoformat(timeseries0['time'])
             formatted_time = report_time_utc.strftime('%H:%M %Z')
 
-            return (f"{summary}. " +
-                    f"Temperature: {temp_str}. Wind: {wind_speed_mph} mph. (Reported at {formatted_time})")
-        except (KeyError, IndexError):
+            return (f"{summary}. "
+                    f"Temperature: {temp_str}. "
+                    f"Wind: {wind_speed_mph} mph / {wind_speed_kph} kph. "
+                    f"(Reported at {formatted_time})")
+        except (KeyError, IndexError, ValueError):
             return None
 
     def _format_weather_report(self, data: Dict[str, Any], location_name: str, requester: str, target_user: Optional[str] = None) -> str:

@@ -24,7 +24,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.3.0" # version bumped for refactor
+    version = "1.3.0"
     description = "Base module class"
     
     def __init__(self, bot):
@@ -33,8 +33,6 @@ class ModuleBase(ABC):
         self._state_dirty = False
         self._state_lock = threading.RLock()
         self._commands: Dict[str, Dict[str, Any]] = {}
-        self._scheduled_tasks: List[Callable] = []
-        self._call_stats = {"messages_processed": 0, "commands_executed": 0, "errors": 0, "last_activity": None, "average_response_time": 0.0, "total_response_time": 0.0}
         self._rate_limits = {}
         self._user_cooldowns = {}
         self._load_state()
@@ -46,6 +44,10 @@ class ModuleBase(ABC):
     def on_unload(self) -> None:
         """Called when module is unloaded. Can be overridden in subclasses."""
         self.save_state(force=True)
+
+    def on_config_reload(self, new_config: Dict[str, Any]) -> None:
+        """Called when config.yaml is reloaded. Override in subclasses to react to changes."""
+        pass
 
     def requests_retry_session(self, retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
         session = session or requests.Session()
@@ -88,8 +90,7 @@ class ModuleBase(ABC):
         command_id = f"{self.name}_{name}"
         self._commands[command_id] = {
             "pattern": pattern, "handler": handler, "name": name.lower(),
-            "admin_only": admin_only, "cooldown": cooldown, "description": description,
-            "uses": 0, "last_used": None
+            "admin_only": admin_only, "cooldown": cooldown, "description": description
         }
 
     def check_rate_limit(self, key: str, limit: float) -> bool:
@@ -103,7 +104,7 @@ class ModuleBase(ABC):
 
     def check_user_cooldown(self, username: str, command: str, cooldown: float) -> bool:
         if cooldown <= 0: return True
-        key = f"{username}:{command}"
+        key = f"{username.lower()}:{command}"
         now = time.time()
         last_use = self._user_cooldowns.get(key, 0)
         if now - last_use >= cooldown:
@@ -140,14 +141,6 @@ class ModuleBase(ABC):
             self._record_error(f"Failed to send privmsg to {username}: {e}")
             return False
 
-    def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
-        """
-        Handles non-command, "ambient" messages in the channel.
-        This should be overridden by modules that listen for natural language.
-        Return True if the message was handled, False otherwise.
-        """
-        return False
-
     def _dispatch_commands(self, connection, event, msg: str, username: str) -> bool:
         for cmd_id, cmd_info in self._commands.items():
             match = cmd_info["pattern"].match(msg)
@@ -173,23 +166,3 @@ class SimpleCommandModule(ModuleBase):
     def _register_commands(self) -> None:
         pass
 
-class ResponseModule(ModuleBase):
-    def __init__(self, bot):
-        super().__init__(bot)
-        self._response_patterns = []
-    
-    def add_response_pattern(self, pattern: Union[str, re.Pattern], 
-                           response: Union[str, Callable], probability: float = 1.0) -> None:
-        if isinstance(pattern, str):
-            pattern = re.compile(pattern, re.IGNORECASE)
-        self._response_patterns.append({"pattern": pattern, "response": response, "probability": probability})
-    
-    def on_ambient_message(self, connection, event, msg: str, username:str) -> bool:
-        import random
-        for item in self._response_patterns:
-            if item["pattern"].search(msg) and random.random() <= item["probability"]:
-                response_val = item["response"](msg, username) if callable(item["response"]) else item["response"]
-                if response_val:
-                    self.safe_reply(connection, event, response_val)
-                    return True
-        return False

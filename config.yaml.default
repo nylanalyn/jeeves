@@ -2,65 +2,42 @@
 # This is a default configuration file. Copy it to 'config.yaml' and edit it.
 # 'config.yaml' is ignored by git, so your local changes will not be committed.
 
-# --- Core Modules ---
-youtube:
-    cooldown_seconds: 15.0
+# --- GAME MODULES ---
 
-titles:
-    enabled: true
-    cooldown_seconds: 10.0
-
-shorten:
-    enabled: true
-    min_length_for_auto_shorten: 70
-    cooldown_seconds: 10.0
-
-help:
-    cooldown_seconds: 10.0
-
-fortune:
-    cooldown_seconds: 10.0
-
-gif:
-    cooldown_seconds: 10.0
-
-# --- Game Modules ---
-
-hunt:
-  # A list of channels where the hunt game should be active.
-  # If this list is empty, the game will not run.
-  allowed_channels:
-    - "#your-main-channel"
-  # How often an animal can appear (in hours)
-  min_hours_between_spawns: 1
-  max_hours_between_spawns: 6
-  # List of animals for the game. Add as many as you like.
-  animals:
-    - name: "duck"
-      display_name: "A wild duck"
-      art: "・゜゜・。。・゜゜૮₍ ´ ₎ა quack"
-      # Message when a user successfully hugs the animal
-      hug_message: "{username} offered the duck a piece of bread. It seems to have made a new friend!"
-      # Message when a user successfully hunts the animal
-      hunt_message: "{username} deftly captured the duck. It will make a fine centerpiece."
-    - name: "cat"
-      display_name: "A stray cat"
-      art: "૮₍ ´• ˕ •` ₎ა meow"
-      hug_message: "{username} gave the cat a gentle pet. It's purring contentedly."
-      hunt_message: "{username} lured the cat into a carrier with a bit of tuna. It seems suspicious."
-    - name: "puppy"
-      display_name: "A lost puppy"
-      art: "૮₍ 𝁽ܫ𝁽 ₎ა ruff"
-      hug_message: "{username} gave the puppy a reassuring cuddle. It's wagging its tail!"
-      hunt_message: "{username} put a leash on the puppy. It's probably for the best."
+adventure:
+    vote_window_seconds: 75
+    story_sentences_per_round: 3
 
 bell:
-    # A list of channels where the service bell game should be active.
-    allowed_channels:
-        - "#your-main-channel"
     min_hours_between_rings: 1
     max_hours_between_rings: 8
     response_window_seconds: 15
+    # A list of channels where the service bell game should be active.
+    # If this list is empty, the game will not run.
+    allowed_channels:
+        - "#your-main-channel"
+        - "#another-active-channel"
+
+hunt:
+    min_hours_between_spawns: 1
+    max_hours_between_spawns: 8
+    # A list of channels where the hunt game should be active.
+    allowed_channels:
+        - "#your-main-channel"
+    # Define the animals that can appear.
+    animals:
+        - name: "duck"
+          ascii_art: " quack  >(.)__ <(.)__ =(.)__"
+          hug_message: "Splendid, {title}! You've befriended the duck. It seems to trust you."
+          hunt_message: "A successful capture, {title}. The duck has been safely contained."
+        - name: "cat"
+          ascii_art: "meow  /\\_/\\ ( o.o ) >^<"
+          hug_message: "{username} offered the cat a gentle hand. It seems to have worked!"
+          hunt_message: "{username} lured the cat into a carrier. It is not pleased."
+        - name: "puppy"
+          ascii_art: "woof  (❍ᴥ❍ʋ)"
+          hug_message: "{username} gave the puppy a reassuring cuddle. It's wagging its tail!"
+          hunt_message: "{username} put a leash on the puppy. It's probably for the best."
 
 roadtrip:
     join_window_seconds: 120
@@ -73,18 +50,31 @@ roadtrip:
         min: 35
         max: 85
 
-adventure:
-    vote_window_seconds: 75
-    story_sentences_per_round: 3
-
-# --- Utility & Chat Modules ---
-memos:
-    max_deliver_per_burst: 3
-    max_pending_per_user: 3
+# --- UTILITY MODULES ---
 
 arithmetic:
     reliability_percent: 85  # Chance (out of 100) to give the correct answer
     max_fudge_factor: 2      # Maximum amount to add/subtract for whimsical answers
+
+sed:
+    # Mode can be "self" (users can only edit their own last message)
+    # or "any" (users can edit anyone's last message).
+    mode: "self"
+    history_size: 10
+
+shorten:
+    enabled: true
+    min_length_for_auto_shorten: 70
+    cooldown_seconds: 5.0
+
+titles:
+    enabled: true
+    cooldown_seconds: 10.0
+
+youtube:
+    cooldown_seconds: 15.0
+
+# --- SOCIAL & CHAT MODULES ---
 
 chatter:
     cooldowns:
@@ -98,18 +88,19 @@ flirt:
     global_cooldown: 30.0
     per_user_cooldown: 60.0
 
+memos:
+    max_deliver_per_burst: 3
+    max_pending_per_user: 3
+
+pron:
+    cooldown_seconds: 30.0
+
 sailing:
-    # This module is hardcoded to a specific user and trigger.
-    # It is included for completeness but is not generally configurable.
     target_user: "witeshark2"
     cooldown: 5.0
 
-sed:
-    # Controls who can be corrected.
-    # "self" (default): Users can only correct their own last message.
-    # "any": Users can correct the last message from anyone.
-    mode: "self"
-    # How many recent messages to keep in memory per channel.
-    history_size: 20
-    # The template for the correction message.
-    response_template: "Perhaps {user} meant to say: {message}"
+# --- GENERAL COOLDOWNS ---
+cooldowns:
+    fortune: 10.0
+    help: 10.0
+

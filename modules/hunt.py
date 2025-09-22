@@ -4,6 +4,7 @@ import random
 import re
 import time
 import schedule
+import sys
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from .base import SimpleCommandModule, admin_required
@@ -15,7 +16,7 @@ def setup(bot, config):
 
 class Hunt(SimpleCommandModule):
     name = "hunt"
-    version = "1.2.1"
+    version = "1.4.0"
     description = "A game of befriending or capturing animals."
 
     SPAWN_ANNOUNCEMENTS = [
@@ -25,27 +26,33 @@ class Hunt(SimpleCommandModule):
         "Pardon me, but it would seem we have an uninvited, four-legged guest.",
         "Attention, please. A wild animal is currently in the vicinity."
     ]
-    HUG_SUCCESS_MESSAGES = [
-        "Very good, {title}. You have hugged the {animal_name}.",
-        "Excellent, {title}. The {animal_name} seems to appreciate the gesture.",
-        "Splendid, {title}. You've made a new friend in the {animal_name}."
-    ]
-    HUNT_SUCCESS_MESSAGES = [
-        "Well done, {title}. The {animal_name} has been secured.",
-        "A successful capture, {title}. The grounds are safe once more.",
-        "Impressive work, {title}. The {animal_name} is contained."
-    ]
 
     def __init__(self, bot, config):
         super().__init__(bot)
+        self._load_config(config)
+
+        self.set_state("scores", self.get_state("scores", {}))
+        self.set_state("active_hunt", self.get_state("active_hunt", None))
+        self.save_state()
+
+    def _load_config(self, config: Dict[str, Any]):
+        """Loads configuration settings from the config object."""
         self.MIN_HOURS = config.get("min_hours_between_spawns", 1)
         self.MAX_HOURS = config.get("max_hours_between_spawns", 8)
         self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
         self.ANIMALS = config.get("animals", [])
 
-        self.set_state("scores", self.get_state("scores", {}))
-        self.set_state("active_hunt", self.get_state("active_hunt", None))
-        self.save_state()
+    def on_config_reload(self, new_config: Dict[str, Any]):
+        """Handle live configuration reloading."""
+        old_min = self.MIN_HOURS
+        old_max = self.MAX_HOURS
+
+        self._load_config(new_config)
+
+        if (old_min, old_max) != (self.MIN_HOURS, self.MAX_HOURS):
+            print(f"[{self.name}] Hunt timing changed, rescheduling spawn timer.", file=sys.stderr)
+            schedule.clear("spawn")
+            self._schedule_next_spawn()
 
     def _register_commands(self):
         self.register_command(r"^\s*!hunt\s*$", lambda c, e, m, u, ma: self._cmd_action(c, e, m, u, ma, "hunt"),
@@ -95,26 +102,28 @@ class Hunt(SimpleCommandModule):
         current_hunt = self.get_state("active_hunt")
         if not current_hunt: return
 
-        animal_name = current_hunt["animal"]["name"]
+        animal = current_hunt["animal"]
+        animal_name = animal.get("name", "creature")
         title = self.bot.title_for(username)
         scores = self.get_state("scores", {})
         user_key = username.lower()
         user_scores = scores.get(user_key, {})
 
         if action == "hug":
-            success_msg = self.HUG_SUCCESS_MESSAGES
             score_key = f"{animal_name}_hugged"
+            success_template = animal.get("hug_message", "Very good, {title}. You have hugged the {animal_name}.")
         else: # action == "hunt"
-            success_msg = self.HUNT_SUCCESS_MESSAGES
             score_key = f"{animal_name}_hunted"
+            success_template = animal.get("hunt_message", "Well done, {title}. The {animal_name} has been secured.")
 
         user_scores[score_key] = user_scores.get(score_key, 0) + 1
         scores[user_key] = user_scores
         self.set_state("scores", scores)
         self.set_state("active_hunt", None)
         self.save_state()
-
-        self.safe_reply(connection, event, random.choice(success_msg).format(title=title, animal_name=animal_name))
+        
+        final_message = success_template.format(title=title, animal_name=animal_name, username=username)
+        self.safe_reply(connection, event, final_message)
         self._schedule_next_spawn()
 
     def _cmd_action(self, connection, event, msg, username, match, action: str):

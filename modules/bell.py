@@ -5,7 +5,6 @@ import re
 import schedule
 import sys
 import time
-from datetime import datetime
 from typing import Optional, List, Dict, Any
 from .base import SimpleCommandModule, admin_required
 
@@ -14,20 +13,33 @@ def setup(bot, config):
 
 class Bell(SimpleCommandModule):
     name = "bell"
-    version = "1.1.0"
+    version = "1.2.0"
     description = "A reaction game to answer the service bell."
 
     def __init__(self, bot, config):
         super().__init__(bot)
+        self._load_config(config)
+
+        self.set_state("scores", self.get_state("scores", {}))
+        self.set_state("active_bell", self.get_state("active_bell", None))
+        self.save_state()
+
+    def _load_config(self, config: Dict[str, Any]):
         self.MIN_HOURS = config.get("min_hours_between_rings", 1)
         self.MAX_HOURS = config.get("max_hours_between_rings", 8)
         self.WINDOW = config.get("response_window_seconds", 15)
-        # New: Get the list of allowed channels for the game
         self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
 
-        self.set_state("scores", self.get_state("scores", {}))
-        self.set_state("active_bell", self.get_state("active_bell", None)) # Stores { "end_time": end_time }
-        self.save_state()
+    def on_config_reload(self, new_config: Dict[str, Any]):
+        old_min = self.MIN_HOURS
+        old_max = self.MAX_HOURS
+        
+        self._load_config(new_config)
+
+        if (old_min, old_max) != (self.MIN_HOURS, self.MAX_HOURS):
+            print(f"[{self.name}] Bell timing changed, rescheduling.", file=sys.stderr)
+            schedule.clear("ring")
+            self._schedule_next_bell()
 
     def _register_commands(self):
         self.register_command(r"^\s*!answer\s*$", self._cmd_answer,
@@ -52,21 +64,17 @@ class Bell(SimpleCommandModule):
 
     def _schedule_next_bell(self):
         if not self.ALLOWED_CHANNELS:
-            print(f"[{self.name}] No allowed_channels configured, so the game will not run.", file=sys.stderr)
             return
 
         delay_hours = random.uniform(self.MIN_HOURS, self.MAX_HOURS)
         schedule.every(delay_hours).hours.do(self._ring_the_bell).tag(self.name, "ring")
 
     def _ring_the_bell(self):
-        schedule.clear("ring") # Run only once
-        
-        # Ring the bell in all configured channels that the bot is currently in
+        schedule.clear("ring")
         active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
         
         if not active_channels:
-            print(f"[{self.name}] Bell was scheduled to ring, but the bot is not in any of the allowed channels.", file=sys.stderr)
-            self._schedule_next_bell() # Reschedule for later
+            self._schedule_next_bell()
             return schedule.CancelJob
 
         for room in active_channels:
@@ -76,7 +84,6 @@ class Bell(SimpleCommandModule):
         self.set_state("active_bell", {"end_time": end_time})
         self.save_state()
 
-        # Schedule the "too slow" message
         schedule.every(self.WINDOW).seconds.do(self._end_bell_round).tag(self.name, "end")
         return schedule.CancelJob
 
@@ -84,7 +91,6 @@ class Bell(SimpleCommandModule):
         if self.get_state("active_bell"):
             self.set_state("active_bell", None)
             self.save_state()
-            # Since it rings in multiple channels, we announce the end in all of them
             active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
             for room in active_channels:
                 self.safe_say("Too slow. The bell has been silenced.", target=room)
@@ -100,11 +106,9 @@ class Bell(SimpleCommandModule):
             return True
         
         if time.time() > active_bell["end_time"]:
-            # This case should be rare due to the scheduled end, but it's a good safeguard
             self.safe_reply(connection, event, f"You are too late, {self.bot.title_for(username)}. The moment has passed.")
             return True
 
-        # Success!
         schedule.clear("end")
         self.set_state("active_bell", None)
         
@@ -152,7 +156,7 @@ class Bell(SimpleCommandModule):
             self.safe_reply(connection, event, "The bell is already ringing.")
             return True
         
-        schedule.clear("ring") # Cancel any pending scheduled ring
+        schedule.clear("ring")
         self._ring_the_bell()
         self.safe_reply(connection, event, "As you wish. The bell has been rung.")
         return True

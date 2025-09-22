@@ -1,87 +1,77 @@
 # modules/sed.py
-# A module for performing sed-style find/replace on recent messages.
+# A module for s/find/replace/ style text substitution.
 import re
 from collections import deque
-from .base import ModuleBase
+from typing import Optional, Dict, Any
+from .base import SimpleCommandModule
 
 def setup(bot, config):
     return Sed(bot, config)
 
-class Sed(ModuleBase):
+class Sed(SimpleCommandModule):
     name = "sed"
-    version = "1.0.0"
-    description = "Performs s/find/replace/ style corrections on recent messages."
+    version = "1.1.0"
+    description = "Provides s/find/replace/ text substitution."
 
-    # The regex to capture the sed-style command.
-    # It captures the search part, the replace part, and optional flags.
-    SED_PATTERN = re.compile(r"^s/((?:\\/|[^/])+)/((?:\\/|[^/])*)/(i)?g?")
+    SED_PATTERN = re.compile(r"^\s*s/((?:\\/|[^/])+)/((?:\\/|[^/])*)/(i?)\s*$")
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        # Load configuration with defaults
-        self.MODE = config.get("mode", "self").lower()
-        self.HISTORY_SIZE = config.get("history_size", 20)
-        self.RESPONSE_TEMPLATE = config.get("response_template", "Perhaps {user} meant to say: {message}")
+        self._load_config(config)
+        self.history: Dict[str, deque] = {}
 
-        # In-memory store for message history, keyed by channel
-        self._message_history = {}
+    def _load_config(self, config: Dict[str, Any]):
+        self.MODE = config.get("mode", "self")  # "self" or "any"
+        self.HISTORY_SIZE = config.get("history_size", 10)
 
-    def on_ambient_message(self, connection, event, msg, username):
+    def on_config_reload(self, new_config: Dict[str, Any]):
+        self._load_config(new_config)
+
+    def _register_commands(self):
+        # This module has no !commands, it only listens for ambient messages.
+        pass
+
+    def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         channel = event.target
         
-        # First, check if the message is a sed command
+        # First, check if this message is a sed command
         sed_match = self.SED_PATTERN.match(msg)
-        
         if sed_match:
-            search_term, replace_term, flags = sed_match.groups()
+            find, replace, flags = sed_match.groups()
+            find = find.replace('\\/', '/')
+            replace = replace.replace('\\/', '/')
             
-            # Unescape any escaped forward slashes
-            search_term = search_term.replace('\\/', '/')
-            replace_term = replace_term.replace('\\/', '/')
+            # Determine whose message to search
+            target_user = None if self.MODE == "any" else username
             
-            # Determine regex flags
-            re_flags = 0
-            if flags and 'i' in flags:
-                re_flags = re.IGNORECASE
-
-            # Get the history for the current channel
-            history = self._message_history.get(channel, [])
-            
-            # Find the message to correct
-            target_message = None
-            original_author = None
-
-            for past_msg, author in reversed(history):
-                # Skip the command message itself
-                if author == username and past_msg == msg:
+            # Search history for a match
+            for prev_user, prev_msg in reversed(self.history.get(channel, [])):
+                if target_user and prev_user != target_user:
                     continue
-
-                if self.MODE == "self" and author != username:
-                    continue
-
-                if re.search(search_term, past_msg, re_flags):
-                    target_message = past_msg
-                    original_author = author
-                    break # Found our message, stop searching
-            
-            if target_message:
+                
                 try:
-                    # Perform the substitution
-                    corrected_message = re.sub(search_term, replace_term, target_message, flags=re_flags)
-                    
-                    # Don't respond if the message is unchanged
-                    if corrected_message != target_message:
-                        response = self.RESPONSE_TEMPLATE.format(user=original_author, message=corrected_message)
-                        self.safe_reply(connection, event, response)
-                except re.error as e:
-                    # Handle invalid regex in the search term
-                    self.safe_reply(connection, event, f"My apologies, but that appears to be an invalid expression: {e}")
+                    re_flags = re.IGNORECASE if 'i' in flags else 0
+                    if re.search(find, prev_msg, flags=re_flags):
+                        # Found a match, perform replacement
+                        new_msg, count = re.subn(find, replace, prev_msg, count=1, flags=re_flags)
+                        if count > 0:
+                            title = self.bot.title_for(username)
+                            self.safe_reply(connection, event, f"I believe {prev_user} meant to say: {new_msg}")
+                            # Add the corrected message to history so it can also be corrected
+                            self._add_to_history(channel, prev_user, new_msg)
+                            return True # Handled
+                except re.error:
+                    # Ignore invalid regex patterns
+                    pass
+            
+            return True # Consume the message even if no match was found
 
-        # After processing, add the current message to history for the next time
-        if channel not in self._message_history:
-            self._message_history[channel] = deque(maxlen=self.HISTORY_SIZE)
-        
-        self._message_history[channel].append((msg, username))
-        
-        # This module never "handles" the message in a way that should stop others, so we return False
+        # If it's not a sed command, add it to history
+        self._add_to_history(channel, username, msg)
         return False
+
+    def _add_to_history(self, channel: str, username: str, msg: str):
+        if channel not in self.history:
+            self.history[channel] = deque(maxlen=self.HISTORY_SIZE)
+        self.history[channel].append((username, msg))
+

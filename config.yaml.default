@@ -1,44 +1,61 @@
 # Jeeves Bot Configuration
 # This is a default configuration file. Copy it to 'config.yaml' and edit it.
-# 'config.yaml' is ignored by git, so your local changes will not be committed.
 
-# --- GAME MODULES ---
+# --- Core Modules ---
+admin: {}
+help:
+    cooldown_seconds: 10.0
 
+# --- Utility Modules ---
+shorten:
+    enabled: true
+    min_length_for_auto_shorten: 70
+    cooldown_seconds: 5.0
+titles:
+    enabled: true
+    cooldown_seconds: 30.0
+sed:
+    mode: "self"  # "self" (default) or "any"
+    history_size: 20
+youtube:
+    cooldown_seconds: 15.0
+clock:
+    cooldown_seconds: 10.0
+
+# --- Fun & Games ---
 adventure:
     vote_window_seconds: 75
     story_sentences_per_round: 3
-
+arithmetic:
+    reliability_percent: 85
+    max_fudge_factor: 2
 bell:
     min_hours_between_rings: 1
     max_hours_between_rings: 8
-    response_window_seconds: 15
-    # A list of channels where the service bell game should be active.
-    # If this list is empty, the game will not run.
     allowed_channels:
         - "#your-main-channel"
-        - "#another-active-channel"
-
+fortune:
+    cooldown_seconds: 10.0
+gif:
+    cooldown_seconds: 10.0
 hunt:
-    min_hours_between_spawns: 1
-    max_hours_between_spawns: 8
-    # A list of channels where the hunt game should be active.
-    allowed_channels:
-        - "#your-main-channel"
-    # Define the animals that can appear.
+    min_hours_between_spawns: 2
+    max_hours_between_spawns: 10
     animals:
-        - name: "duck"
-          ascii_art: " quack  >(.)__ <(.)__ =(.)__"
-          hug_message: "Splendid, {title}! You've befriended the duck. It seems to trust you."
-          hunt_message: "A successful capture, {title}. The duck has been safely contained."
-        - name: "cat"
-          ascii_art: "meow  /\\_/\\ ( o.o ) >^<"
-          hug_message: "{username} offered the cat a gentle hand. It seems to have worked!"
-          hunt_message: "{username} lured the cat into a carrier. It is not pleased."
-        - name: "puppy"
-          ascii_art: "woof  (❍ᴥ❍ʋ)"
-          hug_message: "{username} gave the puppy a reassuring cuddle. It's wagging its tail!"
-          hunt_message: "{username} put a leash on the puppy. It's probably for the best."
-
+      - name: "duck"
+        ascii_art: " quack  >(.)__ <(.)__ =(.)__"
+        hug_message: "{username} offered the duck a piece of bread. It seems content."
+        hunt_message: "{username} captured the duck with a net. It will make a fine dinner."
+      - name: "cat"
+        ascii_art: "meow  /\\_/\\ ( o.o ) >^<"
+        hug_message: "{username} gave the cat a gentle pet. It's purring."
+        hunt_message: "{username} lured the cat into a carrier with a treat."
+      - name: "puppy"
+        ascii_art: "woof  (❍ᴥ❍ʋ)"
+        hug_message: "{username} gave the puppy a reassuring cuddle. It's wagging its tail!"
+        hunt_message: "{username} put a leash on the puppy. It's probably for the best."
+pron:
+    cooldown_seconds: 30.0
 roadtrip:
     join_window_seconds: 120
     trigger_probability: 0.25
@@ -49,61 +66,29 @@ roadtrip:
     messages_for_trigger:
         min: 35
         max: 85
-
-# --- UTILITY MODULES ---
-
-arithmetic:
-    reliability_percent: 85  # Chance (out of 100) to give the correct answer
-    max_fudge_factor: 2      # Maximum amount to add/subtract for whimsical answers
-
-sed:
-    # Mode can be "self" (users can only edit their own last message)
-    # or "any" (users can edit anyone's last message).
-    mode: "self"
-    history_size: 10
-
-shorten:
-    enabled: true
-    min_length_for_auto_shorten: 70
-    cooldown_seconds: 5.0
-
-titles:
-    enabled: true
+coffee:
     cooldown_seconds: 10.0
+    beverage_limit: 2
+    limit_reset_hours: 1
+    limit_message: "Perhaps that is enough beverages for now, {title}."
 
-youtube:
-    cooldown_seconds: 15.0
-
-# --- SOCIAL & CHAT MODULES ---
-
+# --- Social & Chat ---
 chatter:
     cooldowns:
-        animal: 3600
+        animal: 3600       # Set to -1 to disable
         weather: 1800
         tech: 900
         food: 1200
         greeting: 300
-
 flirt:
     global_cooldown: 30.0
     per_user_cooldown: 60.0
-
 memos:
     max_deliver_per_burst: 3
     max_pending_per_user: 3
 
-pron:
-    cooldown_seconds: 30.0
-
+# --- Special Purpose ---
 sailing:
     target_user: "witeshark2"
     cooldown: 5.0
-
-clock:
-    cooldown_seconds: 10.0
-
-# --- GENERAL COOLDOWNS ---
-cooldowns:
-    fortune: 10.0
-    help: 10.0
 

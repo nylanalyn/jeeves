@@ -249,28 +249,8 @@ class Jeeves(SingleServerIRCBot):
             self.connection.privmsg(nick, f"For security, I have registered your hostname ({host}) for admin access. This is a one-time process.")
             return True
 
-    def title_for(self, nick):
-        try:
-            courtesy = self.pm.plugins.get("courtesy")
-            if courtesy and hasattr(courtesy, "_get_user_profile"):
-                profile = courtesy._get_user_profile(nick)
-                if profile and "title" in profile:
-                    return {"sir":"Sir","madam":"Madam","neutral":"Mx."}.get(profile["title"], "Mx.")
-        except Exception: pass
-        return nick
-
-    def pronouns_for(self, nick):
-        try:
-            courtesy = self.pm.plugins.get("courtesy")
-            if courtesy and hasattr(courtesy, "_get_user_profile"):
-                profile = courtesy._get_user_profile(nick)
-                if profile and "pronouns" in profile:
-                    return profile["pronouns"]
-        except Exception: pass
-        return "they/them"
-
     def is_user_ignored(self, username: str) -> bool:
-        """Checks with the courtesy module if a user is ignored."""
+        """Checks if a user is on the ignore list via the courtesy module."""
         courtesy_module = self.pm.plugins.get("courtesy")
         if courtesy_module and hasattr(courtesy_module, "is_user_ignored"):
             return courtesy_module.is_user_ignored(username)
@@ -299,11 +279,14 @@ class Jeeves(SingleServerIRCBot):
                 self._update_joined_channels_state()
 
     def on_kick(self, connection, event):
-        if event.target == self.connection.get_nickname():
-            kicked_from_channel = event.arguments[0]
-            if kicked_from_channel in self.joined_channels:
-                self.joined_channels.remove(kicked_from_channel)
-                self._update_joined_channels_state()
+        try:
+            if event.target == self.connection.get_nickname():
+                kicked_from_channel = event.arguments[0]
+                if kicked_from_channel in self.joined_channels:
+                    self.joined_channels.remove(kicked_from_channel)
+                    self._update_joined_channels_state()
+        except Exception:
+            pass
 
     def on_nick(self, connection, event):
         old_nick, new_nick = event.source.nick, event.target
@@ -311,18 +294,43 @@ class Jeeves(SingleServerIRCBot):
             if hasattr(obj, "on_nick"):
                 obj.on_nick(connection, event, old_nick, new_nick)
 
+    def title_for(self, nick):
+        """
+        Determines the correct title for a user.
+        Returns "Sir" or "Madam" if set, otherwise defaults to the user's nickname.
+        """
+        try:
+            courtesy = self.pm.plugins.get("courtesy")
+            if courtesy and hasattr(courtesy, "_get_user_profile"):
+                profile = courtesy._get_user_profile(nick)
+                if profile and "title" in profile:
+                    title = profile.get("title")
+                    if title == "sir":
+                        return "Sir"
+                    if title == "madam":
+                        return "Madam"
+        except Exception:
+            pass
+        return nick # Default to the user's nickname in all other cases
+
+    def pronouns_for(self, nick):
+        """Gets a user's preferred pronouns, defaulting to 'they/them'."""
+        try:
+            courtesy = self.pm.plugins.get("courtesy")
+            if courtesy and hasattr(courtesy, "_get_user_profile"):
+                profile = courtesy._get_user_profile(nick)
+                if profile and "pronouns" in profile:
+                    return profile["pronouns"]
+        except Exception: pass
+        return "they/them"
+
     def on_pubmsg(self, connection, event):
         msg, username = event.arguments[0], event.source.nick
 
-        if self.is_user_ignored(username):
-            # An ignored user can ONLY use the !unignore command.
-            if msg.strip().lower().startswith("!unignore"):
-                 courtesy_module = self.pm.plugins.get("courtesy")
-                 if courtesy_module:
-                     courtesy_module._dispatch_commands(connection, event, msg, username)
+        if self.is_user_ignored(username) and not msg.strip().lower().startswith("!unignore"):
             return
 
-        # --- Command Dispatch Loop ---
+        # --- Command Loop ---
         command_handled = False
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "_dispatch_commands"):

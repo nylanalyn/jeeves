@@ -1,18 +1,18 @@
 # modules/replies.py
-# Enhanced question-answering using the ResponseModule framework
+# Enhanced question-answering
 import re
 import random
 import functools
 import time 
 from typing import Dict, Any, Optional
-from .base import SimpleCommandModule, admin_required, ModuleBase
+from .base import SimpleCommandModule, admin_required
 
 def setup(bot, config):
     return Replies(bot, config)
 
 class Replies(SimpleCommandModule):
     name = "replies"
-    version = "2.2.0" # version bumped for refactor
+    version = "2.2.0"
     description = "Answers general, advice, and philosophical questions."
 
     YES_LINES = [ "Indeed, {title}.", "At once, {title}.", "Very good, {title}.", "As you wish, {title}.", "Quite so, {title}.", "Naturally, {title}.", "I shall see to it, {title}.", "Absolutely, {title}.", "Without question, {title}.", "Most certainly, {title}.", "I believe so, {title}.", "Undoubtedly, {title}." ]
@@ -23,97 +23,54 @@ class Replies(SimpleCommandModule):
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        self.set_state("questions_answered", self.get_state("questions_answered", 0))
-        self.set_state("response_type_counts", self.get_state("response_type_counts", {"yes": 0, "no": 0, "maybe": 0, "advice": 0, "philosophical": 0}))
-        self.set_state("users_helped", self.get_state("users_helped", []))
-        self.set_state("question_types", self.get_state("question_types", {"basic": 0, "advice": 0, "philosophical": 0}))
-        self.save_state()
+        
+        name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
+        self.RE_PHILOSOPHY = re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+is\s+the\s+meaning|why\s+do\s+we|what\s+is\s+life|philosophy|existence|truth|reality)", re.IGNORECASE)
+        self.RE_ADVICE = re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+should\s+i|should\s+i|can\s+you\s+help|advice|suggest|recommend|how\s+do\s+i|how\s+can\s+i)", re.IGNORECASE)
+        self.RE_BASIC = re.compile(rf"\b{name_pat}\b.*\?\s*$", re.IGNORECASE)
 
     def _register_commands(self):
-        self.register_command(r"^\s*!replies\s+stats\s*$", self._cmd_stats,
-                              name="replies stats", admin_only=True, description="Show statistics on questions answered.")
+        # No !commands in this module
+        pass
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
-        name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
-        philosophy_patterns = [re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+is\s+the\s+meaning|why\s+do\s+we|what\s+is\s+life)", re.IGNORECASE), re.compile(rf"\b{name_pat}[,!\s]*\s*(do\s+you\s+think\s+about|philosophy|existence)", re.IGNORECASE), re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+is\s+truth|what\s+is\s+reality)", re.IGNORECASE)]
-        if any(p.search(msg) for p in philosophy_patterns):
-            self.safe_reply(connection, event, self._handle_philosophical_question(msg, username))
+        if self.RE_PHILOSOPHY.search(msg):
+            self._handle_philosophical_question(connection, event, username)
             return True
-        advice_patterns = [re.compile(rf"\b{name_pat}[,!\s]*\s*(what\s+should\s+i|should\s+i|can\s+you\s+help)", re.IGNORECASE), re.compile(rf"\b{name_pat}[,!\s]*\s*(advice|suggest|recommend)", re.IGNORECASE), re.compile(rf"\b{name_pat}[,!\s]*\s*(how\s+do\s+i|how\s+can\s+i)", re.IGNORECASE)]
-        if any(p.search(msg) for p in advice_patterns):
-            self.safe_reply(connection, event, self._handle_advice_question(msg, username))
+        if self.RE_ADVICE.search(msg):
+            self._handle_advice_question(connection, event, username)
             return True
-        basic_question = re.compile(rf"\b{name_pat}\b.*\?\s*$", re.IGNORECASE)
-        if basic_question.search(msg):
-            self.safe_reply(connection, event, self._handle_basic_question(msg, username))
+        if self.RE_BASIC.search(msg):
+            self._handle_basic_question(connection, event, username)
             return True
         return False
-
-    def _update_reply_stats(self, username: str, response_type: str, question_type: str = "basic"):
-        self.set_state("questions_answered", self.get_state("questions_answered") + 1)
-        type_counts = self.get_state("response_type_counts")
-        type_counts[response_type] = type_counts.get(response_type, 0) + 1
-        self.set_state("response_type_counts", type_counts)
-        question_counts = self.get_state("question_types")
-        question_counts[question_type] = question_counts.get(question_type, 0) + 1
-        self.set_state("question_types", question_counts)
-        users_helped = self.get_state("users_helped")
-        username_lower = username.lower()
-        if username_lower not in users_helped:
-            users_helped.append(username_lower)
-            self.set_state("users_helped", users_helped)
-        self.save_state()
-
-    def _choose_weighted_response_category(self) -> str:
-        categories = ["yes"] * 30 + ["no"] * 30 + ["maybe"] * 40
-        return random.choice(categories)
 
     def _format_response(self, template: str, username: str) -> str:
         title = self.bot.title_for(username)
         return template.format(title=title)
 
-    def _handle_basic_question(self, msg: str, username: str) -> str:
-        category = self._choose_weighted_response_category()
+    def _handle_basic_question(self, connection, event, username: str):
+        category = random.choices(["yes", "no", "maybe"], weights=[30, 30, 40], k=1)[0]
         if category == "yes": template = random.choice(self.YES_LINES)
         elif category == "no": template = random.choice(self.NO_LINES)
         else: template = random.choice(self.MAYBE_LINES)
-        self._update_reply_stats(username, category, "basic")
-        return f"{username}, {self._format_response(template, username)}"
+        response = self._format_response(template, username)
+        self.safe_reply(connection, event, f"{username}, {response}")
 
-    def _handle_advice_question(self, msg: str, username: str) -> str:
+    def _handle_advice_question(self, connection, event, username: str):
         if random.random() < 0.7:
             template = random.choice(self.ADVICE_LINES)
-            response_type = "advice"
         else:
-            category = self._choose_weighted_response_category()
-            if category == "yes": template = random.choice(self.YES_LINES)
-            elif category == "no": template = random.choice(self.NO_LINES)
-            else: template = random.choice(self.MAYBE_LINES)
-            response_type = category
-        self._update_reply_stats(username, response_type, "advice")
-        return f"{username}, {self._format_response(template, username)}"
+            self._handle_basic_question(connection, event, username)
+            return
+        response = self._format_response(template, username)
+        self.safe_reply(connection, event, f"{username}, {response}")
 
-    def _handle_philosophical_question(self, msg: str, username: str) -> str:
+    def _handle_philosophical_question(self, connection, event, username: str):
         if random.random() < 0.6:
             template = random.choice(self.PHILOSOPHICAL_LINES)
-            response_type = "philosophical"
         else:
             template = random.choice(self.MAYBE_LINES)
-            response_type = "maybe"
-        self._update_reply_stats(username, response_type, "philosophical")
-        return f"{username}, {self._format_response(template, username)}"
+        response = self._format_response(template, username)
+        self.safe_reply(connection, event, f"{username}, {response}")
 
-    @admin_required
-    def _cmd_stats(self, connection, event, msg, username, match):
-        stats = self.get_state()
-        lines = [f"Questions answered: {stats.get('questions_answered', 0)}", f"Unique users helped: {len(stats.get('users_helped', []))}"]
-        response_types = stats.get("response_type_counts", {})
-        if response_types:
-            response_str = ", ".join(f"{k}:{v}" for k, v in response_types.items())
-            lines.append(f"Response types: {response_str}")
-        question_types = stats.get("question_types", {})
-        if question_types:
-            question_str = ", ".join(f"{k}:{v}" for k, v in question_types.items())
-            lines.append(f"Question types: {question_str}")
-        self.safe_reply(connection, event, f"Replies stats: {'; '.join(lines)}")
-        return True

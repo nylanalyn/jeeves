@@ -12,7 +12,7 @@ def setup(bot, config):
 class Help(SimpleCommandModule):
     """Provides a list of commands and help for specific commands."""
     name = "help"
-    version = "3.0.0"
+    version = "3.0.1"
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
@@ -90,7 +90,7 @@ class Help(SimpleCommandModule):
             return []
 
         # Format the help lines for output
-        return [f"!{name}: {desc}" for name in sorted(matches.keys())]
+        return [f"!{name}: {matches[name]}" for name in sorted(matches.keys())]
 
     def _update_stats(self, username: str, is_lookup: bool = False):
         """Updates usage statistics."""

@@ -4,3 +4,5 @@ requests
 pyyaml
 google-api-python-client
 beautifulsoup4
+timezonefinder
+pytz

@@ -257,7 +257,7 @@ class Jeeves(SingleServerIRCBot):
                 if profile and "title" in profile:
                     return {"sir":"Sir","madam":"Madam","neutral":"Mx."}.get(profile["title"], "Mx.")
         except Exception: pass
-        return nick # Default to the user's nickname if no title is set
+        return nick
 
     def pronouns_for(self, nick):
         try:
@@ -268,6 +268,13 @@ class Jeeves(SingleServerIRCBot):
                     return profile["pronouns"]
         except Exception: pass
         return "they/them"
+
+    def is_user_ignored(self, username: str) -> bool:
+        """Checks with the courtesy module if a user is ignored."""
+        courtesy_module = self.pm.plugins.get("courtesy")
+        if courtesy_module and hasattr(courtesy_module, "is_user_ignored"):
+            return courtesy_module.is_user_ignored(username)
+        return False
 
     def on_welcome(self, connection, event):
         if self.nickserv_pass:
@@ -307,11 +314,13 @@ class Jeeves(SingleServerIRCBot):
     def on_pubmsg(self, connection, event):
         msg, username = event.arguments[0], event.source.nick
 
-        # Explicitly check with the courtesy module first for ignores.
-        courtesy_module = self.pm.plugins.get("courtesy")
-        if courtesy_module and hasattr(courtesy_module, "is_user_ignored"):
-             if not msg.strip().lower().startswith("!unignore") and courtesy_module.is_user_ignored(username):
-                 return # Stop processing immediately.
+        if self.is_user_ignored(username):
+            # An ignored user can ONLY use the !unignore command.
+            if msg.strip().lower().startswith("!unignore"):
+                 courtesy_module = self.pm.plugins.get("courtesy")
+                 if courtesy_module:
+                     courtesy_module._dispatch_commands(connection, event, msg, username)
+            return
 
         # --- Command Dispatch Loop ---
         command_handled = False

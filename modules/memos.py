@@ -15,7 +15,7 @@ def setup(bot, config):
 
 class Memos(SimpleCommandModule):
     name = "memos"
-    version = "2.3.0" # version bumped for refactor
+    version = "2.3.1" # Version bump for aliases
     description = "Provides memo functionality for leaving messages for users."
     
 
@@ -35,7 +35,8 @@ class Memos(SimpleCommandModule):
         self.save_state()
 
     def _register_commands(self):
-        self.register_command(r"^\s*!memo\s+(\S+)\s+(.+)$", self._cmd_memo,
+        # New regex to accept !memo, !note, or !tell
+        self.register_command(r"^\s*!(?:memo|note|tell)\s+(\S+)\s+(.+)$", self._cmd_memo,
                               name="memo", description="Leave a message for someone. Usage: !memo <nick> <message>")
         self.register_command(r"^\s*!memos\s+mine\s*$", self._cmd_memos_mine,
                               name="memos mine", description="Show your pending messages.")
@@ -93,6 +94,7 @@ class Memos(SimpleCommandModule):
 
     def _cmd_memo(self, connection, event, msg, username, match):
         room = event.target
+        # The regex now has 3 groups: command, to_nick, text. We need groups 2 and 3.
         to_nick, text = match.group(1), match.group(2).strip()
         if not text:
             self.safe_reply(connection, event, f"{username}, I require a message to record.")
@@ -106,7 +108,7 @@ class Memos(SimpleCommandModule):
         self._set_bucket(key, bucket)
         self.set_state("created_count", self.get_state("created_count") + 1)
         self.save_state()
-        self.safe_reply(connection, event, f"{username}, {self._ack(username)}")
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {self._ack(username)}")
         return True
 
     def _cmd_memos_mine(self, connection, event, msg, username, match):
@@ -131,3 +133,4 @@ class Memos(SimpleCommandModule):
         total_pending = sum(len(v) for v in self.get_state("pending", {}).values())
         self.safe_reply(connection, event, f"Memos stats: pending={total_pending}, created={self.get_state('created_count',0)}, delivered={self.get_state('delivered_count',0)}, last_delivery={self.get_state('last_delivered_at','never')}")
         return True
+

@@ -1,10 +1,13 @@
 # modules/weather.py
-# Weather module using centralized geolocation from the base module.
+# Weather module for local weather lookups
 import re
+import functools
+import os
 import requests
+import sys
 import json
-from typing import Dict, Any, Optional
-from datetime import datetime
+from typing import Dict, Any, Optional, Tuple
+from datetime import datetime, timezone, timedelta
 from .base import SimpleCommandModule, admin_required
 
 def setup(bot, config):
@@ -12,7 +15,7 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "1.4.1"
+    version = "1.3.2" # Version bump for new feature
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot, config):
@@ -51,8 +54,7 @@ class Weather(SimpleCommandModule):
             
             weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
             if weather_data:
-                location_name = location_obj.get('short_name', location_obj.get('display_name', 'your location'))
-                report = self._format_weather_report(weather_data, location_name, username)
+                report = self._format_weather_report(weather_data, location_obj.get("short_name", location_obj.get("display_name")), username)
                 self.safe_reply(connection, event, report)
             else:
                 self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not fetch the weather for your location.")
@@ -61,7 +63,7 @@ class Weather(SimpleCommandModule):
 
     def _get_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
-        headers = {'User-Agent': 'JeevesIRCBot/1.0'}
+        headers = {'User-Agent': 'JeevesIRCBot/1.0 https://github.com/your/repo'}
         try:
             response = self.http_session.get(weather_url, headers=headers, timeout=10)
             response.raise_for_status()
@@ -75,16 +77,26 @@ class Weather(SimpleCommandModule):
             timeseries0 = data['properties']['timeseries'][0]
             now = timeseries0['data']['instant']['details']
             summary_data = timeseries0['data'].get('next_1_hours')
+
             temp_c = now.get('air_temperature')
             wind_speed_ms = float(now.get('wind_speed', 0.0))
-            wind_speed_mph = round(wind_speed_ms * 2.2369)
+            wind_speed_mph = round(wind_speed_ms * 2.23693629)
+            wind_speed_kph = round(wind_speed_ms * 3.6)
+
             summary_code = (summary_data['summary'].get('symbol_code', 'no summary')
                             if summary_data and 'summary' in summary_data else 'no summary')
             summary = summary_code.replace('_', ' ').capitalize()
+
             temp_str = f"{self._c_to_f(temp_c)}°F/{temp_c}°C" if temp_c is not None else "N/A"
+            wind_str = f"{wind_speed_mph} mph / {wind_speed_kph} kph"
+
             report_time_utc = datetime.fromisoformat(timeseries0['time'])
             formatted_time = report_time_utc.strftime('%H:%M %Z')
-            return f"{summary}. Temp: {temp_str}. Wind: {wind_speed_mph} mph. (as of {formatted_time})"
+
+            return (f"{summary}. "
+                    f"Temperature: {temp_str}. "
+                    f"Wind: {wind_str}. "
+                    f"(Reported at {formatted_time})")
         except (KeyError, IndexError, ValueError):
             return None
 
@@ -126,12 +138,12 @@ class Weather(SimpleCommandModule):
     def _cmd_weather_self(self, connection, event, msg, username, match):
         location_obj = self.get_state("user_locations", {}).get(username.lower())
         if not location_obj:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location. Use '!location <city>' to set one.")
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a default location. Use '!location <city>' to set one.")
             return True
         weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
         if weather_data:
-            location_name = location_obj.get('short_name', location_obj.get('display_name', 'your location'))
-            self.safe_reply(connection, event, self._format_weather_report(weather_data, location_name, username))
+            display_name = location_obj.get("short_name", location_obj.get("display_name"))
+            self.safe_reply(connection, event, self._format_weather_report(weather_data, display_name, username))
         else:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not fetch the weather for your location.")
         return True
@@ -139,28 +151,29 @@ class Weather(SimpleCommandModule):
     def _cmd_weather_other(self, connection, event, msg, username, match):
         query = match.group(1).strip()
         user_locations = self.get_state("user_locations", {})
-        
-        if query.lower() in user_locations:
-            location_obj = user_locations[query.lower()]
+        target_user_key = query.lower()
+
+        if target_user_key in user_locations:
+            location_obj = user_locations[target_user_key]
             weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
             if weather_data:
-                location_name = location_obj.get('short_name', location_obj.get('display_name', 'their location'))
-                report = self._format_weather_report(weather_data, location_name, username, target_user=query)
+                display_name = location_obj.get("short_name", location_obj.get("display_name"))
+                report = self._format_weather_report(weather_data, display_name, username, target_user=query)
                 self.safe_reply(connection, event, report)
             else:
                 self.safe_reply(connection, event, f"My apologies, I could not fetch the weather for {query}.")
             return True
 
-        geo_data_tuple = self._get_geocode_data(query)
-        if not geo_data_tuple:
+        geocode_data_tuple = self._get_geocode_data(query)
+        if not geocode_data_tuple:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not find a location or user named '{query}'.")
             return True
         
-        lat, lon, geo_data = geo_data_tuple
-        short_name = self._format_location_name(geo_data)
+        lat, lon, geo_data = geocode_data_tuple
+        display_name = self._format_location_name(geo_data)
         weather_data = self._get_weather_data(lat, lon)
         if weather_data:
-            report = self._format_weather_report(weather_data, short_name, username)
+            report = self._format_weather_report(weather_data, display_name, username)
             self.safe_reply(connection, event, report)
         else:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not find a weather report for '{query}'.")

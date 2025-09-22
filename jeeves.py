@@ -269,15 +269,6 @@ class Jeeves(SingleServerIRCBot):
         except Exception: pass
         return "they/them"
 
-    def is_ignored(self, username: str) -> bool:
-        """Checks if a user is on the ignore list via the courtesy module."""
-        try:
-            courtesy = self.pm.plugins.get("courtesy")
-            if courtesy and hasattr(courtesy, "is_user_ignored"):
-                return courtesy.is_user_ignored(username)
-        except Exception: pass
-        return False
-
     def on_welcome(self, connection, event):
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
@@ -315,9 +306,14 @@ class Jeeves(SingleServerIRCBot):
 
     def on_pubmsg(self, connection, event):
         msg, username = event.arguments[0], event.source.nick
-        if not msg.strip().lower().startswith("!unignore") and self.is_ignored(username):
-            return
 
+        # Explicitly check with the courtesy module first for ignores.
+        courtesy_module = self.pm.plugins.get("courtesy")
+        if courtesy_module and hasattr(courtesy_module, "is_user_ignored"):
+             if not msg.strip().lower().startswith("!unignore") and courtesy_module.is_user_ignored(username):
+                 return # Stop processing immediately.
+
+        # --- Command Dispatch Loop ---
         command_handled = False
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "_dispatch_commands"):
@@ -331,6 +327,7 @@ class Jeeves(SingleServerIRCBot):
         if command_handled:
             return
 
+        # --- Ambient Message Loop ---
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "on_ambient_message"):
                 try:

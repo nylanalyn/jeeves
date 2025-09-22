@@ -175,7 +175,6 @@ class PluginManager:
                     loaded_names.append(name)
             except Exception as e:
                 print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
-                traceback.print_exc(file=sys.stderr)
         
         for name, obj in self.plugins.items():
             if hasattr(obj, "on_load"): obj.on_load()
@@ -214,11 +213,11 @@ class Jeeves(SingleServerIRCBot):
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
                     module_config = self.config.get(name, {})
-                    # Defensive check to ensure the config section is a dictionary
-                    if isinstance(module_config, dict):
-                        instance.on_config_reload(module_config)
-                    else:
-                        print(f"[core] warning: config for module '{name}' is not a dictionary, skipping reload for it.", file=sys.stderr)
+                    # Robustness check: Ensure module_config is a dictionary
+                    if not isinstance(module_config, dict):
+                        print(f"[core] warning: config for '{name}' is not a dictionary. Passing empty config.", file=sys.stderr)
+                        module_config = {}
+                    instance.on_config_reload(module_config)
             return True
         except Exception as e:
             print(f"[core] FAILED to reload configuration: {e}", file=sys.stderr)

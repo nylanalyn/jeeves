@@ -17,33 +17,26 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.0.1"
+    version = "2.1.1"
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
         """Initializes the Quest module's state and configuration."""
-        # --- Pre-super() setup ---
-        # Load config first to ensure attributes like COOLDOWN are available for command registration.
         self.on_config_reload(config)
-
-        # --- super() call ---
-        # This will call _register_commands, so all needed attributes must be set above.
         super().__init__(bot)
-
-        # --- Post-super() setup ---
-        # Now it's safe to initialize state and other properties.
         self.set_state("players", self.get_state("players", {}))
         self.save_state()
         self.is_loaded = True
 
     def on_config_reload(self, config):
         """Handles reloading the module's configuration."""
-        quest_config = config.get(self.name, {})
-        self.ALLOWED_CHANNELS = quest_config.get("allowed_channels", [])
-        self.COOLDOWN = quest_config.get("cooldown_seconds", 300)
-        self.XP_CURVE_FORMULA = quest_config.get("xp_curve_formula", "level * 100")
-        self.MONSTERS = quest_config.get("monsters", {})
-        self.STORY_BEATS = quest_config.get("story_beats", {})
+        # This is the corrected logic. It uses the passed 'config' object directly.
+        self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
+        self.COOLDOWN = config.get("cooldown_seconds", 300)
+        self.XP_CURVE_FORMULA = config.get("xp_curve_formula", "level * 100")
+        self.MONSTERS = config.get("monsters", {})
+        self.STORY_BEATS = config.get("story_beats", {})
+        self.WORLD_LORE = config.get("world_lore", [])
 
     def _register_commands(self):
         """Registers all the commands for the quest module."""
@@ -52,6 +45,12 @@ class Quest(SimpleCommandModule):
             self._cmd_profile,
             name="quest profile",
             description="View your or another player's quest profile."
+        )
+        self.register_command(
+            r"^\s*!quest\s+story\s*$",
+            self._cmd_story,
+            name="quest story",
+            description="Learn a bit about the world or recall your last battle."
         )
         self.register_command(
             r"^\s*!quest\s*$",
@@ -76,7 +75,8 @@ class Quest(SimpleCommandModule):
         if player_key not in players:
             players[player_key] = {
                 "name": username, "level": 1, "xp": 0,
-                "xp_to_next_level": self._calculate_xp_for_level(1)
+                "xp_to_next_level": self._calculate_xp_for_level(1),
+                "last_fight": None
             }
         
         if "xp_to_next_level" not in players[player_key]:
@@ -84,6 +84,13 @@ class Quest(SimpleCommandModule):
             players[player_key]["xp_to_next_level"] = self._calculate_xp_for_level(level)
 
         return players[player_key]
+
+    def _update_player(self, username: str, player_data: Dict[str, Any]):
+        """Updates a player's profile in the state."""
+        players = self.get_state("players")
+        players[username.lower()] = player_data
+        self.set_state("players", players)
+        self.save_state()
 
     def _calculate_xp_for_level(self, level: int) -> int:
         """Calculates the XP needed to advance to the next level."""
@@ -96,8 +103,6 @@ class Quest(SimpleCommandModule):
     def _grant_xp(self, username: str, amount: int) -> tuple[Optional[str], Optional[str]]:
         """Grants or removes XP and handles leveling up. Returns level-up and final messages."""
         player = self._get_player(username)
-        player_key = username.lower()
-        
         player["xp"] += amount
         level_up_message = None
 
@@ -110,11 +115,7 @@ class Quest(SimpleCommandModule):
         if player["xp"] < 0:
             player["xp"] = 0
 
-        players = self.get_state("players")
-        players[player_key] = player
-        self.set_state("players", players)
-        self.save_state()
-
+        self._update_player(username, player)
         final_message = f"You now have {player['xp']}/{player['xp_to_next_level']} XP."
         return level_up_message, final_message
 
@@ -122,14 +123,12 @@ class Quest(SimpleCommandModule):
         """Selects an appropriate monster based on player level."""
         if not self.MONSTERS: return None
         
-        # Determine appropriate tier
         if player_level <= 5: tier = 'low'
         elif player_level <= 15: tier = 'mid'
         else: tier = 'high'
         
         tier_monsters = self.MONSTERS.get(tier, [])
         if not tier_monsters:
-            # Fallback to lower tiers if the current one is empty
             if tier == 'high': tier_monsters = self.MONSTERS.get('mid', [])
             if not tier_monsters: tier_monsters = self.MONSTERS.get('low', [])
             if not tier_monsters: return None
@@ -159,6 +158,31 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, response)
         return True
 
+    def _cmd_story(self, connection, event, msg, username, match):
+        """Handles the !quest story command."""
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            return False
+
+        player = self._get_player(username)
+        last_fight = player.get("last_fight")
+        
+        story_parts = []
+        if self.WORLD_LORE:
+            story_parts.append(random.choice(self.WORLD_LORE))
+
+        if last_fight:
+            outcome = "triumphed over" if last_fight["win"] else "were defeated by"
+            recollection = (f"You recall your last battle, where you {outcome} "
+                            f"a Level {last_fight['monster_level']} {last_fight['monster_name']}.")
+            story_parts.append(recollection)
+        
+        if not story_parts:
+            self.safe_reply(connection, event, "The world is vast and full of stories yet to be told.")
+        else:
+            self.safe_reply(connection, event, " ".join(story_parts))
+        
+        return True
+
     def _cmd_quest(self, connection, event, msg, username, match):
         """Handles the !quest command, initiating a quest and combat."""
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
@@ -177,17 +201,22 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, story)
         time.sleep(1) # Dramatic pause
 
-        # Combat Logic
         monster_level = random.randint(monster['min_level'], monster['max_level'])
+        win = player['level'] >= monster_level
         
-        if player['level'] >= monster_level:
-            # Win
+        player['last_fight'] = {
+            "monster_name": monster['name'],
+            "monster_level": monster_level,
+            "win": win
+        }
+        self._update_player(username, player)
+
+        if win:
             xp_gain = random.randint(monster['xp_win_min'], monster['xp_win_max'])
             result_msg = f"The {monster['name']} (Level {monster_level}) is defeated! You gain {xp_gain} XP."
             self.safe_reply(connection, event, result_msg)
             level_up_msg, final_xp_msg = self._grant_xp(username, xp_gain)
         else:
-            # Loss
             xp_loss = random.randint(monster['xp_loss_min'], monster['xp_loss_max'])
             result_msg = f"You were defeated by the {monster['name']} (Level {monster_level})! You lose {xp_loss} XP."
             self.safe_reply(connection, event, result_msg)

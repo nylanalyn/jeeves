@@ -61,6 +61,10 @@ quest:
         - "#your-questing-channel"
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
+        world_lore:
+        - "The world of IRCia is ancient, forged in the fires of dial-up and cooled by the winds of broadband."
+        - "They say the Great Admin created the first channel with a single, mighty !join command."
+        - "Legends speak of a time before emojis, when adventures were told in pure, unadorned text."
     story_beats:
         openers:
             - "{user} enters a dark cave, seeking a {monster}."

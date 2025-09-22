@@ -99,6 +99,9 @@ sailing:
     target_user: "witeshark2"
     cooldown: 5.0
 
+clock:
+    cooldown_seconds: 10.0
+
 # --- GENERAL COOLDOWNS ---
 cooldowns:
     fortune: 10.0

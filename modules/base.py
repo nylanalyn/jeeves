@@ -10,7 +10,7 @@ import sys
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, Callable, Union
+from typing import Optional, Dict, Any, List, Callable, Union, Tuple
 from datetime import datetime, timezone
 
 def admin_required(func):
@@ -24,7 +24,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.3.0"
+    version = "1.4.0"
     description = "Base module class"
     
     def __init__(self, bot):
@@ -57,6 +57,48 @@ class ModuleBase(ABC):
         session.mount('https://', adapter)
         return session
 
+    # --- Geolocation Helpers ---
+
+    def _get_geocode_data(self, location: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
+        """Fetches geographic coordinates and structured address for a location string."""
+        geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location)}&format=json&limit=1&addressdetails=1"
+        try:
+            # Use the requests_retry_session for resilience
+            http_session = self.requests_retry_session()
+            response = http_session.get(geo_url, headers={'User-Agent': 'JeevesIRCBot/1.0'}, timeout=10)
+            response.raise_for_status()
+            geo_data = response.json()
+            if not geo_data:
+                return None
+            return (geo_data[0]["lat"], geo_data[0]["lon"], geo_data[0])
+        except (requests.exceptions.RequestException, IndexError, ValueError, KeyError) as e:
+            self._record_error(f"Geocoding request failed for '{location}': {e}")
+            return None
+
+    def _format_location_name(self, geo_data: Dict[str, Any]) -> str:
+        """Builds a concise location name from structured geodata."""
+        address = geo_data.get("address", {})
+        parts = []
+        
+        # Find the most specific place name
+        place = address.get("city") or address.get("town") or address.get("village") or address.get("hamlet")
+        if place:
+            parts.append(place)
+        
+        if address.get("state"):
+            parts.append(address.get("state"))
+            
+        if address.get("country_code"):
+            parts.append(address.get("country_code").upper())
+
+        if parts:
+            return ", ".join(parts)
+        
+        # Fallback to the long name if structured data is weird
+        return geo_data.get("display_name", "an unknown location")
+
+    # --- State Management ---
+
     def _load_state(self):
         with self._state_lock:
             self._state_cache = self.bot.get_module_state(self.name).copy()
@@ -81,6 +123,8 @@ class ModuleBase(ABC):
             if self._state_dirty or force:
                 self.bot.update_module_state(self.name, self._state_cache)
                 self._state_dirty = False
+
+    # --- Command and Message Handling ---
 
     def register_command(self, pattern: Union[str, re.Pattern], 
                         handler: Callable, name: str, admin_only: bool = False,
@@ -149,6 +193,9 @@ class ModuleBase(ABC):
                 if not self.check_user_cooldown(username, cmd_id, cmd_info["cooldown"]): continue
                 try:
                     if cmd_info["handler"](connection, event, msg, username, match):
+                        # If a command was handled, update its stats if the module supports it
+                        if hasattr(self, "_update_stats"):
+                            self._update_stats(cmd_info["name"])
                         return True
                 except Exception as e:
                     self._record_error(f"Error in command {cmd_id}: {e}")

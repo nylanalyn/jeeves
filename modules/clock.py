@@ -1,11 +1,10 @@
 # modules/clock.py
-# A module for providing accurate, timezone-aware time for users and locations.
+# A module for providing accurate, timezone-aware time using centralized geolocation.
 import re
 from datetime import datetime
 import pytz
+from typing import Optional
 from timezonefinder import TimezoneFinder
-import requests
-from typing import Optional, Tuple, Dict, Any
 from .base import SimpleCommandModule
 
 def setup(bot, config):
@@ -13,13 +12,15 @@ def setup(bot, config):
 
 class Clock(SimpleCommandModule):
     name = "clock"
-    version = "1.1.0"
+    version = "1.2.1"
     description = "Provides the local time for users based on their set location."
 
     def __init__(self, bot, config):
+        # Define attributes before calling super().__init__
         self.tf = TimezoneFinder()
-        self.http_session = self.requests_retry_session()
         self.on_config_reload(config)
+        
+        # Now call the parent constructor, which will safely register commands
         super().__init__(bot)
 
     def on_config_reload(self, config):
@@ -34,43 +35,6 @@ class Clock(SimpleCommandModule):
                               name="time other", 
                               description="Get the time for another user, a location, or the server.",
                               cooldown=self.COOLDOWN)
-
-    def _get_geocode_data(self, location: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
-        """Fetches geographic coordinates and structured address for a location string."""
-        geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location)}&format=json&limit=1&addressdetails=1"
-        try:
-            response = self.http_session.get(geo_url, headers={'User-Agent': 'JeevesIRCBot/1.0'}, timeout=10)
-            response.raise_for_status()
-            geo_data = response.json()
-            if not geo_data:
-                return None
-            return (geo_data[0]["lat"], geo_data[0]["lon"], geo_data[0])
-        except (requests.exceptions.RequestException, IndexError, ValueError, KeyError) as e:
-            self._record_error(f"Geocoding request failed for '{location}': {e}")
-            return None
-
-    def _format_location_name(self, geo_data: Dict[str, Any]) -> str:
-        """Builds a concise location name from structured geodata."""
-        address = geo_data.get("address", {})
-        parts = []
-        
-        # Find the most specific place name
-        place = address.get("city") or address.get("town") or address.get("village") or address.get("hamlet")
-        if place:
-            parts.append(place)
-        
-        if address.get("state"):
-            parts.append(address.get("state"))
-            
-        if address.get("country_code"):
-            parts.append(address.get("country_code").upper())
-
-        if parts:
-            return ", ".join(parts)
-        
-        # Fallback to the long name if structured data is weird
-        return geo_data.get("display_name", "an unknown location")
-
 
     def _get_time_for_coords(self, lat: str, lon: str) -> Optional[str]:
         """Gets the formatted local time string for a given latitude and longitude."""
@@ -121,9 +85,11 @@ class Clock(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, f"I'm afraid I could not determine the timezone for {self.bot.title_for(query)}'s location.")
         else:
+            # Use the centralized geocoding method from the base class
             geo_data_tuple = self._get_geocode_data(query)
             if geo_data_tuple:
                 lat, lon, geo_data = geo_data_tuple
+                # Use the centralized formatting method
                 display_name = self._format_location_name(geo_data)
                 time_str = self._get_time_for_coords(lat, lon)
                 if time_str:

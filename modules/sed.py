@@ -9,7 +9,7 @@ def setup(bot, config):
 
 class Sed(SimpleCommandModule):
     name = "sed"
-    version = "1.0.1"
+    version = "1.0.2"
     description = "Performs s/find/replace/ on recent channel messages."
 
     # This regex makes the final slash optional with /?
@@ -23,6 +23,10 @@ class Sed(SimpleCommandModule):
     def on_config_reload(self, config):
         self.mode = config.get("mode", "self") # "self" or "any"
         self.history_size = config.get("history_size", 20)
+    
+    def _register_commands(self):
+        # This module has no !commands, only an ambient trigger.
+        pass
 
     def _add_to_history(self, channel, username, message):
         if channel not in self.history:
@@ -37,6 +41,7 @@ class Sed(SimpleCommandModule):
         match = self.SED_PATTERN.match(msg)
 
         # Log the message to history for potential future corrections.
+        # We do this before checking for a match so the sed command itself is logged.
         self._add_to_history(event.target, username, msg)
 
         if not match:
@@ -60,7 +65,8 @@ class Sed(SimpleCommandModule):
                 new_msg, count = re.subn(find, replace, prev_msg, count=1)
                 if count > 0:
                     # On success, post the correction and stop searching.
-                    self.safe_reply(connection, event, f"I believe {prev_user} meant to say: {new_msg}")
+                    title = self.bot.title_for(username)
+                    self.safe_reply(connection, event, f"As {title} pointed out, {prev_user} meant to say: {new_msg}")
                     # Add the corrected message to history so it can also be corrected.
                     self._add_to_history(event.target, prev_user, new_msg)
                     return True # Handled

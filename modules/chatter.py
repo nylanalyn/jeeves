@@ -18,7 +18,7 @@ def setup(bot, config):
 
 class Chatter(SimpleCommandModule):
     name = "chatter"
-    version = "2.3.0"
+    version = "2.2.2"
     description = "Provides scheduled messages and conversational responses."
 
     ANIMAL_WORDS = re.compile(r"\b(?:duck|ducks|cat|cats|kitten|kittens|puppy|puppies|dog|dogs|rabbit|rabbits|bird|birds|fish|hamster|guinea\s+pig)\b", re.IGNORECASE)
@@ -33,17 +33,17 @@ class Chatter(SimpleCommandModule):
     TECH_RESPONSES = [ "Ah, the eternal dance of human and machine. Most enlightening.", "I find that technical difficulties often resolve themselves with patience and proper documentation.", "The art of troubleshooting remains one of life's more philosophical pursuits.", "Technology, like a well-trained butler, performs best when properly maintained.", ]
     FOOD_RESPONSES = [ "A well-timed refreshment often provides clarity that hours of debugging cannot.", "The correlation between proper nutrition and code quality is well-established, {title}.", "I've observed that the best solutions often emerge during tea breaks.", "Sustenance for both body and mind remains essential for peak performance.", ]
     GREETING_RESPONSES = [ "Good {time_of_day}, {title}. I trust you're well?", "A pleasure to see you, {title}. The day progresses admirably.", "Greetings, {title}. I hope the day finds you in good spirits.", "Welcome, {title}. How may I be of assistance today?", ]
-    
-    RESPONSE_PATTERNS = [
-        (ANIMAL_WORDS, "animal", 0.25),
-        (WEATHER_WORDS, "weather", 0.3),
-        (TECH_WORDS, "tech", 0.5),
-        (FOOD_WORDS, "food", 0.3),
-        (GREETING_WORDS, "greeting", 0.6),
-    ]
 
     def __init__(self, bot, config):
         super().__init__(bot)
+        self.on_config_reload(config)
+        self.set_state("last_daily", self.get_state("last_daily", None))
+        self.set_state("last_weekly", self.get_state("last_weekly", None))
+        self.set_state("response_counts", self.get_state("response_counts", {}))
+        self.set_state("schedule_times", self.get_state("schedule_times", {}))
+        self.save_state()
+
+    def on_config_reload(self, config):
         config_cooldowns = config.get("cooldowns", {})
         self._response_cooldowns = {
             "animal":   config_cooldowns.get("animal", 3600),
@@ -52,13 +52,6 @@ class Chatter(SimpleCommandModule):
             "food":     config_cooldowns.get("food", 1200),
             "greeting": config_cooldowns.get("greeting", 300),
         }
-        self.set_state("last_daily", self.get_state("last_daily", None))
-        self.set_state("last_weekly", self.get_state("last_weekly", None))
-        self.set_state("daily_count", self.get_state("daily_count", 0))
-        self.set_state("weekly_count", self.get_state("weekly_count", 0))
-        self.set_state("response_counts", self.get_state("response_counts", {}))
-        self.set_state("schedule_times", self.get_state("schedule_times", {}))
-        self.save_state()
 
     def _register_commands(self):
         self.register_command(r"^\s*!chatter\s+stats\s*$", self._cmd_stats,
@@ -67,22 +60,34 @@ class Chatter(SimpleCommandModule):
                               name="chatter test daily", admin_only=True, description="Force a daily message.")
         self.register_command(r"^\s*!chatter\s+test\s+weekly\s*$", self._cmd_test_weekly,
                               name="chatter test weekly", admin_only=True, description="Force a weekly message.")
-
+    
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
-        import random
-        for pattern, response_type, probability in self.RESPONSE_PATTERNS:
+        response_handlers = [
+            (self.ANIMAL_WORDS, "animal", 0.25),
+            (self.WEATHER_WORDS, "weather", 0.3),
+            (self.TECH_WORDS, "tech", 0.5),
+            (self.FOOD_WORDS, "food", 0.3),
+            (self.GREETING_WORDS, "greeting", 0.6),
+        ]
+        
+        for pattern, response_type, probability in response_handlers:
             if pattern.search(msg) and random.random() <= probability:
-                if self._handle_contextual_response(connection, event, response_type, username):
+                response = self._handle_contextual_response(response_type, msg, username)
+                if response:
+                    self.safe_reply(connection, event, response)
                     return True
         return False
 
-    def _handle_contextual_response(self, connection, event, response_type: str, username: str) -> bool:
+    def _handle_contextual_response(self, response_type: str, msg: str, username: str) -> Optional[str]:
         cooldown = self._response_cooldowns.get(response_type, 300)
-        if cooldown < 0:
-            return False
-        if not self.check_rate_limit(response_type, cooldown):
-            return False
         
+        # This is the new, corrected logic to disable the response if cooldown is negative.
+        if cooldown < 0:
+            return None
+            
+        if not self.check_rate_limit(response_type, cooldown):
+            return None
+            
         responses = {
             "animal": self.ANIMAL_RESPONSES, "weather": self.WEATHER_RESPONSES,
             "tech": self.TECH_RESPONSES, "food": self.FOOD_RESPONSES,
@@ -90,16 +95,14 @@ class Chatter(SimpleCommandModule):
         }.get(response_type, [])
         
         if not responses:
-            return False
+            return None
             
         response_text = self._format_line(random.choice(responses), username)
-        self.safe_reply(connection, event, response_text)
-        
         counts = self.get_state("response_counts")
         counts[response_type] = counts.get(response_type, 0) + 1
         self.set_state("response_counts", counts)
         self.save_state()
-        return True
+        return response_text
 
     def on_load(self):
         super().on_load()
@@ -154,7 +157,6 @@ class Chatter(SimpleCommandModule):
         self.set_state("daily_count", self.get_state("daily_count", 0) + 1)
         self.save_state()
         self._schedule_daily_message()
-        return schedule.CancelJob
 
     def _say_weekly(self):
         year, week, _ = datetime.now(UTC).isocalendar()
@@ -166,7 +168,6 @@ class Chatter(SimpleCommandModule):
         self.set_state("weekly_count", self.get_state("weekly_count", 0) + 1)
         self.save_state()
         self._schedule_weekly_message()
-        return schedule.CancelJob
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):

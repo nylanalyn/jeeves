@@ -85,6 +85,9 @@ quest:
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8
+    first_win_bonus_xp: 50 # Extra XP for the first win of the day
+    xp_level_multiplier: 2 # (player_level * this) is added to XP wins
+    xp_loss_percentage: 0.5 # Player loses this % of the potential XP win on a loss
     world_lore:
         - "The world is ancient, forged in the fires of dial-up and cooled by the winds of broadband."
     story_beats:

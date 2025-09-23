@@ -1,46 +1,55 @@
 # modules/youtube.py
 # YouTube search module using Google API
-import os
 import re
 from typing import Optional
-from googleapiclient.discovery import build
 from .base import SimpleCommandModule, admin_required
 
+# This library is now required: pip install google-api-python-client
+try:
+    from googleapiclient.discovery import build
+except ImportError:
+    build = None
+
 def setup(bot, config):
-    """
-    Setup function for the YouTube module.
-    It checks for the API key and returns an instance of the YouTube class.
-    """
-    api_key = os.getenv("YOUTUBE_API_KEY")
-    if not api_key:
-        print("[youtube] YOUTUBE_API_KEY environment variable not set. Module will not load.")
+    """Initializes the YouTube module."""
+    if not build:
+        print("[youtube] google-api-python-client is not installed. Module will not load.")
         return None
-    return YouTube(bot, config)
+    api_key = bot.config.get("api_keys", {}).get("youtube")
+    if not api_key:
+        print("[youtube] YouTube API key not found in config.yaml. Module will not load.")
+        return None
+    return YouTube(bot, config, api_key)
 
 class YouTube(SimpleCommandModule):
     name = "youtube"
-    version = "1.3.0"
+    version = "1.4.1" # Initialization fix
     description = "Searches YouTube for a video and posts a link with details."
 
-    API_KEY = os.getenv("YOUTUBE_API_KEY")
     YOUTUBE_URL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w\-]{11})')
 
-    def __init__(self, bot, config):
+    def __init__(self, bot, config, api_key):
+        """Initializes the module's state and configuration."""
+        # --- Pre-super() setup ---
+        self.API_KEY = api_key
         self.COOLDOWN = config.get("cooldown_seconds", 15.0)
+
+        # --- super() call ---
         super().__init__(bot)
 
+        # --- Post-super() setup ---
         self.set_state("searches_performed", self.get_state("searches_performed", 0))
         self.set_state("videos_found", self.get_state("videos_found", 0))
         self.save_state()
 
-        if self.API_KEY:
-            try:
-                self.youtube_service = build('youtube', 'v3', developerKey=self.API_KEY)
-            except Exception as e:
-                self._record_error(f"Failed to build YouTube service: {e}")
-                self.youtube_service = None
+        try:
+            self.youtube_service = build('youtube', 'v3', developerKey=self.API_KEY)
+        except Exception as e:
+            self._record_error(f"Failed to build YouTube service: {e}")
+            self.youtube_service = None
 
     def _register_commands(self):
+        """Registers the !yt command."""
         self.register_command(
             r"^\s*!yt\s+(.+)$", self._cmd_yt,
             name="yt", cooldown=self.COOLDOWN,
@@ -53,6 +62,7 @@ class YouTube(SimpleCommandModule):
         )
 
     def on_ambient_message(self, connection, event, msg, username):
+        """Handles ambient YouTube links."""
         match = self.YOUTUBE_URL_PATTERN.search(msg)
         if not match:
             return False
@@ -129,8 +139,9 @@ class YouTube(SimpleCommandModule):
             return None
 
     def _cmd_yt(self, connection, event, msg, username, match):
+        """Handles the !yt command."""
         if not self.youtube_service:
-            self.safe_reply(connection, event, f"{username}, the YouTube service is not configured correctly.")
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the YouTube service is not configured correctly.")
             return True
 
         query = match.group(1).strip()
@@ -152,6 +163,7 @@ class YouTube(SimpleCommandModule):
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
+        """Handles the !yt stats command."""
         searches = self.get_state("searches_performed", 0)
         found = self.get_state("videos_found", 0)
         success_rate = (found / searches * 100) if searches > 0 else 0

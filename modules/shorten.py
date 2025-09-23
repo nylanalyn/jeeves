@@ -1,6 +1,5 @@
 # modules/shorten.py
 # URL shortener with automatic trigger for long URLs, using a self-hosted Shlink instance.
-import os
 import re
 import requests
 import json
@@ -8,32 +7,40 @@ from typing import Optional
 from .base import SimpleCommandModule
 
 def setup(bot, config):
-    return Shorten(bot, config)
+    """Initializes the Shorten module."""
+    api_keys = bot.config.get("api_keys", {})
+    shlink_url = api_keys.get("shlink_url")
+    shlink_key = api_keys.get("shlink_key")
+    if not shlink_url or not shlink_key:
+        print("[shorten] Shlink URL or API key not found in config.yaml. Module will not load.")
+        return None
+    return Shorten(bot, config, shlink_url, shlink_key)
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "2.0.2" # version bumped
+    version = "2.2.0" # Final refactor fix
     description = "Shortens URLs using a self-hosted Shlink instance."
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
-    SHLINK_API_URL = os.getenv("SHLINK_API_URL")
-    SHLINK_API_KEY = os.getenv("SHLINK_API_KEY")
 
-    def __init__(self, bot, config):
-        # Define attributes before calling super().__init__
+    def __init__(self, bot, config, shlink_url, shlink_key):
+        """Initializes the module's state and configuration."""
+        # --- Pre-super() setup ---
+        self.SHLINK_API_URL = shlink_url
+        self.SHLINK_API_KEY = shlink_key
+        
         self.enabled = config.get("enabled", True)
         self.COOLDOWN = config.get("cooldown_seconds", 10.0)
         self.MIN_LENGTH = config.get("min_length_for_auto_shorten", 70)
         
-        # Now call the parent constructor, which will safely register commands
+        # --- super() call ---
         super().__init__(bot)
 
-        if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
-            self._record_error("SHLINK_API_URL or SHLINK_API_KEY environment variables are not set.")
-        
+        # --- Post-super() setup ---
         self.http_session = self.requests_retry_session()
 
     def _register_commands(self):
+        """Registers the !shorten command."""
         self.register_command(
             r"^\s*!shorten\s+(https?://\S+)\s*$", self._cmd_shorten,
             name="shorten", cooldown=self.COOLDOWN,
@@ -41,6 +48,7 @@ class Shorten(SimpleCommandModule):
         )
 
     def _shorten_url(self, url_to_shorten: str) -> Optional[str]:
+        """Shortens a URL using the Shlink API."""
         if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
             return None
 
@@ -67,6 +75,7 @@ class Shorten(SimpleCommandModule):
             return None
 
     def _cmd_shorten(self, connection, event, msg, username, match):
+        """Handles the !shorten command."""
         if not self.enabled:
             return False
             
@@ -80,22 +89,20 @@ class Shorten(SimpleCommandModule):
         return True
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        """Handles automatic URL shortening."""
         if not self.enabled:
             return False
 
-        # Automatic shortening logic
         if self.MIN_LENGTH <= 0:
             return False
 
         match = self.URL_PATTERN.search(msg)
         if match:
             url = match.group(1)
-            # Avoid shortening URLs that are already short
             if self.SHLINK_API_URL and "://" in self.SHLINK_API_URL and self.SHLINK_API_URL.split("://")[1] in url:
                 return False
 
             if len(url) > self.MIN_LENGTH:
-                # Check rate limit to avoid spamming the channel
                 if not self.check_rate_limit("auto_shorten", 30.0):
                      return False
                 

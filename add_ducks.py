@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 import shutil
 
-# This script is designed to be run from the same directory as jeeves.py
+# --- New Self-Contained Path Configuration ---
 ROOT = Path(__file__).resolve().parent
-CONFIG_DIR = Path.home() / ".config" / "jeeves"
+CONFIG_DIR = ROOT / "config"
 STATE_PATH = CONFIG_DIR / "state.json"
+# --- End New Configuration ---
 
 # --- Configuration ---
 # Easily change these values to test with different users or amounts.
@@ -54,3 +55,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

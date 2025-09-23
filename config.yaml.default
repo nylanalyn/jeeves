@@ -1,10 +1,33 @@
 # Jeeves Bot Configuration
-# This is a default configuration file. Copy it to 'config.yaml' and edit it.
+# This is the central configuration file for Jeeves.
 
-# --- Core Modules ---
-admin: {}
-help:
-    cooldown_seconds: 10.0
+# --- Core Settings ---
+# A list of nicknames that are considered administrators.
+admins:
+  - "YourAdminNick"
+
+# A list of module filenames (e.g., "hunt.py") to prevent from loading.
+module_blacklist:
+  - "flirt.py"
+
+# --- IRC Connection Details ---
+connection:
+  server: "irc.libera.chat"
+  port: 6697
+  nick: "JeevesBot"
+  channel: "#your-channel"
+  # (Optional) If your nickname is registered with NickServ.
+  nickserv_pass: ""
+
+# --- API Keys ---
+# All secret API keys and URLs are stored here.
+api_keys:
+  giphy: "YourGiphyAPIKey"
+  youtube: "YourYouTubeDataAPIKey"
+  shlink_url: "https://your-shlink-instance.com"
+  shlink_key: "YourShlinkAPIKey"
+
+# --- Module-Specific Configurations ---
 
 # --- Utility Modules ---
 shorten:
@@ -15,12 +38,16 @@ titles:
     enabled: true
     cooldown_seconds: 30.0
 sed:
-    mode: "self"  # "self" or "any"
+    mode: "self"  # "self" (default) or "any"
     history_size: 20
 youtube:
     cooldown_seconds: 15.0
 clock:
     cooldown_seconds: 10.0
+translate:
+    cooldown_seconds: 20.0
+    default_target_language: "en"
+    api_url: "https://libretranslate.com"
 
 # --- Fun & Games ---
 adventure:
@@ -42,9 +69,9 @@ hunt:
     min_hours_between_spawns: 2
     max_hours_between_spawns: 10
     allowed_channels:
-      - "#your-hunt-channel"
+        - "#your-main-channel"
     event_settings:
-        escape_chance: 0.10 # 10% chance a flock just escapes
+        escape_chance: 0.10
         min_flock_delay_minutes: 2
         max_flock_delay_minutes: 60
     animals:
@@ -52,34 +79,19 @@ hunt:
         ascii_art: " quack  >(.)__ <(.)__ =(.)__"
         hug_message: "{username} offered the duck a piece of bread. It seems content."
         hunt_message: "{username} captured the duck with a net. It will make a fine dinner."
-      - name: "cat"
-        ascii_art: "meow  /\\_/\\ ( o.o ) >^<"
-        hug_message: "{username} gave the cat a gentle pet. It's purring."
-        hunt_message: "{username} lured the cat into a carrier with a treat."
-      - name: "puppy"
-        ascii_art: "woof  (❍ᴥ❍ʋ)"
-        hug_message: "{username} gave the puppy a reassuring cuddle. It's wagging its tail!"
-        hunt_message: "{username} put a leash on the puppy. It's probably for the best."
 quest:
     allowed_channels:
         - "#your-questing-channel"
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
-        world_lore:
-        - "The world of IRCia is ancient, forged in the fires of dial-up and cooled by the winds of broadband."
-        - "They say the Great Admin created the first channel with a single, mighty !join command."
-        - "Legends speak of a time before emojis, when adventures were told in pure, unadorned text."
+    monster_spawn_chance: 0.8
+    world_lore:
+        - "The world is ancient, forged in the fires of dial-up and cooled by the winds of broadband."
     story_beats:
-        openers:
-            - "{user} enters a dark cave, seeking a {monster}."
-            - "A bounty has been posted for a {monster}. {user} accepts the challenge."
-            - "While strolling through the woods, {user} stumbles upon a {monster}."
-        actions:
-            - "{user} bravely draws their weapon and attacks the {monster}."
-            - "Thinking quickly, {user} sets a clever trap for the {monster}."
-            - "With a mighty roar, {user} charges at the {monster}."
+        openers: ["{user} enters a dark cave, seeking a {monster}."]
+        actions: ["{user} bravely draws their weapon and attacks the {monster}."]
     monsters:
-        low: # For players level 1-5
+        low:
             - name: "Giant Rat"
               min_level: 1
               max_level: 3
@@ -87,36 +99,6 @@ quest:
               xp_win_max: 30
               xp_loss_min: 5
               xp_loss_max: 10
-            - name: "Goblin Scout"
-              min_level: 2
-              max_level: 5
-              xp_win_min: 20
-              xp_win_max: 40
-              xp_loss_min: 8
-              xp_loss_max: 15
-        mid: # For players level 6-15
-            - name: "Orc Berserker"
-              min_level: 6
-              max_level: 10
-              xp_win_min: 50
-              xp_win_max: 100
-              xp_loss_min: 20
-              xp_loss_max: 40
-            - name: "Cave Troll"
-              min_level: 8
-              max_level: 14
-              xp_win_min: 80
-              xp_win_max: 150
-              xp_loss_min: 30
-              xp_loss_max: 60
-        high: # For players level 16+
-            - name: "Young Dragon"
-              min_level: 16
-              max_level: 25
-              xp_win_min: 200
-              xp_win_max: 400
-              xp_loss_min: 75
-              xp_loss_max: 150
 pron:
     cooldown_seconds: 30.0
 roadtrip:
@@ -134,15 +116,17 @@ coffee:
     beverage_limit: 2
     limit_reset_hours: 1
     limit_message: "Perhaps that is enough beverages for now, {title}."
+    force_messages:
+      - "Very well, {title}. If you insist. I shall prepare the coffee, but I must register my formal objection."
 
 # --- Social & Chat ---
 chatter:
     cooldowns:
-        animal: -1       # Set to -1 to disable
-        weather: 1800
-        tech: 900
-        food: 1200
-        greeting: 300
+        animal: -1
+        weather: -1
+        tech: -1
+        food: -1
+        greeting: -1
 flirt:
     global_cooldown: 30.0
     per_user_cooldown: 60.0

@@ -11,16 +11,18 @@ import schedule
 UTC = timezone.utc
 ROOT = Path(__file__).resolve().parent
 
-CONFIG_DIR = Path.home() / ".config" / "jeeves"
-CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+# --- New Self-Contained Path Configuration ---
+CONFIG_DIR = ROOT / "config"
+CONFIG_DIR.mkdir(exist_ok=True)
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
 STATE_PATH = CONFIG_DIR / "state.json"
-CONFIG_PATH = ROOT / "config.yaml"
+# --- End New Configuration ---
 
 def load_config():
     """Loads the YAML configuration file."""
     if not CONFIG_PATH.exists():
-        print(f"[boot] warning: config.yaml not found, using default values.", file=sys.stderr)
-        return {}
+        print(f"[boot] CRITICAL: config.yaml not found at {CONFIG_PATH}. Please create it.", file=sys.stderr)
+        sys.exit(1)
     try:
         with open(CONFIG_PATH, 'r') as f:
             return yaml.safe_load(f)
@@ -28,40 +30,10 @@ def load_config():
         print(f"[boot] error loading config.yaml: {e}", file=sys.stderr)
         return {}
 
-def load_env_files():
-    env_files = [
-        CONFIG_DIR / "jeeves.env",
-        ROOT / "jeeves.env",
-        ROOT / ".env",
-    ]
-    for env_file in env_files:
-        if env_file.exists():
-            print(f"[boot] loading environment from {env_file}", file=sys.stderr)
-            try:
-                with open(env_file) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            key, value = line.split('=', 1)
-                            if key not in os.environ:
-                                os.environ[key] = value
-            except Exception as e:
-                print(f"[boot] error loading {env_file}: {e}", file=sys.stderr)
-            break
-    else:
-        print(f"[boot] no environment file found", file=sys.stderr)
-
-load_env_files()
-
 MODULES_DIR = ROOT / "modules"
 MODULES_DIR.mkdir(exist_ok=True)
 
-def get_admin_nicks_from_env():
-    return {n.strip().lower() for n in os.getenv("JEEVES_ADMINS", "").split(",") if n.strip()}
-
 JEEVES_NAME_RE = r"(?:jeeves|jeevesbot)"
-JEEVES_MODULE_BLACKLIST = {f.strip() for f in os.getenv("JEEVES_MODULE_BLACKLIST", "").split(",") if f.strip()}
-
 
 # ----- State Manager -----
 class StateManager:
@@ -152,14 +124,15 @@ class PluginManager:
         self.modules = {}
         loaded_names = []
         
-        if JEEVES_MODULE_BLACKLIST:
-            print(f"[boot] module blacklist active: {', '.join(sorted(list(JEEVES_MODULE_BLACKLIST)))}", file=sys.stderr)
+        blacklist = self.bot.config.get("module_blacklist", [])
+        if blacklist:
+            print(f"[boot] module blacklist active: {', '.join(sorted(blacklist))}", file=sys.stderr)
 
         for py in sorted(MODULES_DIR.glob("*.py")):
             name = py.stem
             if name in ("__init__", "base"): continue
             
-            if py.name in JEEVES_MODULE_BLACKLIST:
+            if py.name in blacklist:
                 print(f"[plugins] skipping blacklisted module: {py.name}", file=sys.stderr)
                 continue
                 
@@ -171,8 +144,9 @@ class PluginManager:
                 if hasattr(mod, "setup"):
                     module_config = self.bot.config.get(name, {})
                     instance = mod.setup(self.bot, module_config)
-                    self.plugins[name] = instance
-                    loaded_names.append(name)
+                    if instance: # setup can return None to prevent loading
+                        self.plugins[name] = instance
+                        loaded_names.append(name)
             except Exception as e:
                 print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
         
@@ -183,7 +157,7 @@ class PluginManager:
         
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
-    def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
+    def __init__(self, server, port, channel, nickname, nickserv_pass, admins, config=None):
         ssl_factory = Factory(wrapper=ssl.wrap_socket)
         super().__init__([(server, port)], nickname, nickname, connect_factory=ssl_factory)
         self.server = server
@@ -191,8 +165,10 @@ class Jeeves(SingleServerIRCBot):
         self.primary_channel = channel
         self.nickname = nickname
         self.config = config or {}
+        self.nickserv_pass = nickserv_pass or ""
+        self.admins = {str(admin).strip().lower() for admin in admins}
+        
         self.JEEVES_NAME_RE = JEEVES_NAME_RE
-        self.nickserv_pass = os.getenv("JEEVES_NICKSERV_PASS", "").strip()
         self.pm = PluginManager(self)
         
         core_state = state_manager.get_state().get("core", {})
@@ -212,11 +188,8 @@ class Jeeves(SingleServerIRCBot):
             self.config = new_config
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
-                    module_config = self.config.get(name, {})
-                    # Robustness check: Ensure module_config is a dictionary
-                    if not isinstance(module_config, dict):
-                        print(f"[core] warning: config for '{name}' is not a dictionary. Passing empty config.", file=sys.stderr)
-                        module_config = {}
+                    # Pass the module-specific config, or the whole config if not found
+                    module_config = self.config.get(name, self.config)
                     instance.on_config_reload(module_config)
             return True
         except Exception as e:
@@ -237,8 +210,7 @@ class Jeeves(SingleServerIRCBot):
         except IndexError:
             return False
 
-        admin_nicks_from_env = get_admin_nicks_from_env()
-        if nick not in admin_nicks_from_env:
+        if nick not in self.admins:
             return False
 
         courtesy_state = self.get_module_state("courtesy")
@@ -376,15 +348,17 @@ class Jeeves(SingleServerIRCBot):
         t.start()
 
 def main():
-    server = os.getenv("JEEVES_SERVER", "irc.libera.chat").strip()
-    port = int(os.getenv("JEEVES_PORT", "6697").strip())
-    channel = os.getenv("JEEVES_CHANNEL", "#bots").strip()
-    nick = os.getenv("JEEVES_NICK", "JeevesBot").strip()
-    user = os.getenv("JEEVES_USER", "").strip() or None
-    passwd = os.getenv("JEEVES_PASS", "").strip() or None
-
     config = load_config()
-    bot = Jeeves(server, port, channel, nick, user, passwd, config=config)
+    conn_config = config.get("connection", {})
+    
+    server = conn_config.get("server", "irc.libera.chat")
+    port = int(conn_config.get("port", 6697))
+    channel = conn_config.get("channel", "#bots")
+    nick = conn_config.get("nick", "JeevesBot")
+    nickserv_pass = conn_config.get("nickserv_pass")
+    admins = config.get("admins", [])
+    
+    bot = Jeeves(server, port, channel, nick, nickserv_pass, admins, config=config)
     
     def on_exit(sig, frame):
         print("\n[core] shutting down...", file=sys.stderr)

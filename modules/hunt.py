@@ -14,7 +14,7 @@ def setup(bot, config):
 
 class Hunt(SimpleCommandModule):
     name = "hunt"
-    version = "1.6.0" # Advanced event logic
+    version = "1.6.1" # Config loading fix
     description = "A game of hunting or hugging randomly appearing animals."
 
     SPAWN_ANNOUNCEMENTS = [
@@ -40,7 +40,9 @@ class Hunt(SimpleCommandModule):
         self.on_config_reload(config)
 
     def on_config_reload(self, config):
-        hunt_config = config.get(self.name, {})
+        # This logic correctly handles both the full config on startup
+        # and the module-specific config on reload.
+        hunt_config = config.get(self.name, config)
 
         # Standard Spawn Timers
         self.MIN_HOURS = hunt_config.get("min_hours_between_spawns", 2)
@@ -77,6 +79,7 @@ class Hunt(SimpleCommandModule):
             else:
                  # Event is active but no spawn scheduled, start one now
                  self._start_event_spawn()
+            self._is_loaded = True
             return
 
         next_spawn_str = self.get_state("next_spawn_time")

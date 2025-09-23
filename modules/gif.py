@@ -1,6 +1,5 @@
 # modules/gif.py
-# A module for searching Giphy and returning a random, shortened GIF link.
-import os
+# A module for searching Giphy and returning a random GIF.
 import random
 import re
 import requests
@@ -9,29 +8,36 @@ from typing import Optional, Dict, Any
 from .base import SimpleCommandModule, admin_required
 
 def setup(bot, config):
-    return Gif(bot, config)
+    """Initializes the Gif module."""
+    api_key = bot.config.get("api_keys", {}).get("giphy")
+    if not api_key:
+        print("[gif] GIPHY API key not found in config.yaml. Module will not load.")
+        return None
+    return Gif(bot, config, api_key)
 
 class Gif(SimpleCommandModule):
     name = "gif"
-    version = "1.2.0" # version bumped
+    version = "1.3.0" # Final refactor fix
     description = "Searches Giphy for a GIF and posts the link."
-
-    API_KEY = os.getenv("GIPHY_API_KEY")
     
-    def __init__(self, bot, config):
-        self.COOLDOWN = config.get("cooldown", 10.0)
-        super().__init__(bot)
+    def __init__(self, bot, config, api_key):
+        """Initializes the module's state and configuration."""
+        # --- Pre-super() setup ---
+        self.API_KEY = api_key
+        self.COOLDOWN = config.get("cooldown_seconds", 10.0)
         
+        # --- super() call ---
+        super().__init__(bot)
+
+        # --- Post-super() setup ---
         self.set_state("gifs_requested", self.get_state("gifs_requested", 0))
         self.set_state("gifs_found", self.get_state("gifs_found", 0))
         self.save_state()
-
-        if not self.API_KEY:
-            self._record_error("GIPHY_API_KEY is not set.")
         
         self.http_session = self.requests_retry_session()
 
     def _register_commands(self):
+        """Registers the !gif command."""
         self.register_command(
             r"^\s*!gif\s+(.+)$", self._cmd_gif,
             name="gif", cooldown=self.COOLDOWN,
@@ -44,7 +50,9 @@ class Gif(SimpleCommandModule):
         )
 
     def _get_gif_url(self, query: str) -> Optional[str]:
+        """Fetches a GIF URL from the Giphy API."""
         self.set_state("gifs_requested", self.get_state("gifs_requested", 0) + 1)
+        self.save_state()
 
         api_url = "https://api.giphy.com/v1/gifs/search"
         params = {'api_key': self.API_KEY, 'q': query, 'limit': 25, 'rating': 'pg-13', 'lang': 'en'}
@@ -57,50 +65,47 @@ class Gif(SimpleCommandModule):
             if data and data['data']:
                 gif_obj = random.choice(data['data'])
                 self.set_state("gifs_found", self.get_state("gifs_found") + 1)
-                self.save_state() # Save state on success
+                self.save_state()
                 return gif_obj['images']['original']['url']
             
-            self.save_state() # Save state even on failure to find a gif
             return None
             
         except requests.exceptions.RequestException as e:
             self._record_error(f"Giphy API request failed for query '{query}': {e}")
-            self.save_state()
             return None
-        except (KeyError, IndexError, ValueError) as e:
-            self._record_error(f"Failed to parse Giphy response for query '{query}': {e}")
-            self.save_state()
+        except (KeyError, IndexError, ValueError):
+            self._record_error(f"Failed to parse Giphy response for query '{query}'")
             return None
 
     def _cmd_gif(self, connection, event, msg, username, match):
+        """Handles the !gif command."""
         if not self.API_KEY:
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the GIF service is not configured correctly.")
             return True
 
         query = match.group(1).strip()
         gif_url = self._get_gif_url(query)
-        title = self.bot.title_for(username)
+        
+        shorten_module = self.bot.pm.plugins.get("shorten")
+        if shorten_module and shorten_module.enabled and gif_url:
+            short_url = shorten_module._shorten_url(gif_url)
+            if short_url:
+                gif_url = short_url
 
         if gif_url:
-            final_url = gif_url
-            # Check if the shorten module is loaded and enabled
-            shorten_module = self.bot.pm.plugins.get("short")
-            if shorten_module and getattr(shorten_module, 'enabled', False):
-                short_url = shorten_module._shorten_url(gif_url)
-                if short_url:
-                    final_url = short_url
-            
-            self.safe_reply(connection, event, f"{title}, for '{query}': {final_url}")
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, for '{query}': {gif_url}")
         else:
-            self.safe_reply(connection, event, f"My apologies, {title}, I could not find a suitable GIF for '{query}'.")
+            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not find a suitable GIF for '{query}'.")
         
         return True
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
+        """Handles the !gif stats command."""
         requested = self.get_state("gifs_requested", 0)
         found = self.get_state("gifs_found", 0)
         success_rate = (found / requested * 100) if requested > 0 else 0
         
         self.safe_reply(connection, event, f"GIF stats: {found}/{requested} successful requests ({success_rate:.1f}% success rate).")
         return True
+

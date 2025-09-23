@@ -4,10 +4,12 @@ import shutil
 import argparse
 import random
 
-# This script is designed to be run from the same directory as jeeves.py
+# --- New Self-Contained Path Configuration ---
 ROOT = Path(__file__).resolve().parent
-CONFIG_DIR = Path.home() / ".config" / "jeeves"
+CONFIG_DIR = ROOT / "config"
 STATE_PATH = CONFIG_DIR / "state.json"
+# --- End New Configuration ---
+
 
 # --- Mappings for score cleanup ---
 SCORE_MAP = {
@@ -49,29 +51,28 @@ def fix_scores(state: dict):
     else:
         print("No scores needed fixing.")
 
-def start_duck_event(state: dict):
-    """Removes somber's ducks and creates a channel-wide event with randomized flocks."""
-    print("\nStarting 'Great Duck Migration' event setup...")
+def start_duck_event(state: dict, target_user: str):
+    """Removes a target user's ducks and creates a channel-wide event."""
+    print(f"\nStarting 'Great Duck Migration' event setup for user '{target_user}'...")
     MIN_FLOCK_SIZE = 20
     MAX_FLOCK_SIZE = 50
     
     hunt_module_state = state.get("modules", {}).get("hunt", {})
     hunt_scores = hunt_module_state.get("scores", {})
-    somber_scores = hunt_scores.get("somber", {})
+    user_scores = hunt_scores.get(target_user.lower(), {})
 
-    duck_count = somber_scores.pop("duck_hunted", 0)
+    duck_count = user_scores.pop("duck_hunted", 0)
 
     if duck_count == 0:
-        print("User 'somber' has no hunted ducks to release. Aborting event setup.")
+        print(f"User '{target_user}' has no hunted ducks to release. Aborting event setup.")
         return
 
-    print(f"Found {duck_count} hunted ducks for user 'somber'. Generating random flocks...")
+    print(f"Found {duck_count} hunted ducks for user '{target_user}'. Generating random flocks...")
     
     flocks = []
     remaining_ducks = duck_count
     while remaining_ducks > MIN_FLOCK_SIZE:
         flock_size = random.randint(MIN_FLOCK_SIZE, MAX_FLOCK_SIZE)
-        # Ensure the last flock isn't tiny
         if remaining_ducks - flock_size < MIN_FLOCK_SIZE:
             flocks.append(remaining_ducks)
             remaining_ducks = 0
@@ -81,44 +82,41 @@ def start_duck_event(state: dict):
 
     if not flocks:
         print(f"Not enough ducks ({duck_count}) to form any flocks. Aborting.")
-        somber_scores["duck_hunted"] = duck_count
+        user_scores["duck_hunted"] = duck_count # Put the ducks back
         return
 
     print(f"Generated {len(flocks)} flocks. Total ducks in event: {sum(flocks)}.")
     
-    # Update somber's scores in the main state object
-    hunt_scores["somber"] = somber_scores
+    hunt_scores[target_user.lower()] = user_scores
     
-    # Create the event object in the hunt module's state
     hunt_module_state["event"] = {
         "active": True,
         "name": "The Great Duck Migration",
-        "flocks": flocks, # This is now a list of sizes
+        "flocks": flocks,
         "animal_name": "duck"
     }
     
-    # Ensure the main active_animal is cleared so the event can start
     hunt_module_state["active_animal"] = None
     
-    print("Event state has been added. The next animal catch will trigger the migration.")
+    print("Event state has been added. The bot will begin the event on its next startup.")
 
 def main():
     """Main function to parse arguments and run the requested actions."""
     parser = argparse.ArgumentParser(description="Clean up Jeeves's hunt scores and optionally start a special event.")
     parser.add_argument('--fix', action='store_true', help="Run the score normalization process.")
-    parser.add_argument('--start-duck-event', action='store_true', help="Remove somber's ducks and start the Great Duck Migration event.")
+    parser.add_argument('--start-duck-event', type=str, metavar='USERNAME', help="Remove a user's ducks and start the Great Duck Migration event.")
     args = parser.parse_args()
 
     if not args.fix and not args.start_duck_event:
         parser.print_help()
-        print("\nPlease specify an action: --fix or --start-duck-event")
+        print("\nPlease specify an action: --fix or --start-duck-event <username>")
         return
 
     if not STATE_PATH.exists():
         print(f"Error: Could not find state file at {STATE_PATH}")
         return
 
-    backup_path = STATE_PATH.with_suffix(".json.bak_event")
+    backup_path = STATE_PATH.with_suffix(".json.bak_event_script")
     print(f"Backing up current state to {backup_path}...")
     shutil.copy(STATE_PATH, backup_path)
 
@@ -133,7 +131,7 @@ def main():
         fix_scores(state)
     
     if args.start_duck_event:
-        start_duck_event(state)
+        start_duck_event(state, args.start_duck_event)
 
     try:
         with open(STATE_PATH, "w") as f:

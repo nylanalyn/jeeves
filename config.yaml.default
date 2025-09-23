@@ -43,6 +43,10 @@ hunt:
     max_hours_between_spawns: 10
     allowed_channels:
       - "#your-hunt-channel"
+    event_settings:
+        escape_chance: 0.10 # 10% chance a flock just escapes
+        min_flock_delay_minutes: 2
+        max_flock_delay_minutes: 60
     animals:
       - name: "duck"
         ascii_art: " quack  >(.)__ <(.)__ =(.)__"

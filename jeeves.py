@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # jeeves.py — modular IRC butler core
 
-import os, sys, time, json, re, ssl, signal, threading, traceback, importlib.util, base64, yaml
+import os
+import sys
+import time
+import json
+import re
+import ssl
+import signal
+import threading
+import traceback
+import importlib.util
+import yaml
+import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
@@ -11,18 +22,15 @@ import schedule
 UTC = timezone.utc
 ROOT = Path(__file__).resolve().parent
 
-# --- New Self-Contained Path Configuration ---
+# --- Self-Contained Path Configuration ---
 CONFIG_DIR = ROOT / "config"
-CONFIG_DIR.mkdir(exist_ok=True)
-CONFIG_PATH = CONFIG_DIR / "config.yaml"
 STATE_PATH = CONFIG_DIR / "state.json"
-# --- End New Configuration ---
+CONFIG_PATH = CONFIG_DIR / "config.yaml"
 
 def load_config():
     """Loads the YAML configuration file."""
     if not CONFIG_PATH.exists():
-        print(f"[boot] CRITICAL: config.yaml not found at {CONFIG_PATH}. Please create it.", file=sys.stderr)
-        sys.exit(1)
+        return {}
     try:
         with open(CONFIG_PATH, 'r') as f:
             return yaml.safe_load(f)
@@ -30,12 +38,7 @@ def load_config():
         print(f"[boot] error loading config.yaml: {e}", file=sys.stderr)
         return {}
 
-MODULES_DIR = ROOT / "modules"
-MODULES_DIR.mkdir(exist_ok=True)
-
-JEEVES_NAME_RE = r"(?:jeeves|jeevesbot)"
-
-# ----- State Manager -----
+# ----- State Manager & Plugin Manager -----
 class StateManager:
     def __init__(self, path):
         self.path = path
@@ -90,7 +93,7 @@ class StateManager:
             if not self._dirty: return
             try:
                 tmp = self.path.with_suffix(".tmp")
-                tmp.write_text(json.dumps(self._state, indent=2, sort_keys=True))
+                tmp.write_text(json.dumps(self._state, indent=4))
                 tmp.replace(self.path)
                 self._dirty = False
             except Exception as e:
@@ -101,9 +104,6 @@ class StateManager:
             self._save_timer.cancel()
         self._save_now()
 
-state_manager = StateManager(STATE_PATH)
-
-# ----- Plugin Manager -----
 class PluginManager:
     def __init__(self, bot):
         self.bot = bot
@@ -124,11 +124,11 @@ class PluginManager:
         self.modules = {}
         loaded_names = []
         
-        blacklist = self.bot.config.get("module_blacklist", [])
+        blacklist = {f.strip() for f in self.bot.config.get("core", {}).get("module_blacklist", [])}
         if blacklist:
-            print(f"[boot] module blacklist active: {', '.join(sorted(blacklist))}", file=sys.stderr)
+            print(f"[boot] module blacklist active: {', '.join(sorted(list(blacklist)))}", file=sys.stderr)
 
-        for py in sorted(MODULES_DIR.glob("*.py")):
+        for py in sorted(ROOT.glob("modules/*.py")):
             name = py.stem
             if name in ("__init__", "base"): continue
             
@@ -144,20 +144,21 @@ class PluginManager:
                 if hasattr(mod, "setup"):
                     module_config = self.bot.config.get(name, {})
                     instance = mod.setup(self.bot, module_config)
-                    if instance: # setup can return None to prevent loading
+                    if instance:
                         self.plugins[name] = instance
                         loaded_names.append(name)
             except Exception as e:
                 print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
+                traceback.print_exc()
         
         for name, obj in self.plugins.items():
             if hasattr(obj, "on_load"): obj.on_load()
         
         return loaded_names
-        
+
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
-    def __init__(self, server, port, channel, nickname, nickserv_pass, admins, config=None):
+    def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
         ssl_factory = Factory(wrapper=ssl.wrap_socket)
         super().__init__([(server, port)], nickname, nickname, connect_factory=ssl_factory)
         self.server = server
@@ -165,14 +166,23 @@ class Jeeves(SingleServerIRCBot):
         self.primary_channel = channel
         self.nickname = nickname
         self.config = config or {}
-        self.nickserv_pass = nickserv_pass or ""
-        self.admins = {str(admin).strip().lower() for admin in admins}
-        
-        self.JEEVES_NAME_RE = JEEVES_NAME_RE
+        self.JEEVES_NAME_RE = self.config.get("core", {}).get("name_pattern", r"(?:jeeves|jeevesbot)")
+        self.nickserv_pass = self.config.get("connection", {}).get("nickserv_pass", "")
         self.pm = PluginManager(self)
         
-        core_state = state_manager.get_state().get("core", {})
-        self.joined_channels = set(core_state.get("joined_channels", [self.primary_channel]))
+        core_state = state_manager.get_module_state("core")
+        persisted_channels = set(core_state.get("joined_channels", []))
+        persisted_channels.add(self.primary_channel)
+        self.joined_channels = persisted_channels
+
+    def get_user_id(self, nick: str) -> str:
+        users_module = self.pm.plugins.get("users")
+        if users_module:
+            return users_module.get_user_id(nick)
+        return nick.lower()
+    
+    def get_utc_time(self) -> str:
+        return datetime.now(UTC).isoformat()
 
     def get_module_state(self, name):
         return state_manager.get_module_state(name)
@@ -181,72 +191,74 @@ class Jeeves(SingleServerIRCBot):
         state_manager.update_module_state(name, updates)
 
     def reload_config_and_notify_modules(self):
-        """Reloads config.yaml and tells modules to update themselves."""
         print("[core] Reloading configuration file...", file=sys.stderr)
         try:
             new_config = load_config()
             self.config = new_config
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
-                    # Pass the module-specific config, or the whole config if not found
                     module_config = self.config.get(name, self.config)
-                    instance.on_config_reload(module_config)
+                    if isinstance(module_config, dict):
+                        instance.on_config_reload(module_config)
+                    else:
+                         instance.on_config_reload({})
             return True
         except Exception as e:
             print(f"[core] FAILED to reload configuration: {e}", file=sys.stderr)
             return False
 
     def _update_joined_channels_state(self):
-        """Saves the current list of joined channels to the state file."""
-        core_state = state_manager.get_state().get("core", {})
-        core_state["joined_channels"] = list(self.joined_channels)
-        state_manager.update_state({"core": core_state})
+        state_manager.update_module_state("core", {"joined_channels": list(self.joined_channels)})
 
     def is_admin(self, event_source: str) -> bool:
-        """Secure admin check using nick and hostname."""
         try:
-            nick = event_source.split('!')[0].lower()
+            nick = event_source.split('!')[0]
             host = event_source.split('@')[1]
         except IndexError:
             return False
 
-        if nick not in self.admins:
+        admin_nicks = {n.strip().lower() for n in self.config.get("admins", [])}
+        if nick.lower() not in admin_nicks:
             return False
 
+        user_id = self.get_user_id(nick)
         courtesy_state = self.get_module_state("courtesy")
         admin_hostnames = courtesy_state.get("admin_hostnames", {})
 
-        if nick in admin_hostnames:
-            return admin_hostnames[nick] == host
+        if user_id in admin_hostnames:
+            return admin_hostnames[user_id] == host
         else:
-            print(f"[core] Registering new admin host for {nick}: {host}", file=sys.stderr)
-            admin_hostnames[nick] = host
+            print(f"[core] Registering new admin host for {nick} ({user_id}): {host}", file=sys.stderr)
+            admin_hostnames[user_id] = host
             self.update_module_state("courtesy", {"admin_hostnames": admin_hostnames})
             self.connection.privmsg(nick, f"For security, I have registered your hostname ({host}) for admin access. This is a one-time process.")
             return True
 
     def is_user_ignored(self, username: str) -> bool:
-        """Checks if a user is on the ignore list via the courtesy module."""
         courtesy_module = self.pm.plugins.get("courtesy")
-        if courtesy_module and hasattr(courtesy_module, "is_user_ignored"):
-            return courtesy_module.is_user_ignored(username)
+        if courtesy_module:
+            user_id = self.get_user_id(username)
+            return courtesy_module.is_user_ignored(user_id)
         return False
 
     def on_welcome(self, connection, event):
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
         
+        loaded_modules = self.pm.load_all()
+        print(f"[core] modules loaded: {', '.join(sorted(loaded_modules))}", file=sys.stderr)
+
         for channel in list(self.joined_channels):
             connection.join(channel)
             
-        loaded_modules = self.pm.load_all()
-        print(f"[core] modules loaded: {', '.join(sorted(loaded_modules))}", file=sys.stderr)
         self._ensure_scheduler_thread()
 
     def on_join(self, connection, event):
         if event.source.nick == self.connection.get_nickname():
             self.joined_channels.add(event.target)
             self._update_joined_channels_state()
+        else:
+            self.get_user_id(event.source.nick)
 
     def on_part(self, connection, event):
         if event.source.nick == self.connection.get_nickname():
@@ -266,35 +278,30 @@ class Jeeves(SingleServerIRCBot):
 
     def on_nick(self, connection, event):
         old_nick, new_nick = event.source.nick, event.target
-        for name, obj in self.pm.plugins.items():
-            if hasattr(obj, "on_nick"):
-                obj.on_nick(connection, event, old_nick, new_nick)
+        users_module = self.pm.plugins.get("users")
+        if users_module:
+            users_module.on_nick(connection, event, old_nick, new_nick)
 
     def title_for(self, nick):
-        """
-        Determines the correct title for a user.
-        Returns "Sir" or "Madam" if set, otherwise defaults to the user's nickname.
-        """
         try:
             courtesy = self.pm.plugins.get("courtesy")
-            if courtesy and hasattr(courtesy, "_get_user_profile"):
-                profile = courtesy._get_user_profile(nick)
+            if courtesy:
+                user_id = self.get_user_id(nick)
+                profile = courtesy._get_user_profile(user_id)
                 if profile and "title" in profile:
                     title = profile.get("title")
-                    if title == "sir":
-                        return "Sir"
-                    if title == "madam":
-                        return "Madam"
+                    if title == "sir": return "Sir"
+                    if title == "madam": return "Madam"
         except Exception:
             pass
-        return nick # Default to the user's nickname in all other cases
+        return nick
 
     def pronouns_for(self, nick):
-        """Gets a user's preferred pronouns, defaulting to 'they/them'."""
         try:
             courtesy = self.pm.plugins.get("courtesy")
-            if courtesy and hasattr(courtesy, "_get_user_profile"):
-                profile = courtesy._get_user_profile(nick)
+            if courtesy:
+                user_id = self.get_user_id(nick)
+                profile = courtesy._get_user_profile(user_id)
                 if profile and "pronouns" in profile:
                     return profile["pronouns"]
         except Exception: pass
@@ -302,11 +309,12 @@ class Jeeves(SingleServerIRCBot):
 
     def on_pubmsg(self, connection, event):
         msg, username = event.arguments[0], event.source.nick
+        
+        self.get_user_id(username)
 
         if self.is_user_ignored(username) and not msg.strip().lower().startswith("!unignore"):
             return
 
-        # --- Command Loop ---
         command_handled = False
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "_dispatch_commands"):
@@ -316,11 +324,9 @@ class Jeeves(SingleServerIRCBot):
                         break 
                 except Exception as e:
                     print(f"[plugins] command error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
-
         if command_handled:
             return
 
-        # --- Ambient Message Loop ---
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "on_ambient_message"):
                 try:
@@ -330,7 +336,6 @@ class Jeeves(SingleServerIRCBot):
                     print(f"[plugins] ambient error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
                         
     def on_privmsg(self, connection, event):
-        """Handles private messages by dispatching them to modules."""
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "on_privmsg"):
                 try:
@@ -347,22 +352,62 @@ class Jeeves(SingleServerIRCBot):
         t = threading.Thread(target=loop, daemon=True, name="jeeves-scheduler")
         t.start()
 
+# --- Global State Manager Instance ---
+state_manager = None
+
 def main():
+    CONFIG_DEFAULT_PATH = ROOT / "config.yaml.default"
+    
+    config_created = False
+    if not CONFIG_PATH.exists():
+        print("[boot] config.yaml not found.", file=sys.stderr)
+        if CONFIG_DEFAULT_PATH.exists():
+            print(f"[boot] Creating default config from {CONFIG_DEFAULT_PATH}...", file=sys.stderr)
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copy(CONFIG_DEFAULT_PATH, CONFIG_PATH)
+            config_created = True
+        else:
+            print(f"[boot] ERROR: Default config {CONFIG_DEFAULT_PATH} not found. Cannot proceed.", file=sys.stderr)
+            sys.exit(1)
+            
+    state_created = False
+    if not STATE_PATH.exists():
+        print("[boot] state.json not found. Creating empty state file...", file=sys.stderr)
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        STATE_PATH.write_text('{}', encoding='utf-8')
+        state_created = True
+
+    if config_created or state_created:
+        print("\n--- FIRST RUN SETUP COMPLETE ---", file=sys.stderr)
+        print(f"A default configuration has been created at: {CONFIG_PATH}", file=sys.stderr)
+        print("Please edit this file with your IRC server details and any necessary API keys.", file=sys.stderr)
+        print("Jeeves will now exit.", file=sys.stderr)
+        sys.exit(0)
+    
+    global state_manager
+    state_manager = StateManager(STATE_PATH)
+
     config = load_config()
-    conn_config = config.get("connection", {})
+    irc_config = config.get("connection", {})
     
-    server = conn_config.get("server", "irc.libera.chat")
-    port = int(conn_config.get("port", 6697))
-    channel = conn_config.get("channel", "#bots")
-    nick = conn_config.get("nick", "JeevesBot")
-    nickserv_pass = conn_config.get("nickserv_pass")
-    admins = config.get("admins", [])
-    
-    bot = Jeeves(server, port, channel, nick, nickserv_pass, admins, config=config)
+    server = irc_config.get("server", "irc.libera.chat")
+    port = irc_config.get("port", 6697)
+    channel = irc_config.get("channel", "#bots")
+    nick = irc_config.get("nick", "JeevesBot")
+
+    print("\n" + "="*40, file=sys.stderr)
+    print(f"[boot] Preparing to connect...", file=sys.stderr)
+    print(f"       Server:   {server}:{port}", file=sys.stderr)
+    print(f"       Nickname: {nick}", file=sys.stderr)
+    print(f"       Channel:  {channel}", file=sys.stderr)
+    print("="*40 + "\n", file=sys.stderr)
+
+    bot = Jeeves(server, port, channel, nick, config=config)
     
     def on_exit(sig, frame):
         print("\n[core] shutting down...", file=sys.stderr)
-        state_manager.force_save()
+        if state_manager:
+            state_manager.force_save()
         if bot and bot.pm:
             bot.pm.unload_all()
         sys.exit(0)
@@ -370,6 +415,7 @@ def main():
     signal.signal(signal.SIGINT, on_exit)
     signal.signal(signal.SIGTERM, on_exit)
 
+    print("[boot] Starting bot...", file=sys.stderr)
     bot.start()
 
 if __name__ == "__main__":

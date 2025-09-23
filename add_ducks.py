@@ -2,30 +2,26 @@ import json
 from pathlib import Path
 import shutil
 
-# --- New Self-Contained Path Configuration ---
+# This script is designed to be run from the same directory as jeeves.py
 ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = ROOT / "config"
 STATE_PATH = CONFIG_DIR / "state.json"
-# --- End New Configuration ---
 
 # --- Configuration ---
-# Easily change these values to test with different users or amounts.
-TARGET_USER = "nullveil"
+TARGET_USER_NICK = "nullveil"
 DUCKS_TO_ADD = 200
-SCORE_KEY = "duck_hunted"  # This is the canonical, correct key
+SCORE_KEY = "duck_hunted"
 
 def main():
-    """Main function to add test ducks to the state file."""
+    """Main function to add test ducks to the state file for a specific user."""
     if not STATE_PATH.exists():
         print(f"Error: Could not find state file at {STATE_PATH}")
         return
 
-    # 1. Create a backup for safety
-    backup_path = STATE_PATH.with_suffix(".json.bak_ducks")
+    backup_path = STATE_PATH.with_suffix(".json.bak_ducks_uuid")
     print(f"Backing up current state to {backup_path}...")
     shutil.copy(STATE_PATH, backup_path)
 
-    # 2. Load the state data
     try:
         with open(STATE_PATH, "r") as f:
             state = json.load(f)
@@ -33,19 +29,26 @@ def main():
         print(f"Error: Could not read state file. It may be corrupt. {e}")
         return
 
-    print(f"Adding {DUCKS_TO_ADD} '{SCORE_KEY}' to user '{TARGET_USER}'...")
+    # --- New UUID-aware logic ---
+    users_module_state = state.get("modules", {}).get("users", {})
+    nick_map = users_module_state.get("nick_map", {})
+    
+    target_user_id = nick_map.get(TARGET_USER_NICK.lower())
+    if not target_user_id:
+        print(f"Error: Could not find a persistent user ID for the nickname '{TARGET_USER_NICK}'.")
+        print("Please ensure this user has spoken in the channel at least once since the UUID migration.")
+        return
+    # --- End new logic ---
 
-    # 3. Navigate and update the scores
-    # Use .get() with default values to safely create nested dictionaries if they don't exist
+    print(f"Adding {DUCKS_TO_ADD} '{SCORE_KEY}' to user '{TARGET_USER_NICK}' (ID: {target_user_id})...")
+
     modules_state = state.setdefault("modules", {})
     hunt_state = modules_state.setdefault("hunt", {})
     scores_state = hunt_state.setdefault("scores", {})
-    user_scores = scores_state.setdefault(TARGET_USER.lower(), {})
+    user_scores = scores_state.setdefault(target_user_id, {}) # Use the UUID as the key
 
-    # Set or overwrite the duck count for the user
-    user_scores[SCORE_KEY] = DUCKS_TO_ADD
+    user_scores[SCORE_KEY] = user_scores.get(SCORE_KEY, 0) + DUCKS_TO_ADD
 
-    # 4. Write the modified data back to the state file
     try:
         with open(STATE_PATH, "w") as f:
             json.dump(state, f, indent=4)

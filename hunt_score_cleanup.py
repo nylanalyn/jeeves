@@ -4,12 +4,10 @@ import shutil
 import argparse
 import random
 
-# --- New Self-Contained Path Configuration ---
+# This script is designed to be run from the same directory as jeeves.py
 ROOT = Path(__file__).resolve().parent
 CONFIG_DIR = ROOT / "config"
 STATE_PATH = CONFIG_DIR / "state.json"
-# --- End New Configuration ---
-
 
 # --- Mappings for score cleanup ---
 SCORE_MAP = {
@@ -32,18 +30,19 @@ def fix_scores(state: dict):
 
     print("\nStarting score cleanup...")
     users_fixed = 0
-    for username, old_scores in hunt_scores.items():
+    # In the new system, hunt_scores is keyed by UUID
+    for user_id, old_scores in hunt_scores.items():
         if not isinstance(old_scores, dict): continue
         new_scores = {}
         fixed_this_user = False
         for old_key, count in old_scores.items():
             canonical_key = normalize_key(old_key)
             if old_key != canonical_key:
-                print(f"  - User '{username}': Normalizing '{old_key}' -> '{canonical_key}'")
+                print(f"  - User ID '{user_id}': Normalizing '{old_key}' -> '{canonical_key}'")
                 fixed_this_user = True
             new_scores[canonical_key] = new_scores.get(canonical_key, 0) + count
         if fixed_this_user:
-            hunt_scores[username] = new_scores
+            hunt_scores[user_id] = new_scores
             users_fixed += 1
     
     if users_fixed > 0:
@@ -54,12 +53,24 @@ def fix_scores(state: dict):
 def start_duck_event(state: dict, target_user: str):
     """Removes a target user's ducks and creates a channel-wide event."""
     print(f"\nStarting 'Great Duck Migration' event setup for user '{target_user}'...")
+    
+    # --- New UUID-aware logic ---
+    users_module_state = state.get("modules", {}).get("users", {})
+    nick_map = users_module_state.get("nick_map", {})
+    
+    target_user_id = nick_map.get(target_user.lower())
+    if not target_user_id:
+        print(f"Error: Could not find a persistent user ID for the nickname '{target_user}'. Aborting.")
+        return
+    print(f"Found persistent ID for '{target_user}': {target_user_id}")
+    # --- End new logic ---
+
     MIN_FLOCK_SIZE = 20
     MAX_FLOCK_SIZE = 50
     
     hunt_module_state = state.get("modules", {}).get("hunt", {})
     hunt_scores = hunt_module_state.get("scores", {})
-    user_scores = hunt_scores.get(target_user.lower(), {})
+    user_scores = hunt_scores.get(target_user_id, {}) # Use the UUID to get scores
 
     duck_count = user_scores.pop("duck_hunted", 0)
 
@@ -82,12 +93,12 @@ def start_duck_event(state: dict, target_user: str):
 
     if not flocks:
         print(f"Not enough ducks ({duck_count}) to form any flocks. Aborting.")
-        user_scores["duck_hunted"] = duck_count # Put the ducks back
+        user_scores["duck_hunted"] = duck_count
         return
 
     print(f"Generated {len(flocks)} flocks. Total ducks in event: {sum(flocks)}.")
     
-    hunt_scores[target_user.lower()] = user_scores
+    hunt_scores[target_user_id] = user_scores
     
     hunt_module_state["event"] = {
         "active": True,
@@ -116,7 +127,7 @@ def main():
         print(f"Error: Could not find state file at {STATE_PATH}")
         return
 
-    backup_path = STATE_PATH.with_suffix(".json.bak_event_script")
+    backup_path = STATE_PATH.with_suffix(".json.bak_event_uuid")
     print(f"Backing up current state to {backup_path}...")
     shutil.copy(STATE_PATH, backup_path)
 

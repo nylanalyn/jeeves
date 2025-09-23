@@ -13,7 +13,7 @@ def setup(bot, config):
 
 class Coffee(SimpleCommandModule):
     name = "coffee"
-    version = "1.2.1" # Version bump for bugfix
+    version = "2.1.0" # Robust config loading
     description = "Serves a beverage appropriate to the user's local time."
 
     COFFEE_DRINKS = [
@@ -31,45 +31,34 @@ class Coffee(SimpleCommandModule):
     ]
 
     def __init__(self, bot, config):
-        # --- Pre-super() setup ---
-        # This is where we define attributes needed by _register_commands,
-        # which is called by the super().__init__() method.
+        # Config must be loaded before super() is called.
         self.on_config_reload(config)
-        self.tf = TimezoneFinder()
-
-        # --- super() call ---
-        # Now that COOLDOWN is set, we can safely initialize the base class.
         super().__init__(bot)
-
-        # --- Post-super() setup ---
-        # Initialize the module's state.
+        
+        self.tf = TimezoneFinder()
         self.set_state("user_beverage_counts", self.get_state("user_beverage_counts", {}))
-        self.save_state()
 
     def on_config_reload(self, config):
-        self.COOLDOWN = config.get("cooldown_seconds", 10.0)
-        self.beverage_limit = config.get("beverage_limit", 2)
-        self.limit_reset_hours = config.get("limit_reset_hours", 1)
-        self.limit_message = config.get("limit_message", "Perhaps that is enough beverages for now, {title}.")
-        self.FORCE_MESSAGES = config.get(
-            "force_messages",
-            [
-                "Very well, {title}. Against my better judgment, one coffee, served with a side of concern for your circadian rhythm.",
-                "As you insist, {title}. I shall prepare the coffee, but please note that I am noting this under 'questionable life choices'.",
-                "Fine. One coffee. But I shall not be held responsible for the inevitable existential dread at 3 AM."
-            ]
-        )
+        # This robust pattern handles both startup and live reloads.
+        coffee_config = config.get(self.name, config)
+        
+        self.COOLDOWN = coffee_config.get("cooldown_seconds", 10.0)
+        self.beverage_limit = coffee_config.get("beverage_limit", 2)
+        self.limit_reset_hours = coffee_config.get("limit_reset_hours", 1)
+        self.limit_message = coffee_config.get("limit_message", "Perhaps that is enough beverages for now, {title}.")
+        self.force_messages = coffee_config.get("force_messages", ["Very well, {title}. If you insist."])
+
 
     def _register_commands(self):
-        self.register_command(r"^\s*!coffee(?:\s+(--force))?\s*$", self._cmd_coffee,
+        self.register_command(r"^\s*!coffee(?:\s+--force)?\s*$", self._cmd_coffee,
                               name="coffee",
-                              description="Request a beverage. Use --force to insist on coffee.",
+                              description="Request a beverage. Use --force to insist.",
                               cooldown=self.COOLDOWN)
 
-    def _get_user_local_hour(self, username: str) -> int:
+    def _get_user_local_hour(self, user_id: str) -> int:
         """Determines the user's local hour, falling back to server UTC hour."""
         user_locations = self.bot.get_module_state("weather").get("user_locations", {})
-        user_loc = user_locations.get(username.lower())
+        user_loc = user_locations.get(user_id)
 
         if user_loc and 'lat' in user_loc and 'lon' in user_loc:
             tz_name = self.tf.timezone_at(lng=float(user_loc['lon']), lat=float(user_loc['lat']))
@@ -84,46 +73,44 @@ class Coffee(SimpleCommandModule):
 
     def _cmd_coffee(self, connection, event, msg, username, match):
         title = self.bot.title_for(username)
-        user_key = username.lower()
-        is_forced = match.group(1) is not None
+        user_id = self.bot.get_user_id(username)
+        force_flag = "--force" in msg
         
-        # Check user's beverage limit
         user_counts = self.get_state("user_beverage_counts", {})
-        user_data = user_counts.get(user_key, {"count": 0, "timestamp": 0})
+        user_data = user_counts.get(user_id, {"count": 0, "timestamp": 0})
         
-        if time.time() - user_data.get("timestamp", 0) > self.limit_reset_hours * 3600:
+        if time.time() - user_data["timestamp"] > self.limit_reset_hours * 3600:
             user_data = {"count": 0, "timestamp": 0}
 
-        if user_data.get("count", 0) >= self.beverage_limit:
+        if user_data["count"] >= self.beverage_limit:
             self.safe_reply(connection, event, self.limit_message.format(title=title))
             return True
 
-        local_hour = self._get_user_local_hour(username)
-
+        local_hour = self._get_user_local_hour(user_id)
         response = ""
-        # The logic for serving a drink
-        if 5 <= local_hour < 12: # Morning
+
+        if 5 <= local_hour < 12:
             drink = random.choice(self.COFFEE_DRINKS)
             response = f"At once, {title}. I have prepared {drink} for you."
-        elif is_forced: # User insists on coffee
-            drink = random.choice(self.COFFEE_DRINKS)
-            tantrum = random.choice(self.FORCE_MESSAGES).format(title=title)
-            response = f"{tantrum} I have prepared {drink}."
-        elif 12 <= local_hour < 17: # Afternoon
-            drink = random.choice(self.TEA_DRINKS)
-            response = f"It is getting a little late for coffee, {title}. Might I suggest {drink} instead?"
-        else: # Evening/Night
-            drink = random.choice(self.EVENING_DRINKS)
-            response = f"{title}, I do worry about your sleep schedule. Perhaps {drink} would be more suitable at this hour."
+        elif 12 <= local_hour < 17:
+            if force_flag:
+                response = f"{random.choice(self.force_messages).format(title=title)} I shall prepare {random.choice(self.COFFEE_DRINKS)}."
+            else:
+                drink = random.choice(self.TEA_DRINKS)
+                response = f"It is getting a little late for coffee, {title}. Might I suggest {drink} instead?"
+        else:
+            if force_flag:
+                response = f"{random.choice(self.force_messages).format(title=title)} I shall prepare {random.choice(self.COFFEE_DRINKS)}."
+            else:
+                drink = random.choice(self.EVENING_DRINKS)
+                response = f"{title}, I do worry about your sleep schedule. Perhaps {drink} would be more suitable."
 
         self.safe_reply(connection, event, response)
-
-        # Update and save the user's beverage count
-        user_data["count"] = user_data.get("count", 0) + 1
+        
+        user_data["count"] += 1
         user_data["timestamp"] = time.time()
-        user_counts[user_key] = user_data
+        user_counts[user_id] = user_data
         self.set_state("user_beverage_counts", user_counts)
         self.save_state()
-
         return True
 

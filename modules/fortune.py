@@ -3,7 +3,6 @@
 import re
 import random
 import os
-import functools
 import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -14,43 +13,38 @@ def setup(bot, config):
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
-    version = "1.3.0"
+    version = "2.0.1" # Initialization fix
     description = "Provides fortunes from a fortune cookie."
     
     FORTUNE_DIR = Path(__file__).parent.parent / "fortunes"
     CATEGORIES = ["spooky", "happy", "sad", "silly"]
     
     def __init__(self, bot, config):
+        self.on_config_reload(config)
         super().__init__(bot)
-        self.COOLDOWN_SECONDS = config.get("cooldown_seconds", 10.0)
-        self.set_state("fortunes_given", self.get_state("fortunes_given", 0))
+        
         self.set_state("last_fortune_time", self.get_state("last_fortune_time", {}))
         self.save_state()
         self._fortunes = {}
-        self._last_reload = 0
         self._load_all_fortunes()
+
+    def on_config_reload(self, config):
+        fortune_config = config.get(self.name, config)
+        self.COOLDOWN_SECONDS = fortune_config.get("cooldown_seconds", 10.0)
 
     def _register_commands(self):
         self.register_command(r"^\s*!fortune(?:\s+(\w+))?\s*$", self._cmd_fortune, 
                               name="fortune", description="Get a fortune. Use !fortune [category] for specific fortunes.")
-        self.register_command(r"^\s*!fortune\s+stats\s*$", self._cmd_stats,
-                              name="fortune stats", admin_only=True, description="Show fortune statistics.")
         self.register_command(r"^\s*!fortune\s+reload\s*$", self._cmd_reload,
                               name="fortune reload", admin_only=True, description="Reload fortune files.")
     
     def _cmd_fortune(self, connection, event, msg, username, match):
-        if not self._can_give_fortune(username):
+        user_id = self.bot.get_user_id(username)
+        if not self._can_give_fortune(user_id):
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, please wait a moment before requesting another fortune.")
             return True
         category = match.group(1).lower() if match.group(1) else None
-        self._give_fortune(connection, event, username, category)
-        return True
-
-    @admin_required
-    def _cmd_stats(self, connection, event, msg, username, match):
-        total_given = self.get_state("fortunes_given", 0)
-        available = sum(len(fortunes) for fortunes in self._fortunes.values())
-        self.safe_reply(connection, event, f"Fortune stats: {total_given} fortunes given, {available} available.")
+        self._give_fortune(connection, event, username, user_id, category)
         return True
 
     @admin_required
@@ -61,20 +55,21 @@ class Fortune(SimpleCommandModule):
         return True
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
-        if self._can_give_fortune(username) and self.is_mentioned(msg):
+        user_id = self.bot.get_user_id(username)
+        if self._can_give_fortune(user_id) and self.is_mentioned(msg):
             category = self._extract_category_from_message(msg)
             if category or re.search(r"\bfortune", msg, re.IGNORECASE):
-                self._give_fortune(connection, event, username, category)
+                self._give_fortune(connection, event, username, user_id, category)
                 return True
         return False
 
-    def _give_fortune(self, connection, event, username, category):
+    def _give_fortune(self, connection, event, username, user_id, category):
         fortune_text, actual_category = self._get_fortune(category)
         if actual_category == "error":
-            self.safe_reply(connection, event, fortune_text)
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {fortune_text}")
             return
         response = self._format_fortune_response(username, fortune_text, actual_category)
-        self._mark_fortune_given(username)
+        self._mark_fortune_given(user_id)
         self.safe_reply(connection, event, response)
 
     def _load_all_fortunes(self):
@@ -85,50 +80,37 @@ class Fortune(SimpleCommandModule):
             if fortune_file.exists():
                 try:
                     content = fortune_file.read_text(encoding='utf-8').strip()
-                    if '\n%\n' in content:
-                        fortunes = [f.strip() for f in content.split('\n%\n') if f.strip()]
-                    else:
-                        fortunes = [f.strip() for f in content.split('\n\n') if f.strip()]
+                    fortunes = [f.strip() for f in re.split(r'\n%\n|\n\n', content) if f.strip()]
                     self._fortunes[category] = fortunes
                 except Exception:
                     self._fortunes[category] = []
-        self._last_reload = os.path.getmtime(self.FORTUNE_DIR) if self.FORTUNE_DIR.exists() else 0
 
-    def _reload_if_needed(self):
-        if not self.FORTUNE_DIR.exists(): return
-        try:
-            if os.path.getmtime(self.FORTUNE_DIR) > self._last_reload:
-                self._load_all_fortunes()
-        except OSError: pass
-
-    def _can_give_fortune(self, username: str) -> bool:
+    def _can_give_fortune(self, user_id: str) -> bool:
         if self.COOLDOWN_SECONDS <= 0: return True
         now = time.time()
         last_times = self.get_state("last_fortune_time", {})
-        return now - last_times.get(username.lower(), 0) >= self.COOLDOWN_SECONDS
+        return now - last_times.get(user_id, 0) >= self.COOLDOWN_SECONDS
 
-    def _mark_fortune_given(self, username: str):
+    def _mark_fortune_given(self, user_id: str):
         last_times = self.get_state("last_fortune_time", {})
-        last_times[username.lower()] = time.time()
+        last_times[user_id] = time.time()
         self.set_state("last_fortune_time", last_times)
-        self.set_state("fortunes_given", self.get_state("fortunes_given", 0) + 1)
         self.save_state()
 
     def _get_fortune(self, category: Optional[str] = None) -> Tuple[str, str]:
-        self._reload_if_needed()
+        all_fortunes = [(fortune, cat) for cat, fortunes in self._fortunes.items() for fortune in fortunes]
         if not category:
-            all_fortunes = [(fortune, cat) for cat, fortunes in self._fortunes.items() for fortune in fortunes]
             if not all_fortunes:
                 return "I'm afraid the fortune crystal ball is clouded today.", "error"
             return random.choice(all_fortunes)
         
         category = category.lower()
         if category not in self.CATEGORIES:
-            return f"I'm not familiar with {category} fortunes. Available categories: {', '.join(self.CATEGORIES)}.", "error"
+            return f"I'm not familiar with '{category}' fortunes. Categories: {', '.join(self.CATEGORIES)}.", "error"
         
         fortunes = self._fortunes.get(category, [])
         if not fortunes:
-            return f"I'm afraid I have no {category} fortunes available at the moment.", "error"
+            return f"I have no {category} fortunes available at the moment.", "error"
         
         return random.choice(fortunes), category
 

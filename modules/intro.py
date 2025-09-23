@@ -10,15 +10,14 @@ def setup(bot, config):
 class Intro(SimpleCommandModule):
     """Handles the one-time !intro command."""
     name = "intro"
-    version = "1.1.0"
+    version = "2.0.0" # UUID Refactor
     description = "Provides a one-time introduction for new users."
 
     def __init__(self, bot, config):
         """Initializes the module's state and registers commands."""
         super().__init__(bot)
-        self.set_state("users_introduced", self.get_state("users_introduced", []))
+        self.set_state("users_introduced", self.get_state("users_introduced", [])) # List of user_ids
         self.save_state()
-        self._register_commands()
 
     def _register_commands(self):
         """Registers the !intro command."""
@@ -30,12 +29,12 @@ class Intro(SimpleCommandModule):
 
     def _cmd_intro(self, connection, event, msg, username, match):
         """Handles the !intro command logic."""
+        user_id = self.bot.get_user_id(username)
         introduced_users = self.get_state("users_introduced", [])
-        username_lower = username.lower()
         is_admin = self.bot.is_admin(event.source)
 
-        if username_lower in introduced_users and not is_admin:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but the introduction is intended for newcomers.")
+        if user_id in introduced_users and not is_admin:
+            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but the introduction is for newcomers.")
             return True
 
         intro_lines = [
@@ -46,19 +45,15 @@ class Intro(SimpleCommandModule):
         ]
         
         if is_admin:
-            # For admins, post publicly in the channel for demonstration.
             for line in intro_lines:
                 self.safe_reply(connection, event, line)
         else:
-            # For regular users, send the message privately.
             for line in intro_lines:
                 self.safe_privmsg(username, line)
-            # And send a confirmation to the channel.
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent you my introduction privately.")
 
-        # Update state for non-admins to prevent reuse.
-        if not is_admin and username_lower not in introduced_users:
-            introduced_users.append(username_lower)
+        if not is_admin and user_id not in introduced_users:
+            introduced_users.append(user_id)
             self.set_state("users_introduced", introduced_users)
             self.save_state()
 

@@ -12,11 +12,10 @@ def setup(bot, config):
 
 class Clock(SimpleCommandModule):
     name = "clock"
-    version = "2.0.1" # Initialization fix
+    version = "2.0.2" # State fallback fix
     description = "Provides the local time for users based on their set location."
 
     def __init__(self, bot, config):
-        # Load config before super() to ensure COOLDOWN is set.
         self.on_config_reload(config)
         super().__init__(bot)
         
@@ -53,8 +52,10 @@ class Clock(SimpleCommandModule):
         user_loc = user_locations.get(user_id)
 
         if user_loc:
+            # --- Defensive check for legacy data ---
+            location_name = user_loc.get('short_name') or user_loc.get('display_name') or 'your location'
             time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'])
-            location_name = user_loc.get('short_name', 'your location')
+            
             if time_str:
                 self.safe_reply(connection, event, f"For {self.bot.title_for(username)}, the time in {location_name} is {time_str}.")
             else:
@@ -82,8 +83,9 @@ class Clock(SimpleCommandModule):
             user_locations = self.bot.get_module_state("weather").get("user_locations", {})
             target_user_loc = user_locations.get(target_user_id)
             if target_user_loc:
+                # --- Defensive check for legacy data ---
+                location_name = target_user_loc.get('short_name') or target_user_loc.get('display_name') or 'their location'
                 time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'])
-                location_name = target_user_loc.get('short_name', 'their location')
                 if time_str:
                     self.safe_reply(connection, event, f"The time for {self.bot.title_for(query)} in {location_name} is {time_str}.")
                 else:

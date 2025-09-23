@@ -11,12 +11,12 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "2.0.0" # UUID Refactor
+    version = "2.0.1" # State fallback fix
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        self.set_state("user_locations", self.get_state("user_locations", {})) # Keyed by user_id
+        self.set_state("user_locations", self.get_state("user_locations", {}))
         self.save_state()
         
         self.http_session = self.requests_retry_session()
@@ -84,9 +84,12 @@ class Weather(SimpleCommandModule):
             return f"My apologies, {self.bot.title_for(requester)}, I could not format the weather report."
 
     def _reply_with_weather(self, connection, event, location_obj, requester, target_user=None):
+        # --- Defensive check for legacy data ---
+        location_name = location_obj.get('short_name') or location_obj.get('display_name') or 'their location'
+        
         weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
         if weather_data:
-            report = self._format_weather_report(weather_data, location_obj["short_name"], requester, target_user)
+            report = self._format_weather_report(weather_data, location_name, requester, target_user)
             self.safe_reply(connection, event, report)
         else:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(requester)}, I could not fetch the weather.")
@@ -103,7 +106,7 @@ class Weather(SimpleCommandModule):
         user_id = self.bot.get_user_id(username)
         
         user_locations = self.get_state("user_locations")
-        user_locations[user_id] = {"lat": lat, "lon": lon, "short_name": short_name}
+        user_locations[user_id] = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name")}
         self.set_state("user_locations", user_locations)
         self.save_state()
         
@@ -122,18 +125,18 @@ class Weather(SimpleCommandModule):
     def _cmd_weather_other(self, connection, event, msg, username, match):
         query = match.group(1).strip()
         
-        # Check if query is a known user
         users_module = self.bot.pm.plugins.get("users")
+        target_user_id = None
         if users_module:
             nick_map = users_module.get_state("nick_map", {})
             target_user_id = nick_map.get(query.lower())
-            if target_user_id:
-                location_obj = self.get_state("user_locations", {}).get(target_user_id)
-                if location_obj:
-                    self._reply_with_weather(connection, event, location_obj, username, target_user=query)
-                    return True
+            
+        if target_user_id:
+            location_obj = self.get_state("user_locations", {}).get(target_user_id)
+            if location_obj:
+                self._reply_with_weather(connection, event, location_obj, username, target_user=query)
+                return True
 
-        # Fallback to geocoding
         geo_data_tuple = self._get_geocode_data(query)
         if not geo_data_tuple:
             self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
@@ -141,7 +144,7 @@ class Weather(SimpleCommandModule):
         
         lat, lon, geo_data = geo_data_tuple
         short_name = self._format_location_name(geo_data)
-        location_obj = {"lat": lat, "lon": lon, "short_name": short_name}
+        location_obj = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name")}
         self._reply_with_weather(connection, event, location_obj, username)
         return True
 

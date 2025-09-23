@@ -14,7 +14,7 @@ def setup(bot, config):
 
 class Hunt(SimpleCommandModule):
     name = "hunt"
-    version = "1.3.2"
+    version = "1.4.3"
     description = "A game of hunting or hugging randomly appearing animals."
 
     SPAWN_ANNOUNCEMENTS = [
@@ -22,6 +22,12 @@ class Hunt(SimpleCommandModule):
         "I do apologize for the intrusion, but an animal has made its way inside.",
         "Pardon me, but it seems we have a small, uninvited guest.",
         "Attention, please. A wild animal has been spotted in the vicinity."
+    ]
+    RELEASE_MESSAGES = [
+        "Very well, {title}. I shall open the doors. Do try to be more decisive in the future.",
+        "As you wish, {title}. The {animal_name} has been... liberated. I shall fetch a dustpan.",
+        "If you insist, {title}. The {animal_name} is now free to roam the premises. Again.",
+        "Releasing the {animal_name}, {title}. I trust this chaotic cycle will not become a habit."
     ]
 
     def __init__(self, bot, config):
@@ -33,12 +39,18 @@ class Hunt(SimpleCommandModule):
         self.on_config_reload(config)
 
     def on_config_reload(self, config):
-        self.MIN_HOURS = config.get("min_hours_between_spawns", 2)
-        self.MAX_HOURS = config.get("max_hours_between_spawns", 10)
-        self.ANIMALS = config.get("animals", [])
-        self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
+        # This function is now defensive. It can handle being passed the entire config
+        # object (on startup) or just this module's section (on !config reload).
+        if "animals" in config and "min_hours_between_spawns" in config:
+            hunt_config = config
+        else:
+            hunt_config = config.get(self.name, {})
 
-        # If config changes, reschedule if necessary
+        self.MIN_HOURS = hunt_config.get("min_hours_between_spawns", 2)
+        self.MAX_HOURS = hunt_config.get("max_hours_between_spawns", 10)
+        self.ANIMALS = hunt_config.get("animals", [])
+        self.ALLOWED_CHANNELS = hunt_config.get("allowed_channels", [])
+
         if self._is_loaded:
              self._schedule_next_spawn()
 
@@ -53,8 +65,9 @@ class Hunt(SimpleCommandModule):
                 self._spawn_animal()
             else:
                 remaining_seconds = (next_spawn_time - now).total_seconds()
-                schedule.every(remaining_seconds).seconds.do(self._spawn_animal).tag(self.name, "spawn")
-        else:
+                if remaining_seconds > 0:
+                    schedule.every(remaining_seconds).seconds.do(self._spawn_animal).tag(self.name, "spawn")
+        elif not self.get_state("active_animal"): # Only schedule if no animal is active
             self._schedule_next_spawn()
         self._is_loaded = True
 
@@ -65,6 +78,7 @@ class Hunt(SimpleCommandModule):
     def _register_commands(self):
         self.register_command(r"^\s*!hug\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
         self.register_command(r"^\s*!hunt\s*$", self._cmd_hunt, name="hunt", description="Capture the animal.")
+        self.register_command(r"^\s*!release\s+(hug|hunt)\s*$", self._cmd_release, name="release", description="Release a previously caught or befriended animal.")
         self.register_command(r"^\s*!hunt\s+score\s*$", self._cmd_score, name="hunt score", description="Check your hunt/hug score.")
         self.register_command(r"^\s*!hunt\s+top\s*$", self._cmd_top, name="hunt top", description="Show the top 5 most active members.")
         self.register_command(r"^\s*!hunt\s+spawn\s*$", self._cmd_spawn, name="hunt spawn", admin_only=True, description="Force an animal to spawn.")
@@ -121,12 +135,11 @@ class Hunt(SimpleCommandModule):
         self.set_state("active_animal", None)
         self.save_state()
 
-        # Custom message logic
         msg_key = "hug_message" if action == "hugged" else "hunt_message"
         custom_msg = active_animal.get(msg_key)
         if custom_msg:
-             self.safe_reply(connection, event, custom_msg.format(username=username))
-        else: # Fallback
+             self.safe_reply(connection, event, custom_msg.format(username=self.bot.title_for(username)))
+        else:
             title = self.bot.title_for(username)
             self.safe_reply(connection, event, f"Very good, {title}. You have {action} the {animal_name}.")
 
@@ -145,6 +158,63 @@ class Hunt(SimpleCommandModule):
             return True
         if self.get_state("active_animal"):
             return self._end_hunt(connection, event, username, "hunted")
+        return True
+
+    def _cmd_release(self, connection, event, msg, username, match):
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            return True
+            
+        if self.get_state("active_animal"):
+            self.safe_reply(connection, event, f"I must insist we deal with the current creature before we consider releasing another, {self.bot.title_for(username)}.")
+            return True
+        
+        action_type = match.group(1)
+        score_suffix = "_hugged" if action_type == "hug" else "_hunted"
+
+        scores = self.get_state("scores", {})
+        user_key = username.lower()
+        user_scores = scores.get(user_key, {})
+
+        releasable_animals = [
+            key for key, count in user_scores.items()
+            if key.endswith(score_suffix) and count > 0
+        ]
+
+        if not releasable_animals:
+            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but you have no {action_type}ed animals to release.")
+            return True
+
+        animal_to_release_key = random.choice(releasable_animals)
+        animal_name_lower = animal_to_release_key.replace(score_suffix, "")
+
+        # --- ATOMIC STATE UPDATE ---
+        # Decrement the score and save it immediately and unconditionally.
+        user_scores[animal_to_release_key] -= 1
+        if user_scores[animal_to_release_key] == 0:
+            del user_scores[animal_to_release_key]
+        scores[user_key] = user_scores
+        self.set_state("scores", scores)
+        self.save_state() # Save the score change *before* trying to spawn.
+
+        # Find the full animal object from our config list
+        animal_data_to_spawn = next((animal for animal in self.ANIMALS if animal.get("name", "").lower() == animal_name_lower), None)
+
+        # Announce the release to the user first.
+        response_template = random.choice(self.RELEASE_MESSAGES)
+        response = response_template.format(title=self.bot.title_for(username), animal_name=animal_name_lower.capitalize())
+        self.safe_reply(connection, event, response)
+
+        if animal_data_to_spawn:
+            # Set this animal as the new active animal and save again
+            self.set_state("active_animal", animal_data_to_spawn)
+            self.save_state()
+            
+            # Announce the newly active animal to the channel
+            self.safe_say(animal_data_to_spawn.get("ascii_art", f"A {animal_name_lower} is now loose in the mansion!"), target=event.target)
+        else:
+            # This is the "escaped animal" fallback. The score is already saved.
+            self.safe_reply(connection, event, f"It seems the {animal_name_lower.capitalize()} has made a run for it and vanished entirely.")
+            
         return True
 
     def _cmd_score(self, connection, event, msg, username, match):

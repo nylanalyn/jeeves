@@ -17,7 +17,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.5.0" # Probabilistic Combat
+    version = "2.5.1" # Data corruption fix
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -85,6 +85,11 @@ class Quest(SimpleCommandModule):
         """Retrieves a player's profile from the state, creating it if it doesn't exist."""
         players = self.get_state("players", {})
         player = players.get(user_id)
+        
+        # Defensive check for corrupt state data. If it's not a dict, reset it.
+        if not isinstance(player, dict):
+            player = None
+            
         if not player:
             player = {
                 "name": username, "level": 1, "xp": 0,
@@ -210,7 +215,6 @@ class Quest(SimpleCommandModule):
 
         time.sleep(1.5)
         
-        # --- New Probabilistic Combat ---
         win_chance = self._calculate_win_chance(player_level, monster_level)
         win = random.random() < win_chance
         

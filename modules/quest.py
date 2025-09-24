@@ -17,7 +17,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.5.2" # Config validation fix
+    version = "2.5.3" # randrange() fix
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -48,10 +48,10 @@ class Quest(SimpleCommandModule):
         }
         
         combat_settings = quest_config.get("combat", {})
-        self.BASE_WIN_CHANCE = combat_settings.get("base_win_chance", 0.5) # 50%
-        self.WIN_CHANCE_MOD_PER_LEVEL = combat_settings.get("win_chance_level_modifier", 0.1) # 10%
-        self.MIN_WIN_CHANCE = combat_settings.get("min_win_chance", 0.05) # 5%
-        self.MAX_WIN_CHANCE = combat_settings.get("max_win_chance", 0.95) # 95%
+        self.BASE_WIN_CHANCE = combat_settings.get("base_win_chance", 0.5)
+        self.WIN_CHANCE_MOD_PER_LEVEL = combat_settings.get("win_chance_level_modifier", 0.1)
+        self.MIN_WIN_CHANCE = combat_settings.get("min_win_chance", 0.05)
+        self.MAX_WIN_CHANCE = combat_settings.get("max_win_chance", 0.95)
         
         self.XP_LOSS_PERCENTAGE = quest_config.get("xp_loss_percentage", 0.25)
         self.DAILY_BONUS_XP = quest_config.get("first_win_bonus_xp", 50)
@@ -195,7 +195,6 @@ class Quest(SimpleCommandModule):
 
         target_monster_level = player_level + diff_mod["level_mod"]
         
-        # --- New Defensive Monster Selection ---
         possible_monsters = []
         for m in self.MONSTERS:
             if isinstance(m, dict) and 'min_level' in m and 'max_level' in m:
@@ -203,14 +202,19 @@ class Quest(SimpleCommandModule):
                     possible_monsters.append(m)
             else:
                 self._record_error(f"Skipping invalid monster entry in config.yaml: {m}")
-        # --- End Defensive Selection ---
         
         if not possible_monsters:
             self.safe_reply(connection, event, "The lands are eerily quiet... no suitable monsters could be found for your level.")
             return True
         
         monster = random.choice(possible_monsters)
-        monster_level = max(1, random.randint(player_level - 1, player_level + diff_mod["level_mod"]))
+        
+        # --- Corrected Monster Level Calculation ---
+        bound1 = player_level - 1
+        bound2 = player_level + diff_mod["level_mod"]
+        # Ensure the random range is always valid
+        monster_level = max(1, random.randint(min(bound1, bound2), max(bound1, bound2)))
+        # --- End Correction ---
 
         opener = random.choice(self.STORY_BEATS.get("openers", ["A {monster} appears!"]))
         action = random.choice(self.STORY_BEATS.get("actions", ["{user} attacks the {monster}!"]))

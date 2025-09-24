@@ -17,7 +17,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.5.1" # Data corruption fix
+    version = "2.5.2" # Config validation fix
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -86,7 +86,6 @@ class Quest(SimpleCommandModule):
         players = self.get_state("players", {})
         player = players.get(user_id)
         
-        # Defensive check for corrupt state data. If it's not a dict, reset it.
         if not isinstance(player, dict):
             player = None
             
@@ -149,7 +148,6 @@ class Quest(SimpleCommandModule):
         """Calculates the player's chance to win based on level difference."""
         level_diff = player_level - monster_level
         chance = self.BASE_WIN_CHANCE + (level_diff * self.WIN_CHANCE_MOD_PER_LEVEL)
-        # Clamp the value between min and max
         return max(self.MIN_WIN_CHANCE, min(self.MAX_WIN_CHANCE, chance))
 
     def _cmd_profile(self, connection, event, msg, username, match):
@@ -196,10 +194,16 @@ class Quest(SimpleCommandModule):
             return True
 
         target_monster_level = player_level + diff_mod["level_mod"]
-        possible_monsters = [
-            m for m in self.MONSTERS 
-            if m['min_level'] <= target_monster_level <= m['max_level']
-        ]
+        
+        # --- New Defensive Monster Selection ---
+        possible_monsters = []
+        for m in self.MONSTERS:
+            if isinstance(m, dict) and 'min_level' in m and 'max_level' in m:
+                if m['min_level'] <= target_monster_level <= m['max_level']:
+                    possible_monsters.append(m)
+            else:
+                self._record_error(f"Skipping invalid monster entry in config.yaml: {m}")
+        # --- End Defensive Selection ---
         
         if not possible_monsters:
             self.safe_reply(connection, event, "The lands are eerily quiet... no suitable monsters could be found for your level.")

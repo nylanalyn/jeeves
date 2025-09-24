@@ -1,0 +1,75 @@
+Jeeves Module Ideas
+
+This document tracks potential new modules and major feature upgrades for Jeeves.
+1. Quest Module (In Progress)
+
+A persistent RPG-style questing game.
+Phase 1: Core Mechanics (Complete)
+
+    !quest [difficulty] command for solo quests.
+
+    Player profiles with level and XP (!quest profile).
+
+    Probabilistic combat system.
+
+    Config-driven monsters and story beats.
+
+    Energy System:
+
+        Players have a new resource: Energy (e.g., a maximum of 10).
+
+        Each !quest costs 1 Energy.
+
+        Tiered Penalties: As energy decreases, penalties are applied.
+
+        Passive Regeneration: All players regenerate 1 energy every 10 minutes.
+
+    Rested XP System:
+
+        While not questing, players accrue a "Rested XP Bonus" into a separate pool, capped at a configurable amount.
+
+        When a player wins a quest, the XP they earn is doubled, and the bonus is drained from their pool.
+
+Phase 2: Group Content (Planned)
+
+    !mob Command:
+
+        A player starts a !mob command, opening a window for others to join.
+
+        The monster's power is a random range to ensure risk.
+
+        Penalty for Failure: Losing a !mob quest applies a temporary "Wounded" debuff to all party members.
+
+Phase 3: Items & Consequences (Planned)
+
+    Item System:
+
+        Players have a chance to find items after winning quests.
+
+        Items provide simple, passive buffs (e.g., +1 level or +10% XP).
+
+    Injury System:
+
+        Even on a successful solo quest, there's a chance to receive a minor, temporary injury (debuff).
+
+Phase 4: World Events (Planned)
+
+    Random World Mobs:
+
+        A powerful "world boss" monster appears in the channel on a random timer.
+
+        All active users must use a command (e.g., !attack) to contribute to its defeat.
+
+        Failure results in a temporary, channel-wide debuff.
+
+2. Adventure Module Enhancements (Planned)
+
+    Voting Items:
+
+        Winning a vote grants a chance to receive a single-use item that affects the next vote (e.g., "Your next vote counts as two").
+
+3. Translation Module (On Hold)
+
+    !translate [lang] <text> command.
+
+    Status: On hold pending a stable, self-hosted solution for the translation server.

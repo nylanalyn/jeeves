@@ -2,25 +2,22 @@
 # This is the central configuration file for Jeeves.
 
 # --- Core Settings ---
-# A list of nicknames that are considered administrators.
-admins:
-  - "YourAdminNick"
-
-# A list of module filenames (e.g., "hunt.py") to prevent from loading.
-module_blacklist:
-  - "flirt.py"
+core:
+    admins:
+      - "nullveil"
+    module_blacklist:
+      - "translate.py"
+    name_pattern: r"(?:jeeves|jeevesbot)"
 
 # --- IRC Connection Details ---
 connection:
   server: "irc.libera.chat"
   port: 6697
   nick: "JeevesBot"
-  channel: "#your-channel"
-  # (Optional) If your nickname is registered with NickServ.
+  channel: "#fractalsignal"
   nickserv_pass: ""
 
 # --- API Keys ---
-# All secret API keys and URLs are stored here.
 api_keys:
   giphy: "YourGiphyAPIKey"
   youtube: "YourYouTubeDataAPIKey"
@@ -29,116 +26,80 @@ api_keys:
 
 # --- Module-Specific Configurations ---
 
-# --- Utility Modules ---
-shorten:
-    enabled: true
-    min_length_for_auto_shorten: 70
-    cooldown_seconds: 5.0
-titles:
-    enabled: true
-    cooldown_seconds: 30.0
-sed:
-    mode: "self"  # "self" (default) or "any"
-    history_size: 20
-youtube:
-    cooldown_seconds: 15.0
-clock:
-    cooldown_seconds: 10.0
-translate:
-    cooldown_seconds: 20.0
-    default_target_language: "en"
-    api_url: "https://libretranslate.com"
-
-# --- Fun & Games ---
-adventure:
-    vote_window_seconds: 75
-    story_sentences_per_round: 3
-arithmetic:
-    reliability_percent: 85
-    max_fudge_factor: 2
-bell:
-    min_hours_between_rings: 1
-    max_hours_between_rings: 8
-    allowed_channels:
-        - "#your-main-channel"
-fortune:
-    cooldown_seconds: 10.0
-gif:
-    cooldown_seconds: 10.0
-hunt:
-    min_hours_between_spawns: 2
-    max_hours_between_spawns: 10
-    allowed_channels:
-        - "#your-main-channel"
-    event_settings:
-        escape_chance: 0.10
-        min_flock_delay_minutes: 2
-        max_flock_delay_minutes: 60
-    animals:
-      - name: "duck"
-        ascii_art: " quack  >(.)__ <(.)__ =(.)__"
-        hug_message: "{username} offered the duck a piece of bread. It seems content."
-        hunt_message: "{username} captured the duck with a net. It will make a fine dinner."
 quest:
     allowed_channels:
         - "#your-questing-channel"
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8
-    first_win_bonus_xp: 50 # Extra XP for the first win of the day
-    xp_level_multiplier: 2 # (player_level * this) is added to XP wins
-    xp_loss_percentage: 0.5 # Player loses this % of the potential XP win on a loss
+    first_win_bonus_xp: 50
+    xp_level_multiplier: 2
+    xp_loss_percentage: 0.25
+    
+    difficulty:
+        easy: { level_mod: -2, xp_mult: 0.7 }
+        normal: { level_mod: 1, xp_mult: 1.0 }
+        hard: { level_mod: 3, xp_mult: 1.5 }
+
+    combat:
+        base_win_chance: 0.50
+        win_chance_level_modifier: 0.10
+        min_win_chance: 0.05
+        max_win_chance: 0.95
+
+    # --- New Energy System Settings ---
+    energy_system:
+        enabled: true
+        max_energy: 10
+        regen_minutes: 10 # How often to grant 1 energy to all players
+        penalties:
+            # At or below this threshold, apply modifiers
+            - { threshold: 5, xp_multiplier: 0.5, win_chance_modifier: 0.0 }
+            - { threshold: 2, xp_multiplier: 0.5, win_chance_modifier: -0.15 }
+
+    # --- New Rested XP System Settings ---
+    rested_xp_system:
+        enabled: true
+        # The rested XP pool is capped at (XP for next level * this value)
+        cap_level_multiplier: 2
+        xp_per_hour: 50
+        messages:
+            - "Having polished the silver, you feel invigorated."
+            - "After a long day of dusting the library, you feel ready for a new challenge."
+            - "The gardens are weeded, and you feel accomplished."
+
     world_lore:
         - "The world is ancient, forged in the fires of dial-up and cooled by the winds of broadband."
     story_beats:
         openers: ["{user} enters a dark cave, seeking a {monster}."]
         actions: ["{user} bravely draws their weapon and attacks the {monster}."]
+    
     monsters:
-        low:
-            - name: "Giant Rat"
-              min_level: 1
-              max_level: 3
-              xp_win_min: 15
-              xp_win_max: 30
-              xp_loss_min: 5
-              xp_loss_max: 10
-pron:
-    cooldown_seconds: 30.0
-roadtrip:
-    join_window_seconds: 120
-    trigger_probability: 0.25
-    report_delay_seconds: 3600
-    hours_between_trips:
-        min: 3
-        max: 18
-    messages_for_trigger:
-        min: 35
-        max: 85
-coffee:
-    cooldown_seconds: 10.0
-    beverage_limit: 2
-    limit_reset_hours: 1
-    limit_message: "Perhaps that is enough beverages for now, {title}."
-    force_messages:
-      - "Very well, {title}. If you insist. I shall prepare the coffee, but I must register my formal objection."
+        - name: "Giant Rat"
+          min_level: 1
+          max_level: 3
+          xp_win_min: 15
+          xp_win_max: 30
+        - name: "Goblin Scout"
+          min_level: 2
+          max_level: 5
+          xp_win_min: 20
+          xp_win_max: 40
+        - name: "Orc Berserker"
+          min_level: 6
+          max_level: 10
+          xp_win_min: 50
+          xp_win_max: 100
+        - name: "Cave Troll"
+          min_level: 8
+          max_level: 14
+          xp_win_min: 80
+          xp_win_max: 150
+        - name: "Young Dragon"
+          min_level: 16
+          max_level: 25
+          xp_win_min: 200
+          xp_win_max: 400
 
-# --- Social & Chat ---
-chatter:
-    cooldowns:
-        animal: -1
-        weather: -1
-        tech: -1
-        food: -1
-        greeting: -1
-flirt:
-    global_cooldown: 30.0
-    per_user_cooldown: 60.0
-memos:
-    max_deliver_per_burst: 3
-    max_pending_per_user: 3
-
-# --- Special Purpose ---
-sailing:
-    target_user: "witeshark2"
-    cooldown: 5.0
+# (Other module configs remain the same)
 

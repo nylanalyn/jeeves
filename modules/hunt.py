@@ -14,7 +14,7 @@ def setup(bot, config):
 
 class Hunt(SimpleCommandModule):
     name = "hunt"
-    version = "2.0.0" # UUID Refactor
+    version = "1.6.2" # Added social hunt/hug responses
     description = "A game of hunting or hugging randomly appearing animals."
 
     SPAWN_ANNOUNCEMENTS = [
@@ -33,7 +33,7 @@ class Hunt(SimpleCommandModule):
     def __init__(self, bot, config):
         super().__init__(bot)
         self._is_loaded = False
-        self.set_state("scores", self.get_state("scores", {})) # Keyed by user_id
+        self.set_state("scores", self.get_state("scores", {}))
         self.set_state("active_animal", self.get_state("active_animal", None))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
         self.set_state("event", self.get_state("event", None))
@@ -92,8 +92,8 @@ class Hunt(SimpleCommandModule):
         schedule.clear(self.name)
 
     def _register_commands(self):
-        self.register_command(r"^\s*!hug\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
-        self.register_command(r"^\s*!hunt\s*$", self._cmd_hunt, name="hunt", description="Capture the animal.")
+        self.register_command(r"^\s*!hug(?:\s+(.+))?\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
+        self.register_command(r"^\s*!hunt(?:\s+(.+))?\s*$", self._cmd_hunt, name="hunt", description="Capture the animal.")
         self.register_command(r"^\s*!release\s+(hug|hunt)\s*$", self._cmd_release, name="release", description="Release a previously caught or befriended animal.")
         self.register_command(r"^\s*!hunt\s+score(?:\s+(\S+))?\s*$", self._cmd_score, name="hunt score", description="Check your or another user's hunt/hug score.")
         self.register_command(r"^\s*!hunt\s+top\s*$", self._cmd_top, name="hunt top", description="Show the top 5 most active members.")
@@ -208,17 +208,36 @@ class Hunt(SimpleCommandModule):
         return True
 
     def _cmd_hug(self, connection, event, msg, username, match):
-        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return True
-        if self.get_state("active_animal"): return self._end_hunt(connection, event, username, "hugged")
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            return True
+        
+        target = match.group(1)
+        if target:
+            title = self.bot.title_for(username)
+            self.safe_reply(connection, event, f"While the sentiment is appreciated, {title}, one must always seek consent before embracing another.")
+            return True
+            
+        if self.get_state("active_animal"):
+            return self._end_hunt(connection, event, username, "hugged")
         return True
 
     def _cmd_hunt(self, connection, event, msg, username, match):
-        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return True
-        if self.get_state("active_animal"): return self._end_hunt(connection, event, username, "hunted")
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            return True
+
+        target = match.group(1)
+        if target:
+            title = self.bot.title_for(username)
+            self.safe_reply(connection, event, f"I must strongly object, {title}. Hunting the guests is strictly against household policy.")
+            return True
+
+        if self.get_state("active_animal"):
+            return self._end_hunt(connection, event, username, "hunted")
         return True
 
     def _cmd_release(self, connection, event, msg, username, match):
-        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return True
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            return True
         if self.get_state("active_animal"):
             self.safe_reply(connection, event, f"I must insist we deal with the current creature first, {self.bot.title_for(username)}.")
             return True

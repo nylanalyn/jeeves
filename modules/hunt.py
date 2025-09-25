@@ -5,7 +5,9 @@ import re
 import schedule
 import time
 from datetime import datetime, timezone, timedelta
-from .base import SimpleCommandModule
+from typing import Optional, Dict, Any, List
+
+from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
@@ -14,7 +16,7 @@ def setup(bot, config):
 
 class Hunt(SimpleCommandModule):
     name = "hunt"
-    version = "1.6.2" # Added social hunt/hug responses
+    version = "1.7.7" # Added !hunt spawn as an admin alias
     description = "A game of hunting or hugging randomly appearing animals."
 
     SPAWN_ANNOUNCEMENTS = [
@@ -40,15 +42,19 @@ class Hunt(SimpleCommandModule):
         self.on_config_reload(config)
 
     def on_config_reload(self, config):
-        hunt_config = config.get(self.name, config)
-        self.MIN_HOURS = hunt_config.get("min_hours_between_spawns", 2)
-        self.MAX_HOURS = hunt_config.get("max_hours_between_spawns", 10)
-        self.ANIMALS = hunt_config.get("animals", [])
-        self.ALLOWED_CHANNELS = hunt_config.get("allowed_channels", [])
-        event_settings = hunt_config.get("event_settings", {})
+        # The 'config' object passed in is already the module-specific configuration.
+        self.MIN_HOURS = config.get("min_hours_between_spawns", 2)
+        self.MAX_HOURS = config.get("max_hours_between_spawns", 10)
+        self.ANIMALS = config.get("animals", [])
+        self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
+        
+        event_settings = config.get("event_settings", {})
         self.EVENT_ESCAPE_CHANCE = event_settings.get("escape_chance", 0.1)
         self.EVENT_MIN_DELAY_MINS = event_settings.get("min_flock_delay_minutes", 2)
         self.EVENT_MAX_DELAY_MINS = event_settings.get("max_flock_delay_minutes", 60)
+        self.EVENT_MIN_FLOCK_SIZE = event_settings.get("min_flock_size", 20)
+        self.EVENT_MAX_FLOCK_SIZE = event_settings.get("max_flock_size", 50)
+        
         if self._is_loaded:
              self._schedule_next_spawn()
 
@@ -92,12 +98,23 @@ class Hunt(SimpleCommandModule):
         schedule.clear(self.name)
 
     def _register_commands(self):
+        # User commands
         self.register_command(r"^\s*!hug(?:\s+(.+))?\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
-        self.register_command(r"^\s*!hunt(?:\s+(.+))?\s*$", self._cmd_hunt, name="hunt", description="Capture the animal.")
         self.register_command(r"^\s*!release\s+(hug|hunt)\s*$", self._cmd_release, name="release", description="Release a previously caught or befriended animal.")
+        
+        # Specific !hunt subcommands MUST be registered before the generic !hunt command.
         self.register_command(r"^\s*!hunt\s+score(?:\s+(\S+))?\s*$", self._cmd_score, name="hunt score", description="Check your or another user's hunt/hug score.")
         self.register_command(r"^\s*!hunt\s+top\s*$", self._cmd_top, name="hunt top", description="Show the top 5 most active members.")
-        self.register_command(r"^\s*!hunt\s+spawn\s*$", self._cmd_spawn, name="hunt spawn", admin_only=True, description="Force an animal to spawn.")
+        
+        # Admin commands
+        self.register_command(r"^\s*!hunt\s+admin\s+spawn\s*$", self._cmd_admin_spawn, name="hunt admin spawn", admin_only=True, description="Force an animal to spawn.")
+        self.register_command(r"^\s*!hunt\s+spawn\s*$", self._cmd_admin_spawn, name="hunt spawn", admin_only=True, description="Alias for !hunt admin spawn.")
+        self.register_command(r"^\s*!hunt\s+admin\s+add\s+(\S+)\s+(\S+)\s+(hunted|hugged)\s+(\d+)\s*$", self._cmd_admin_add, name="hunt admin add", admin_only=True, description="Add scores for a user.")
+        self.register_command(r"^\s*!hunt\s+admin\s+fixscores\s*$", self._cmd_admin_fixscores, name="hunt admin fixscores", admin_only=True, description="Normalize all hunt scores.")
+        self.register_command(r"^\s*!hunt\s+admin\s+event\s+(\S+)\s+(\S+)\s+(hunted|hugged)\s*$", self._cmd_admin_event, name="hunt admin event", admin_only=True, description="Start a migration event.")
+
+        # Generic !hunt command is last, to avoid capturing subcommands.
+        self.register_command(r"^\s*!hunt(?:\s+(.+))?\s*$", self._cmd_hunt, name="hunt", description="Capture the animal.")
 
     def _schedule_next_spawn(self):
         schedule.clear(self.name)
@@ -113,7 +130,7 @@ class Hunt(SimpleCommandModule):
         schedule.clear(self.name)
         event = self.get_state("event")
         if not (event and event.get("active") and event.get("flocks")):
-            self.safe_say("The last flock has been accounted for. The Great Duck Migration has concluded!")
+            self.safe_say("The last flock has been accounted for. The Great Migration has concluded!")
             self.set_state("event", None)
             self.save_state()
             self._schedule_next_spawn()
@@ -122,7 +139,7 @@ class Hunt(SimpleCommandModule):
             escaped_flock_size = event["flocks"].pop(0)
             self.set_state("event", event)
             self.save_state()
-            self.safe_say(f"Oh dear, it seems a flock of {escaped_flock_size} ducks has flown the coop!")
+            self.safe_say(f"Oh dear, it seems a flock of {escaped_flock_size} {event['animal_name']}s has flown the coop!")
             self._schedule_next_event_spawn()
             return
         delay_seconds = random.randint(self.EVENT_MIN_DELAY_MINS * 60, self.EVENT_MAX_DELAY_MINS * 60)
@@ -150,27 +167,39 @@ class Hunt(SimpleCommandModule):
         self.save_state()
         active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
         for room in active_channels:
-             self.safe_say(f"A flock of {current_flock_size} ducks from {event['name']} appears! ({len(event['flocks'])} flocks remaining)", target=room)
+             self.safe_say(f"A flock of {current_flock_size} {animal_name}s from {event['name']} appears! ({len(event['flocks'])} flocks remaining)", target=room)
              self.safe_say(animal_to_spawn.get("ascii_art", "An animal appears."), target=room)
         return schedule.CancelJob
 
-    def _spawn_animal(self):
+    def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
         schedule.clear("spawn")
         if not self.ANIMALS:
             self._schedule_next_spawn()
-            return schedule.CancelJob
-        active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
-        if not active_channels:
+            return False
+
+        spawn_locations = []
+        if target_channel:
+            # If a specific channel is requested (e.g., by an admin), only check if it's configured as allowed.
+            if target_channel in self.ALLOWED_CHANNELS:
+                spawn_locations.append(target_channel)
+        else:
+            # For automatic spawns, find all valid channels.
+            spawn_locations = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
+
+        if not spawn_locations:
             self._schedule_next_spawn()
-            return schedule.CancelJob
+            return False
+            
         animal = random.choice(self.ANIMALS)
         self.set_state("active_animal", animal)
         self.save_state()
         announcement = random.choice(self.SPAWN_ANNOUNCEMENTS)
-        for room in active_channels:
+        
+        for room in spawn_locations:
             self.safe_say(announcement, target=room)
             self.safe_say(animal.get("ascii_art", "An animal appears."), target=room)
-        return schedule.CancelJob
+            
+        return True
 
     def _end_hunt(self, connection, event, username, action):
         active_animal = self.get_state("active_animal")
@@ -190,7 +219,7 @@ class Hunt(SimpleCommandModule):
         self.set_state("active_animal", None)
         self.save_state()
         if is_event_catch:
-            self.safe_reply(connection, event, f"Excellent work, {self.bot.title_for(username)}! You have {action} a flock of {score_to_add} ducks!")
+            self.safe_reply(connection, event, f"Excellent work, {self.bot.title_for(username)}! You have {action} a flock of {score_to_add} {animal_name}s!")
             event_state["flocks"].pop(0)
             event_state.pop("next_spawn_time", None)
             self.set_state("event", event_state)
@@ -209,6 +238,7 @@ class Hunt(SimpleCommandModule):
 
     def _cmd_hug(self, connection, event, msg, username, match):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            self.safe_reply(connection, event, "My apologies, but the hunt is not active in this channel.")
             return True
         
         target = match.group(1)
@@ -219,10 +249,13 @@ class Hunt(SimpleCommandModule):
             
         if self.get_state("active_animal"):
             return self._end_hunt(connection, event, username, "hugged")
+        
+        self.safe_reply(connection, event, f"There is nothing to hug at the moment, {self.bot.title_for(username)}.")
         return True
 
     def _cmd_hunt(self, connection, event, msg, username, match):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            self.safe_reply(connection, event, "My apologies, but the hunt is not active in this channel.")
             return True
 
         target = match.group(1)
@@ -233,10 +266,13 @@ class Hunt(SimpleCommandModule):
 
         if self.get_state("active_animal"):
             return self._end_hunt(connection, event, username, "hunted")
+            
+        self.safe_reply(connection, event, f"There is nothing to hunt at the moment, {self.bot.title_for(username)}.")
         return True
 
     def _cmd_release(self, connection, event, msg, username, match):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
+            self.safe_reply(connection, event, "My apologies, but the hunt is not active in this channel.")
             return True
         if self.get_state("active_animal"):
             self.safe_reply(connection, event, f"I must insist we deal with the current creature first, {self.bot.title_for(username)}.")
@@ -312,11 +348,140 @@ class Hunt(SimpleCommandModule):
         self.safe_reply(connection, event, f"Top 5 most active members: {'; '.join(top_list)}")
         return True
 
-    def _cmd_spawn(self, connection, event, msg, username, match):
+    # --- Admin Helper ---
+
+    def _find_animal_by_name(self, name_input: str) -> Optional[Dict[str, Any]]:
+        """Finds an animal from the config, allowing for simple and irregular plurals."""
+        name_lower = name_input.lower()
+        for animal in self.ANIMALS:
+            config_name = animal.get("name", "").lower()
+            if not config_name:
+                continue
+            
+            # Check for direct match (singular)
+            if name_lower == config_name:
+                return animal
+            # Check for simple plural (duck -> ducks)
+            if name_lower == f"{config_name}s":
+                return animal
+            # Check for 'y' -> 'ies' plural (puppy -> puppies)
+            if config_name.endswith('y') and name_lower == f"{config_name[:-1]}ies":
+                return animal
+        
+        return None
+
+    # --- Admin Commands ---
+
+    @admin_required
+    def _cmd_admin_spawn(self, connection, event, msg, username, match):
         if self.get_state("active_animal"):
             self.safe_reply(connection, event, "An animal is already active.")
             return True
-        self._spawn_animal()
-        self.safe_reply(connection, event, "As you wish. I have released an animal.")
+        
+        if self._spawn_animal(target_channel=event.target):
+            self.safe_reply(connection, event, "As you wish. I have released an animal.")
+        else:
+            self.safe_reply(connection, event, f"I cannot spawn an animal in this channel ('{event.target}'). Please ensure it is in the `allowed_channels` list in your configuration.")
+        return True
+
+    @admin_required
+    def _cmd_admin_add(self, connection, event, msg, username, match):
+        target_user, animal_name_input, action, amount_str = match.groups()
+        amount = int(amount_str)
+        
+        matched_animal = self._find_animal_by_name(animal_name_input)
+        
+        if not matched_animal:
+            self.safe_reply(connection, event, f"I am not familiar with an animal named '{animal_name_input}'.")
+            return True
+        
+        canonical_animal_name = matched_animal['name'].lower()
+        user_id = self.bot.get_user_id(target_user)
+        scores = self.get_state("scores", {})
+        user_scores = scores.get(user_id, {})
+        score_key = f"{canonical_animal_name}_{action}"
+        user_scores[score_key] = user_scores.get(score_key, 0) + amount
+        scores[user_id] = user_scores
+        self.set_state("scores", scores)
+        self.save_state()
+
+        self.safe_reply(connection, event, f"Very good. Added {amount} to {target_user}'s {canonical_animal_name} {action} score.")
+        return True
+
+    @admin_required
+    def _cmd_admin_fixscores(self, connection, event, msg, username, match):
+        all_scores = self.get_state("scores", {})
+        fixed_count = 0
+        canonical_animal_names = {a['name'].lower() for a in self.ANIMALS if 'name' in a}
+        
+        for user_id, user_scores in all_scores.items():
+            new_scores = {}
+            for key, count in user_scores.items():
+                try:
+                    animal, action = key.rsplit('_', 1)
+                    if animal in canonical_animal_names and action in ["hunted", "hugged"]:
+                         new_scores[key] = new_scores.get(key, 0) + count
+                    else:
+                        fixed_count += 1
+                except ValueError:
+                    fixed_count += 1 # Malformed key
+            all_scores[user_id] = new_scores
+
+        self.set_state("scores", all_scores)
+        self.save_state()
+        self.safe_reply(connection, event, f"Score normalization complete. Inspected scores for {len(all_scores)} users. Found and corrected {fixed_count} potential inconsistencies.")
+        return True
+
+    @admin_required
+    def _cmd_admin_event(self, connection, event, msg, username, match):
+        target_user, animal_name_input, action = match.groups()
+        
+        matched_animal = self._find_animal_by_name(animal_name_input)
+        
+        if not matched_animal:
+            self.safe_reply(connection, event, f"I am not familiar with an animal named '{animal_name_input}'.")
+            return True
+
+        canonical_animal_name = matched_animal['name'].lower()
+        score_key = f"{canonical_animal_name}_{action}"
+        user_id = self.bot.get_user_id(target_user)
+        scores = self.get_state("scores", {})
+        user_scores = scores.get(user_id, {})
+        
+        animal_count = user_scores.pop(score_key, 0)
+        if animal_count == 0:
+            self.safe_reply(connection, event, f"{target_user} has no {action} {canonical_animal_name}s to release.")
+            return True
+
+        flocks = []
+        remaining = animal_count
+        while remaining > self.EVENT_MIN_FLOCK_SIZE:
+            flock_size = random.randint(self.EVENT_MIN_FLOCK_SIZE, self.EVENT_MAX_FLOCK_SIZE)
+            if remaining - flock_size < self.EVENT_MIN_FLOCK_SIZE:
+                flocks.append(remaining)
+                remaining = 0
+                break
+            flocks.append(flock_size)
+            remaining -= flock_size
+        if remaining > 0: flocks.append(remaining)
+        
+        if not flocks:
+            self.safe_reply(connection, event, f"Not enough {canonical_animal_name}s ({animal_count}) to form any flocks.")
+            user_scores[score_key] = animal_count # Put them back
+            return True
+
+        # Update the user's score and set the event state
+        scores[user_id] = user_scores
+        self.set_state("scores", scores)
+        self.set_state("event", {
+            "active": True,
+            "name": f"The Great {canonical_animal_name.capitalize()} Migration",
+            "flocks": flocks,
+            "animal_name": canonical_animal_name
+        })
+        self.save_state()
+
+        self.safe_say(f"Attention! By order of {username}, {target_user} has released {animal_count} {canonical_animal_name}s! The Great {canonical_animal_name.capitalize()} Migration has begun!")
+        self._start_event_spawn() # Start the first flock
         return True
 

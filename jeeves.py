@@ -159,7 +159,10 @@ class PluginManager:
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
-        ssl_factory = Factory(wrapper=ssl.wrap_socket)
+        # The modern way to handle SSL connections, compatible with Python 3.10+
+        # The irc library requires a factory that wraps the socket in an SSL context.
+        context = ssl.create_default_context()
+        ssl_factory = Factory(wrapper=lambda sock: context.wrap_socket(sock, server_hostname=server))
         super().__init__([(server, port)], nickname, nickname, connect_factory=ssl_factory)
         self.server = server
         self.port = port

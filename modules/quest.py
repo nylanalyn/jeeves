@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.7.0" # Removed Rested XP System
+    version = "2.7.1" # Added monster level to combat and energy conservation
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -67,7 +67,6 @@ class Quest(SimpleCommandModule):
             {"threshold": 2, "xp_multiplier": 0.5, "win_chance_modifier": -0.15}
         ])
 
-        # Reschedule energy regen if the interval changed
         if self._is_loaded:
             self._schedule_energy_regen()
 
@@ -118,7 +117,6 @@ class Quest(SimpleCommandModule):
         if not player:
             player = {"name": username, "level": 1, "xp": 0}
         
-        # Back-fill missing fields for existing players
         player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
         player.setdefault("last_fight", None)
         player.setdefault("last_win_date", None)
@@ -211,23 +209,31 @@ class Quest(SimpleCommandModule):
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
 
-        # --- Energy Check ---
-        if self.ENERGY_ENABLED:
-            if player["energy"] < 1:
-                self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
-                return True
-            player["energy"] -= 1
-
+        # Initial energy check. Can the user even attempt a quest?
+        if self.ENERGY_ENABLED and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
+            return True
+            
         difficulty = (match.group(1) or "normal").lower()
         diff_mod = self.DIFFICULTY_MODS.get(difficulty)
         player_level = player['level']
 
+        # Check if a monster appears
         if random.random() > self.MONSTER_SPAWN_CHANCE:
             xp_gain = 10
-            self.safe_reply(connection, event, f"The lands are quiet. You gain {xp_gain} XP for your diligence.")
+            self.safe_reply(connection, event, f"The lands are quiet. You gain {xp_gain} XP for your diligence. (No energy was spent).")
             messages = self._grant_xp(user_id, username, xp_gain)
             for m in messages: self.safe_reply(connection, event, m)
+            # No monster, no energy cost, so we save the player state and exit.
+            players = self.get_state("players")
+            players[user_id] = player
+            self.set_state("players", players)
+            self.save_state()
             return True
+
+        # A monster has appeared! Now we deduct energy.
+        if self.ENERGY_ENABLED:
+            player["energy"] -= 1
 
         target_monster_level = player_level + diff_mod["level_mod"]
         possible_monsters = [m for m in self.MONSTERS if isinstance(m, dict) and m['min_level'] <= target_monster_level <= m['max_level']]
@@ -239,11 +245,13 @@ class Quest(SimpleCommandModule):
         bound1, bound2 = player_level - 1, player_level + diff_mod["level_mod"]
         monster_level = max(1, random.randint(min(bound1, bound2), max(bound1, bound2)))
 
-        story = f"{random.choice(self.STORY_BEATS.get('openers',[]))} {random.choice(self.STORY_BEATS.get('actions',[]))}".format(user=username, monster=monster['name'])
+        # Include the monster's level in the encounter message
+        monster_name_with_level = f"Level {monster_level} {monster['name']}"
+        story = f"{random.choice(self.STORY_BEATS.get('openers',[]))} {random.choice(self.STORY_BEATS.get('actions',[]))}".format(user=username, monster=monster_name_with_level)
         self.safe_reply(connection, event, story)
         time.sleep(1.5)
         
-        # --- Energy Penalties ---
+        # Energy Penalties
         energy_xp_mult = 1.0
         energy_win_chance_mod = 0.0
         if self.ENERGY_ENABLED:
@@ -266,7 +274,7 @@ class Quest(SimpleCommandModule):
         total_xp_gain = (base_xp_gain + level_bonus) * difficulty_bonus * energy_xp_mult
 
         if win:
-            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance:.0%}) The Level {monster_level} {monster['name']} is defeated! You gain {int(total_xp_gain)} XP.")
+            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp_gain)} XP.")
             messages = self._grant_xp(user_id, username, total_xp_gain, is_win=True)
             for m in messages: self.safe_reply(connection, event, m)
         else:
@@ -292,3 +300,4 @@ class Quest(SimpleCommandModule):
              for message in messages:
                 self.safe_reply(connection, event, f"{target_user} leveled up! {message}")
         return True
+

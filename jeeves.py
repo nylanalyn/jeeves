@@ -159,8 +159,8 @@ class PluginManager:
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
-        # This is the modern way to connect with SSL using the irc library
-        connect_factory = Factory(wrapper=ssl.wrap_socket) if port == 6697 else Factory()
+        # This is the modern, correct way to connect with SSL using the irc library.
+        connect_factory = Factory(wrapper=ssl.create_default_context().wrap_socket) if port == 6697 else Factory()
         super().__init__([(server, port)], nickname, nickname, connect_factory=connect_factory)
         self.server = server
         self.port = port

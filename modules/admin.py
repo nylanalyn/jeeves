@@ -1,5 +1,5 @@
 # modules/admin.py
-# Enhanced admin conveniences with a robust, single-handler command structure.
+# Simplified admin conveniences that call core bot functions for stability.
 import re
 import time
 import sys
@@ -10,7 +10,7 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.6.0" # Refactored to a single robust command handler
+    version = "2.7.1" # Added debug logging and restored !say alias
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
@@ -22,9 +22,11 @@ class Admin(SimpleCommandModule):
         # Master command for all admin functions
         self.register_command(r"^\s*!admin(?:\s+(.*))?$", self._cmd_admin_master,
                               name="admin", admin_only=True, description="Main admin command. Use '!admin help' for subcommands.")
-        # Alias for convenience
+        # Aliases for convenience
         self.register_command(r"^\s*!reload\s*$", self._cmd_reload_alias,
                               name="reload", admin_only=True, description="Alias for '!admin reload'.")
+        self.register_command(r"^\s*!say(?:\s+(#\S+))?\s+(.+)$", self._cmd_say_alias,
+                              name="say", admin_only=True, description="Alias for '!admin say'.")
         
         # Emergency command remains top-level for critical access
         self.register_command(r"^\s*!emergency\s+quit(?:\s+(.+))?\s*$", self._cmd_emergency_quit,
@@ -50,6 +52,7 @@ class Admin(SimpleCommandModule):
 
         args = args_str.split()
         subcommand = args[0].lower()
+        print(f"[admin_debug] Received admin command: '{subcommand}' from {username}", file=sys.stderr)
         
         # Route to the appropriate handler
         if subcommand == "reload":
@@ -79,27 +82,33 @@ class Admin(SimpleCommandModule):
 
     def _cmd_reload_alias(self, connection, event, msg, username, match):
         """Alias for !admin reload."""
+        print(f"[admin_debug] Received alias command: '!reload' from {username}", file=sys.stderr)
         return self._cmd_reload(connection, event, username)
+
+    def _cmd_say_alias(self, connection, event, msg, username, match):
+        """Alias for !admin say."""
+        print(f"[admin_debug] Received alias command: '!say' from {username}", file=sys.stderr)
+        target, message = match.groups()
+        return self._cmd_say(connection, event, username, target or event.target, message)
 
     # --- Subcommand Logic ---
     
-    @admin_required
     def _cmd_reload(self, connection, event, username):
         self._update_stats("reload")
-        loaded_modules = self.bot.pm.load_all()
+        print(f"[admin_debug] Executing core plugin reload...", file=sys.stderr)
+        loaded_modules = self.bot.core_reload_plugins()
         self.safe_reply(connection, event, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
         return True
 
-    @admin_required
     def _cmd_config_reload(self, connection, event, username):
         self._update_stats("config reload")
-        if self.bot.reload_config_and_notify_modules():
+        print(f"[admin_debug] Executing core config reload...", file=sys.stderr)
+        if self.bot.core_reload_config():
             self.safe_reply(connection, event, "Configuration file reloaded.")
         else:
             self.safe_reply(connection, event, "There was an error reloading the configuration.")
         return True
 
-    @admin_required
     def _cmd_stats(self, connection, event, username):
         stats = self.get_state("stats", {})
         last_used_time = stats.get("last_used")
@@ -109,14 +118,12 @@ class Admin(SimpleCommandModule):
         self.safe_reply(connection, event, response)
         return True
 
-    @admin_required
     def _cmd_join(self, connection, event, username, room_to_join):
         self._update_stats("join")
         self.bot.connection.join(room_to_join)
         self.safe_reply(connection, event, f"Joined {room_to_join}.")
         return True
 
-    @admin_required
     def _cmd_part(self, connection, event, username, room_to_part, part_msg):
         self._update_stats("part")
         if room_to_part in self.bot.joined_channels:
@@ -126,34 +133,29 @@ class Admin(SimpleCommandModule):
             self.safe_reply(connection, event, f"I am not in {room_to_part}.")
         return True
     
-    @admin_required
     def _cmd_channels(self, connection, event, username):
         self._update_stats("channels")
         channels_list = ", ".join(sorted(list(self.bot.joined_channels)))
         self.safe_reply(connection, event, f"I am currently in these channels: {channels_list}")
         return True
 
-    @admin_required
     def _cmd_say(self, connection, event, username, target, message):
         self._update_stats("say")
         self.bot.connection.privmsg(target, message)
         return True
 
-    @admin_required
     def _cmd_emergency_quit(self, connection, event, msg, username, match):
         self._update_stats("emergency quit")
         quit_msg = match.group(1)
         self.bot.connection.quit(quit_msg or "Emergency quit.")
         return True
     
-    @admin_required
     def _cmd_nick(self, connection, event, username, new_nick):
         self._update_stats("nick")
         self.bot.connection.nick(new_nick)
         self.safe_reply(connection, event, f"Nickname changed to {new_nick}.")
         return True
 
-    @admin_required
     def _cmd_help(self, connection, event, username):
         """Displays admin-specific help."""
         help_lines = [
@@ -163,7 +165,7 @@ class Admin(SimpleCommandModule):
             "!admin join <#channel> - Join a channel.",
             "!admin part <#channel> [message] - Leave a channel.",
             "!admin channels - List all channels I'm in.",
-            "!admin say [#channel] <message> - Make the bot say something.",
+            "!say [#channel] <message> - Make the bot say something.",
             "!admin nick <newnick> - Change bot nickname.",
             "!emergency quit [message] - Emergency shutdown."
         ]

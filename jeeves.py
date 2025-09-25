@@ -162,8 +162,6 @@ class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
         if port == 6697:
             ssl_context = ssl.create_default_context()
-            # We use functools.partial to create a wrapper that includes the server_hostname for SNI,
-            # which is required by modern Python SSL handling to prevent ValueError.
             wrapper = functools.partial(ssl_context.wrap_socket, server_hostname=server)
             connect_factory = Factory(wrapper=wrapper)
         else:
@@ -184,6 +182,27 @@ class Jeeves(SingleServerIRCBot):
         persisted_channels.add(self.primary_channel)
         self.joined_channels = persisted_channels
 
+    # --- Core Bot Functions ---
+
+    def core_reload_plugins(self):
+        """Core function to reload all plugins, called by the admin module."""
+        return self.pm.load_all()
+
+    def core_reload_config(self):
+        """Core function to reload config, called by the admin module."""
+        print("[core] Reloading configuration file...", file=sys.stderr)
+        try:
+            new_config = load_config()
+            self.config = new_config
+            for name, instance in self.pm.plugins.items():
+                if hasattr(instance, "on_config_reload"):
+                    module_config = self.config.get(name, {})
+                    instance.on_config_reload(module_config)
+            return True
+        except Exception as e:
+            print(f"[core] FAILED to reload configuration: {e}", file=sys.stderr)
+            return False
+
     def get_user_id(self, nick: str) -> str:
         users_module = self.pm.plugins.get("users")
         if users_module:
@@ -199,20 +218,6 @@ class Jeeves(SingleServerIRCBot):
     def update_module_state(self, name, updates):
         state_manager.update_module_state(name, updates)
 
-    def reload_config_and_notify_modules(self):
-        print("[core] Reloading configuration file...", file=sys.stderr)
-        try:
-            new_config = load_config()
-            self.config = new_config
-            for name, instance in self.pm.plugins.items():
-                if hasattr(instance, "on_config_reload"):
-                    module_config = self.config.get(name, {}) # Always provide a dict
-                    instance.on_config_reload(module_config)
-            return True
-        except Exception as e:
-            print(f"[core] FAILED to reload configuration: {e}", file=sys.stderr)
-            return False
-
     def _update_joined_channels_state(self):
         state_manager.update_module_state("core", {"joined_channels": list(self.joined_channels)})
 
@@ -227,23 +232,17 @@ class Jeeves(SingleServerIRCBot):
         if nick.lower() not in admin_nicks:
             return False
 
-        # If the nick is in the admin list, we proceed.
         user_id = self.get_user_id(nick)
         courtesy_state = self.get_module_state("courtesy")
         admin_hostnames = courtesy_state.get("admin_hostnames", {})
-
         stored_host = admin_hostnames.get(user_id)
 
-        # If the current host matches the stored one, or if there's no stored host yet,
-        # we update and grant access. This allows admins to connect from new locations.
-        if stored_host != host:
+        if not stored_host or stored_host.lower() != host.lower():
             print(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}", file=sys.stderr)
             admin_hostnames[user_id] = host
             self.update_module_state("courtesy", {"admin_hostnames": admin_hostnames})
-            # Notify the user of the update for security awareness.
             self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
         
-        # Access is granted because the nick is in the admin list and the host is now registered.
         return True
 
     def is_user_ignored(self, username: str) -> bool:
@@ -252,6 +251,8 @@ class Jeeves(SingleServerIRCBot):
             user_id = self.get_user_id(username)
             return courtesy_module.is_user_ignored(user_id)
         return False
+
+    # --- IRC Event Handlers ---
 
     def on_welcome(self, connection, event):
         if self.nickserv_pass:
@@ -401,13 +402,11 @@ def main():
 
     config = load_config()
     
-    # --- Diagnostic Logging for Admins ---
     loaded_admins = config.get("core", {}).get("admins", [])
     if loaded_admins:
         print(f"[boot] Loaded admins from config: {', '.join(loaded_admins)}", file=sys.stderr)
     else:
         print("[boot] WARNING: No admins loaded from config.yaml. Admin commands will not work.", file=sys.stderr)
-    # --- End Diagnostic Logging ---
         
     irc_config = config.get("connection", {})
     

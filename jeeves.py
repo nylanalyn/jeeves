@@ -13,6 +13,7 @@ import traceback
 import importlib.util
 import yaml
 import shutil
+import functools
 from pathlib import Path
 from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
@@ -159,8 +160,15 @@ class PluginManager:
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
-        # This is the modern, correct way to connect with SSL using the irc library.
-        connect_factory = Factory(wrapper=ssl.create_default_context().wrap_socket) if port == 6697 else Factory()
+        if port == 6697:
+            ssl_context = ssl.create_default_context()
+            # We use functools.partial to create a wrapper that includes the server_hostname for SNI,
+            # which is required by modern Python SSL handling to prevent ValueError.
+            wrapper = functools.partial(ssl_context.wrap_socket, server_hostname=server)
+            connect_factory = Factory(wrapper=wrapper)
+        else:
+            connect_factory = Factory()
+
         super().__init__([(server, port)], nickname, nickname, connect_factory=connect_factory)
         self.server = server
         self.port = port

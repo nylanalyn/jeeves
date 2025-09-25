@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.0.1" # Fixed UnboundLocalError in command handlers
+    version = "3.0.2" # Corrected !mob difficulty scaling
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -159,7 +159,6 @@ class Quest(SimpleCommandModule):
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
-        # Defer save_state() call to the calling function
         if leveled_up:
             messages.append(f"Congratulations, you have reached Level {player['level']}!")
         return messages
@@ -170,9 +169,8 @@ class Quest(SimpleCommandModule):
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
-        # Defer save_state() call
 
-    def _calculate_win_chance(self, player_level: int, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0) -> float:
+    def _calculate_win_chance(self, player_level: float, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0) -> float:
         """Calculates win chance, including energy and group penalties/bonuses."""
         level_diff = player_level - monster_level
         chance = self.BASE_WIN_CHANCE + (level_diff * self.WIN_CHANCE_MOD_PER_LEVEL) + energy_modifier + group_modifier
@@ -263,10 +261,8 @@ class Quest(SimpleCommandModule):
         if self.get_state("active_mob"):
             self.safe_reply(connection, event, "A mob is already forming!")
             return True
-        
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
-
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
             return True
@@ -277,16 +273,15 @@ class Quest(SimpleCommandModule):
         })
         self.safe_reply(connection, event, f"{self.bot.title_for(username)} is gathering a party to hunt a {boss['name']}! Type !join in the next {self.MOB_JOIN_WINDOW} seconds to join the hunt!")
         schedule.every(self.MOB_JOIN_WINDOW).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+        self.save_state()
         return True
 
     def _cmd_mob_join(self, connection, event, msg, username, match):
         active_mob = self.get_state("active_mob")
         if not active_mob or active_mob.get("room") != event.target:
             return False
-        
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
-        
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to join the mob, {self.bot.title_for(username)}.")
             return True
@@ -317,7 +312,9 @@ class Quest(SimpleCommandModule):
         
         avg_level = sum(self._get_player(uid, name).get("level", 1) for uid, name in party.items()) / len(party)
         boss = active_mob["boss"]
-        boss_level = max(boss['min_level'], min(boss['max_level'], int(avg_level + self.MOB_LEVEL_MOD)))
+        
+        # Corrected boss level calculation
+        boss_level = max(boss['min_level'], min(boss['max_level'], int(avg_level)))
         
         party_size_mod = 0.0
         for mod in sorted(self.MOB_WIN_CHANCE_MODS, key=lambda x: x['players']):

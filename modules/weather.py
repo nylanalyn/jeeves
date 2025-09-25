@@ -11,7 +11,7 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "2.0.1" # State fallback fix
+    version = "2.1.0" # Added country_code storage for better integration
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot, config):
@@ -84,7 +84,6 @@ class Weather(SimpleCommandModule):
             return f"My apologies, {self.bot.title_for(requester)}, I could not format the weather report."
 
     def _reply_with_weather(self, connection, event, location_obj, requester, target_user=None):
-        # --- Defensive check for legacy data ---
         location_name = location_obj.get('short_name') or location_obj.get('display_name') or 'their location'
         
         weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
@@ -103,10 +102,17 @@ class Weather(SimpleCommandModule):
         
         lat, lon, geo_data = geo_data_tuple
         short_name = self._format_location_name(geo_data)
+        country_code = geo_data.get("address", {}).get("country_code", "us").upper()
         user_id = self.bot.get_user_id(username)
         
         user_locations = self.get_state("user_locations")
-        user_locations[user_id] = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name")}
+        user_locations[user_id] = {
+            "lat": lat, 
+            "lon": lon, 
+            "short_name": short_name, 
+            "display_name": geo_data.get("display_name"),
+            "country_code": country_code
+        }
         self.set_state("user_locations", user_locations)
         self.save_state()
         
@@ -144,7 +150,13 @@ class Weather(SimpleCommandModule):
         
         lat, lon, geo_data = geo_data_tuple
         short_name = self._format_location_name(geo_data)
-        location_obj = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name")}
+        country_code = geo_data.get("address", {}).get("country_code", "us").upper()
+        location_obj = {
+            "lat": lat, 
+            "lon": lon, 
+            "short_name": short_name, 
+            "display_name": geo_data.get("display_name"),
+            "country_code": country_code
+        }
         self._reply_with_weather(connection, event, location_obj, username)
         return True
-

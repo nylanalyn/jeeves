@@ -1,18 +1,15 @@
 # Jeeves Bot Configuration
 # This is the central configuration file for Jeeves.
-# All modules will look for their configuration here first.
 
 # --- Core Settings ---
 core:
-    # A list of nicks that have admin privileges. Case-insensitive.
+    # A list of nicknames that are considered administrators.
     admins:
-      - "YourNick"
-    
+      - "YourAdminNick"
     # A list of module filenames to prevent from loading.
     module_blacklist:
-      - "translate.py" # Example: uncomment to disable the translate module
-    
-    # A regex pattern for the bot's name, used for ambient triggers.
+      - "example_module.py"
+    # A regex pattern to detect when the bot is being addressed by name.
     name_pattern: r"(?:jeeves|jeevesbot)"
 
 # --- IRC Connection Details ---
@@ -20,62 +17,60 @@ connection:
   server: "irc.libera.chat"
   port: 6697
   nick: "JeevesBot"
-  channel: "#YourDefaultChannel"
-  # If your nickname is registered with NickServ, put the password here.
+  channel: "#your-channel"
+  # If your nickname is registered with NickServ, provide the password here.
   nickserv_pass: ""
 
 # --- API Keys ---
-# Required for modules that interact with external services.
 api_keys:
   giphy: "YourGiphyAPIKey"
   youtube: "YourYouTubeDataAPIKey"
-  shlink_url: "https://your-shlink-instance.com"
+  # For the shorten module, using a self-hosted Shlink instance.
+  # It is highly recommended to secure your Shlink instance with HTTPS.
+  shlink_url: "https://s.yourdomain.com"
   shlink_key: "YourShlinkAPIKey"
 
 # --- Module-Specific Configurations ---
+# Each module can have its own section for configuration.
+# If a module's section is missing, it will use its default values.
 
 adventure:
     vote_window_seconds: 75
     story_sentences_per_round: 3
 
 arithmetic:
-    # How often the !calc command gives a correct answer (out of 100).
     reliability_percent: 85
-    # The maximum amount to fudge an incorrect answer by.
     max_fudge_factor: 2
 
 bell:
-    allowed_channels: ["#YourGameChannel"]
     min_hours_between_rings: 1
     max_hours_between_rings: 8
     response_window_seconds: 15
+    allowed_channels:
+        - "#your-channel"
 
 chatter:
     cooldowns:
-        # Cooldown in seconds for each response category. Set to -1 to disable.
         animal: 3600
         weather: 1800
         tech: 900
         food: 1200
         greeting: 300
 
-clock:
-    cooldown_seconds: 10
-
 coffee:
     cooldown_seconds: 10
     beverage_limit: 2
     limit_reset_hours: 1
     limit_message: "Perhaps that is enough beverages for now, {title}."
-    force_messages: 
+    force_messages:
         - "Very well, {title}. If you insist."
-        - "As you wish, {title}, though I do worry."
 
 convenience:
     google_cooldown: 5.0
     ud_cooldown: 10.0
     wiki_cooldown: 10.0
     news_cooldown: 15.0
+    youtube_cooldown: 15.0
     sassy_google_chance: 0.1 # Chance (0.0 to 1.0) of using a "Let Me Google That" link.
     sassy_wiki_chance: 0.1   # Chance (0.0 to 1.0) of using a sassy response for Wikipedia.
     sassy_ud_chance: 0.05    # Chance (0.0 to 1.0) of looking up a sassy term instead.
@@ -85,58 +80,43 @@ convenience:
       - "slacker"
       - "work-shy"
 
-flirt:
-    global_cooldown: 30.0
-    per_user_cooldown: 60.0
-
 fortune:
-    cooldown_seconds: 10.0
+    cooldown_seconds: 10
 
 gif:
-    cooldown_seconds: 10.0
+    cooldown_seconds: 10
 
 help:
-    cooldown_seconds: 10.0
+    cooldown_seconds: 10
 
 hunt:
-    allowed_channels:
-        - "#YourGameChannel"
     min_hours_between_spawns: 2
     max_hours_between_spawns: 10
-    
-    # --- Event System Settings ---
+    allowed_channels:
+      - "#your-channel"
     event_settings:
-        escape_chance: 0.10 # 10% chance a flock gets away
+        escape_chance: 0.1
         min_flock_delay_minutes: 2
         max_flock_delay_minutes: 60
         min_flock_size: 20
         max_flock_size: 50
-
-    # --- Animal Definitions ---
     animals:
         - name: "Duck"
-          ascii_art: "A duck waddles into view. <`))_,"
-          hunt_message: "You have successfully bagged the duck, {username}."
-          hug_message: "You gently hug the duck, {username}. It quacks contentedly."
+          ascii_art: "<quack>"
+          hug_message: "{username} gently embraces the Duck. It seems content."
+          hunt_message: "{username} deftly catches the Duck. A fine specimen."
         - name: "Cat"
-          ascii_art: "A stray cat pads silently into the room. =^..^="
-          hunt_message: "You have... captured the cat, {username}. It seems displeased."
-          hug_message: "{username}, you offer the cat a gentle hug. It purrs loudly."
+          ascii_art: "=^..^="
+          hug_message: "{username} gives the Cat a gentle scratch behind the ears. It purrs."
+          hunt_message: "{username} manages to wrangle the Cat into a carrier. It seems displeased."
         - name: "Puppy"
-          ascii_art: "A lost puppy with big, sad eyes wanders in. @( ' .' )@"
-          hunt_message: "Really, {username}? You hunted a puppy? Well, it's captured."
-          hug_message: "{username}, you hug the puppy! It licks your face with joyous abandon."
-
-memos:
-    max_deliver_per_burst: 3
-    max_pending_per_user: 3
-
-pron:
-    cooldown_seconds: 30.0
+          ascii_art: ".'`'-.'`'-. "
+          hug_message: "{username} is immediately covered in happy puppy licks."
+          hunt_message: "{username} scoops up the puppy. It seems to think this is a new game."
 
 quest:
     allowed_channels:
-        - "#YourGameChannel"
+        - "#your-channel"
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8
@@ -163,82 +143,78 @@ quest:
             - { threshold: 5, xp_multiplier: 0.5, win_chance_modifier: 0.0 }
             - { threshold: 2, xp_multiplier: 0.5, win_chance_modifier: -0.15 }
 
-    # --- Setting: The Static City ---
     world_lore:
-        - "The world is a decaying network, a city of ghosts in the machine. They call it the Static."
-        - "Decades of forgotten code and rampant AI evolution have given rise to digital daemons that haunt the old servers."
-        - "You are a Debugger, one of the few who can venture into the Static to cleanse the corrupt data."
-        - "They say the heart of the Static holds the source code of a forgotten god."
-
+      - "The network is old. Older than the concrete and steel that house it. They say it dreams of dial-up tones."
+      - "Some data packets never reach their destination. They just... wander. Ghosts in the machine."
+      - "Firewalls were originally built to keep things out. Now, some say they're to keep something *in*."
     story_beats:
         openers:
-            - "{user} jacks into a forgotten subnet, hunting for a {monster}."
-            - "A corrupted data packet manifests before {user} as a {monster}."
-            - "{user} traces a rogue process to a dark corner of the network, finding a {monster}."
+          - "{user} traces a corrupted data line into a forgotten server room, seeking a {monster}."
+          - "{user} jacks into a dusty terminal, looking for the signature of a {monster}."
+          - "Following a trail of flickering lights, {user} finds the nest of a {monster}."
         actions:
-            - "{user} compiles an exploit and targets the {monster}'s core logic."
-            - "{user} raises a firewall, preparing to counter the {monster}'s attack."
-            - "{user} initiates a recursive algorithm to overwhelm the {monster}."
+          - "{user} initiates a debug sequence to try and quarantine the {monster}."
+          - "{user} deploys a counter-exploit against the {monster}."
+          - "With a burst of static, {user} confronts the {monster} in the digital ether."
     
     monsters:
-        - name: "Spam Bot"
+        - name: "Glitched Packet"
           min_level: 1
           max_level: 3
           xp_win_min: 15
           xp_win_max: 30
-        - name: "Trojan Horse"
+        - name: "Spam Bot"
           min_level: 2
           max_level: 5
           xp_win_min: 20
           xp_win_max: 40
-        - name: "Firewall Elemental"
+        - name: "Trojan Horse"
           min_level: 6
           max_level: 10
           xp_win_min: 50
           xp_win_max: 100
-        - name: "Data Wraith"
+        - name: "Rogue AI Fragment"
           min_level: 8
           max_level: 14
           xp_win_min: 80
           xp_win_max: 150
-        - name: "Rogue AI"
+        - name: "Data Wraith"
           min_level: 16
           max_level: 25
           xp_win_min: 200
           xp_win_max: 400
 
 roadtrip:
-    hours_between_trips: {min: 3, max: 18}
-    messages_for_trigger: {min: 35, max: 85}
+    hours_between_trips:
+        min: 3
+        max: 18
+    messages_for_trigger:
+        min: 35
+        max: 85
     trigger_probability: 0.25
     join_window_seconds: 120
     report_delay_seconds: 3600
 
 sailing:
-    # Responds to this user's 'SAIL' triggers.
     target_user: "witeshark2"
     cooldown: 5.0
 
 sed:
-    # Mode can be "self" (only correct your own messages) or "any" (correct anyone).
     mode: "self"
     history_size: 20
 
 shorten:
     enabled: true
-    cooldown_seconds: 10.0
+    cooldown_seconds: 10
     min_length_for_auto_shorten: 70
 
 titles:
     enabled: true
-    cooldown_seconds: 5.0
-    max_download_bytes: 32768 # 32 KB
+    cooldown_seconds: 5
+    max_download_bytes: 32768
 
 translate:
     api_url: "https://libretranslate.com"
-    cooldown_seconds: 15.0
+    cooldown_seconds: 15
     default_target_language: "en"
-
-youtube:
-    cooldown_seconds: 15.0
 

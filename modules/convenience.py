@@ -7,56 +7,71 @@ import random
 from urllib.parse import quote_plus
 from typing import Optional, Dict, Any
 
-from .base import SimpleCommandModule
+from .base import ModuleBase # Inherit from ModuleBase for more control
 
 try:
     from bs4 import BeautifulSoup
 except ImportError:
     BeautifulSoup = None
 
+try:
+    from googleapiclient.discovery import build
+except ImportError:
+    build = None
+
 def setup(bot, config):
     if not BeautifulSoup:
         print("[convenience] beautifulsoup4 is not installed. !g command will be limited.")
+    if not build:
+        print("[convenience] google-api-python-client is not installed. !yt command will not load.")
     return Convenience(bot, config)
 
-class Convenience(SimpleCommandModule):
+class Convenience(ModuleBase): # Changed to ModuleBase
     name = "convenience"
-    version = "1.3.2" # Added sassy Urban Dictionary feature
+    version = "1.4.3" # Switched to multi-line responses to avoid length limits
     description = "Provides convenient, common search commands."
 
     def __init__(self, bot, config):
-        self.on_config_reload(config)
+        # 1. Call the base __init__ first. This sets up self.bot.
         super().__init__(bot)
+        
+        # 2. Now that self.bot exists, we can safely load our config.
+        self.on_config_reload(config)
+        
+        # 3. Now that config is loaded, we can register commands with correct cooldowns.
+        self._register_commands()
+
+        # 4. Perform final setup.
         self.http_session = self.requests_retry_session()
+        
+        # Build YouTube service if API key is present
+        self.youtube_service = None
+        if self.YOUTUBE_API_KEY and build:
+            try:
+                self.youtube_service = build('youtube', 'v3', developerKey=self.YOUTUBE_API_KEY)
+            except Exception as e:
+                self._record_error(f"Failed to build YouTube service: {e}")
 
     def on_config_reload(self, config):
         self.COOLDOWN_G = config.get("google_cooldown", 5.0)
         self.COOLDOWN_UD = config.get("ud_cooldown", 10.0)
         self.COOLDOWN_WIKI = config.get("wiki_cooldown", 10.0)
         self.COOLDOWN_NEWS = config.get("news_cooldown", 15.0)
+        self.COOLDOWN_YT = config.get("youtube_cooldown", 15.0)
         self.SASSY_GOOGLE_CHANCE = config.get("sassy_google_chance", 0.1)
         self.SASSY_WIKI_CHANCE = config.get("sassy_wiki_chance", 0.1)
-        self.SASSY_UD_CHANCE = config.get("sassy_ud_chance", 0.05) # 5% chance
+        self.SASSY_UD_CHANCE = config.get("sassy_ud_chance", 0.05)
         self.SASSY_UD_TERMS = config.get("sassy_ud_terms", ["lazy", "procrastination", "slacker"])
-
+        
+        # Get the API key from the global bot config, which is safe now.
+        self.YOUTUBE_API_KEY = self.bot.config.get("api_keys", {}).get("youtube")
 
     def _register_commands(self):
-        # Google Search
-        self.register_command(r"^\s*!g\s+(.+)$", self._cmd_google,
-                              name="g", cooldown=self.COOLDOWN_G,
-                              description="Get the first Google result for a query. Usage: !g <query>")
-        # Urban Dictionary Search
-        self.register_command(r"^\s*!ud\s+(.+)$", self._cmd_ud,
-                              name="ud", cooldown=self.COOLDOWN_UD,
-                              description="Search Urban Dictionary. Usage: !ud <term>")
-        # Wikipedia Search
-        self.register_command(r"^\s*!wiki\s+(.+)$", self._cmd_wiki,
-                              name="wiki", cooldown=self.COOLDOWN_WIKI,
-                              description="Get a summary from Wikipedia. Usage: !wiki <term>")
-        # News Search
-        self.register_command(r"^\s*!news\s*$", self._cmd_news,
-                              name="news", cooldown=self.COOLDOWN_NEWS,
-                              description="Get the top news story for your location, or globally.")
+        self.register_command(r"^\s*!g\s+(.+)$", self._cmd_google, name="g", cooldown=self.COOLDOWN_G)
+        self.register_command(r"^\s*!ud\s+(.+)$", self._cmd_ud, name="ud", cooldown=self.COOLDOWN_UD)
+        self.register_command(r"^\s*!wiki\s+(.+)$", self._cmd_wiki, name="wiki", cooldown=self.COOLDOWN_WIKI)
+        self.register_command(r"^\s*!news\s*$", self._cmd_news, name="news", cooldown=self.COOLDOWN_NEWS)
+        self.register_command(r"^\s*!yt\s+(.+)$", self._cmd_yt, name="yt", cooldown=self.COOLDOWN_YT)
 
     # --- Command Handlers ---
 
@@ -73,10 +88,8 @@ class Convenience(SimpleCommandModule):
 
         search_url = f"https://www.google.com/search?q={encoded_query}"
         
-        fallback_message = f"{self.bot.title_for(username)}, your Google search for '{query}': {self._get_short_url(search_url)}"
-
         if not BeautifulSoup:
-            self.safe_reply(connection, event, fallback_message)
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Google search for '{query}': {self._get_short_url(search_url)}")
             return True
 
         try:
@@ -96,13 +109,13 @@ class Convenience(SimpleCommandModule):
                     link = link_tag['href']
                     snippet = snippet_tag.get_text()
 
-                    message = f"\"{title}\" — {snippet} ... ({self._get_short_url(link)})"
-                    self.safe_reply(connection, event, message)
+                    self.safe_reply(connection, event, f"\"{title}\" — {snippet}")
+                    self.safe_reply(connection, event, self._get_short_url(link))
                     return True
         except Exception as e:
             self._record_error(f"Google search scraping failed: {e}")
         
-        self.safe_reply(connection, event, fallback_message)
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Google search for '{query}': {self._get_short_url(search_url)}")
         return True
 
     def _cmd_ud(self, connection, event, msg, username, match):
@@ -132,10 +145,8 @@ class Convenience(SimpleCommandModule):
             definition = top_result.get("definition", "No definition provided.")
             cleaned_def = re.sub(r'\[|\]', '', definition).replace('\r', ' ').replace('\n', ' ').strip()
             
-            if len(cleaned_def) > 350:
-                cleaned_def = cleaned_def[:347] + "..."
-
-            self.safe_reply(connection, event, f"{intro_message} {cleaned_def}")
+            self.safe_reply(connection, event, intro_message)
+            self.safe_reply(connection, event, cleaned_def)
 
         except requests.exceptions.RequestException as e:
             self._record_error(f"Urban Dictionary API request failed: {e}")
@@ -173,14 +184,11 @@ class Convenience(SimpleCommandModule):
 
             if extract:
                 summary = extract.replace('\n', ' ').strip()
-                if len(summary) > 350:
-                    summary = summary[:347] + "..."
-                
                 page_url = f"https://en.wikipedia.org/wiki/{quote_plus(page_title)}"
-                message = f"{summary} ({self._get_short_url(page_url)})"
-                self.safe_reply(connection, event, message)
+                
+                self.safe_reply(connection, event, summary)
+                self.safe_reply(connection, event, self._get_short_url(page_url))
                 return True
-
         except requests.exceptions.RequestException as e:
             self._record_error(f"Wikipedia API request failed: {e}")
 
@@ -188,7 +196,7 @@ class Convenience(SimpleCommandModule):
         return True
 
     def _cmd_news(self, connection, event, msg, username, match):
-        """Handles the !news command, fetching local or global news."""
+        """Handles the !news command."""
         user_id = self.bot.get_user_id(username)
         user_locations = self.bot.get_module_state("weather").get("user_locations", {})
         location_obj = user_locations.get(user_id)
@@ -204,7 +212,6 @@ class Convenience(SimpleCommandModule):
         try:
             response = self.http_session.get(rss_url, timeout=10)
             response.raise_for_status()
-            
             root = ET.fromstring(response.content)
             top_item = root.find('.//item')
             
@@ -214,14 +221,35 @@ class Convenience(SimpleCommandModule):
                 
             news_title = top_item.find('title').text
             news_link = top_item.find('link').text
-
-            self.safe_reply(connection, event, f"The top {location_name} story is: \"{news_title}\" — {self._get_short_url(news_link)}")
+            
+            self.safe_reply(connection, event, f"The top {location_name} story is: \"{news_title}\"")
+            self.safe_reply(connection, event, self._get_short_url(news_link))
 
         except (requests.exceptions.RequestException, ET.ParseError) as e:
             self._record_error(f"Google News RSS request failed for '{location_name}': {e}")
             self.safe_reply(connection, event, "I'm afraid the news service is unavailable at this time.")
 
         return True
+
+    def _cmd_yt(self, connection, event, msg, username, match):
+        """Handles the !yt command."""
+        if not self.youtube_service:
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the YouTube service is not configured correctly.")
+            return True
+
+        query = match.group(1).strip()
+        video_info = self._get_youtube_video_info(query)
+        title = self.bot.title_for(username)
+
+        if video_info:
+            view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "N/A"
+            self.safe_reply(connection, event, f"For '{query}', I present: \"{video_info['title']}\".")
+            self.safe_reply(connection, event, f"Duration: {video_info['duration']}. Views: {view_str}. {self._get_short_url(video_info['url'])}")
+        else:
+            self.safe_reply(connection, event, f"My apologies, {title}, I could not find a suitable video for '{query}'.")
+        return True
+    
+    # --- Helper Methods ---
 
     def _get_short_url(self, url: str) -> str:
         """Helper to shorten a URL if the shorten module is available."""
@@ -231,4 +259,45 @@ class Convenience(SimpleCommandModule):
             if short_url:
                 return short_url
         return url
+
+    def _parse_duration(self, iso_duration: str) -> str:
+        """Converts an ISO 8601 duration string into a human-readable format."""
+        match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', iso_duration)
+        if not match: return "N/A"
+        hours, minutes, seconds = match.groups()
+        parts = []
+        if hours: parts.append(f"{int(hours)}h")
+        if minutes: parts.append(f"{int(minutes)}m")
+        if seconds: parts.append(f"{int(seconds)}s")
+        return " ".join(parts) if parts else "0s"
+
+    def _get_youtube_video_info(self, query: str) -> Optional[dict]:
+        """Searches for a video by relevance and returns its details."""
+        if not self.youtube_service: return None
+        try:
+            search_request = self.youtube_service.search().list(
+                q=query, part='snippet', maxResults=1, type='video', order='relevance'
+            )
+            search_response = search_request.execute()
+            if not search_response.get('items'): return None
+            
+            video_id = search_response['items'][0]['id']['videoId']
+            
+            video_request = self.youtube_service.videos().list(
+                part='snippet,statistics,contentDetails', id=video_id
+            )
+            video_response = video_request.execute()
+            if not video_response.get('items'): return None
+            
+            video_data = video_response['items'][0]
+            
+            return {
+                "title": video_data['snippet']['title'],
+                "views": int(video_data['statistics'].get('viewCount', 0)),
+                "duration": self._parse_duration(video_data['contentDetails']['duration']),
+                "url": f"https://www.youtube.com/watch?v={video_id}"
+            }
+        except Exception as e:
+            self._record_error(f"YouTube API request failed for query '{query}': {e}")
+            return None
 

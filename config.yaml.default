@@ -37,6 +37,27 @@ api_keys:
 adventure:
     vote_window_seconds: 75
     story_sentences_per_round: 3
+    # Cosmetic Item Discovery System
+    item_find_chance: 0.25 # Chance (0.0 to 1.0) to find an item on a winning vote.
+    max_inventory_size: 3   # Max number of recent items to show with !items.
+    item_adjectives:
+      - "clucking"
+      - "tasty"
+      - "foreign"
+      - "glowing"
+      - "rusty"
+      - "miniature"
+      - "singing"
+      - "forgotten"
+    item_nouns:
+      - "wand"
+      - "chicken"
+      - "candybar"
+      - "key"
+      - "coin"
+      - "sock"
+      - "dataslate"
+      - "teacup"
 
 arithmetic:
     reliability_percent: 85

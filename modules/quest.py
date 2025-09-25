@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.7.1" # Added monster level to combat and energy conservation
+    version = "3.0.0" # Implemented Group Content (!mob command)
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -28,6 +28,7 @@ class Quest(SimpleCommandModule):
         super().__init__(bot)
         
         self.set_state("players", self.get_state("players", {}))
+        self.set_state("active_mob", self.get_state("active_mob", None)) # For group content
         self.save_state()
 
     def on_config_reload(self, config):
@@ -57,15 +58,19 @@ class Quest(SimpleCommandModule):
         self.DAILY_BONUS_XP = config.get("first_win_bonus_xp", 50)
         self.XP_LEVEL_MULTIPLIER = config.get("xp_level_multiplier", 2)
 
-        # --- Energy System Config ---
         energy_settings = config.get("energy_system", {})
         self.ENERGY_ENABLED = energy_settings.get("enabled", True)
         self.MAX_ENERGY = energy_settings.get("max_energy", 10)
         self.ENERGY_REGEN_MINUTES = energy_settings.get("regen_minutes", 10)
-        self.ENERGY_PENALTIES = energy_settings.get("penalties", [
-            {"threshold": 5, "xp_multiplier": 0.5, "win_chance_modifier": 0},
-            {"threshold": 2, "xp_multiplier": 0.5, "win_chance_modifier": -0.15}
-        ])
+        self.ENERGY_PENALTIES = energy_settings.get("penalties", [])
+
+        # --- Group Content Config ---
+        group_config = config.get("group_content", {})
+        self.MOB_JOIN_WINDOW = group_config.get("join_window_seconds", 90)
+        self.MOB_LEVEL_MOD = group_config.get("level_modifier", 5)
+        self.MOB_WIN_CHANCE_MODS = group_config.get("win_chance_modifiers", [])
+        self.MOB_XP_SCALING = group_config.get("xp_scaling", [])
+        self.BOSS_MONSTERS = config.get("boss_monsters", [])
 
         if self._is_loaded:
             self._schedule_energy_regen()
@@ -73,29 +78,39 @@ class Quest(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         self._schedule_energy_regen()
+        
+        # Check for an active mob on load and reschedule its closing
+        active_mob = self.get_state("active_mob")
+        if active_mob:
+            close_time = active_mob.get("close_epoch", 0)
+            now = time.time()
+            if now >= close_time:
+                self._close_mob_window()
+            else:
+                remaining = close_time - now
+                schedule.every(remaining).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+
         self._is_loaded = True
+
+    def on_unload(self):
+        super().on_unload()
+        schedule.clear(self.name)
 
     def _schedule_energy_regen(self):
         """Schedules the recurring energy regeneration task."""
-        if not self.ENERGY_ENABLED:
-            return
-        schedule.clear(self.name)
+        if not self.ENERGY_ENABLED: return
+        schedule.clear("energy_regen")
         schedule.every(self.ENERGY_REGEN_MINUTES).minutes.do(self._regenerate_energy).tag(self.name, "energy_regen")
 
     def _regenerate_energy(self):
         """The scheduled task that passively regenerates energy for all players."""
-        if not self.ENERGY_ENABLED:
-            return
-        
+        if not self.ENERGY_ENABLED: return
         players = self.get_state("players", {})
         updated = False
         for user_id, player_data in players.items():
-            if isinstance(player_data, dict):
-                current_energy = player_data.get("energy", self.MAX_ENERGY)
-                if current_energy < self.MAX_ENERGY:
-                    player_data["energy"] = current_energy + 1
-                    updated = True
-        
+            if isinstance(player_data, dict) and player_data.get("energy", self.MAX_ENERGY) < self.MAX_ENERGY:
+                player_data["energy"] += 1
+                updated = True
         if updated:
             self.set_state("players", players)
             self.save_state()
@@ -105,24 +120,20 @@ class Quest(SimpleCommandModule):
         self.register_command(r"^\s*!quest\s+profile(?:\s+(\S+))?\s*$", self._cmd_profile, name="quest profile")
         self.register_command(r"^\s*!quest\s+story\s*$", self._cmd_story, name="quest story")
         self.register_command(r"^\s*!quest(?:\s+(easy|normal|hard))?\s*$", self._cmd_quest, name="quest", cooldown=self.COOLDOWN)
+        self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob", cooldown=self.COOLDOWN)
+        self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join")
         self.register_command(r"^\s*!quest\s+admin\s+addxp\s+(\S+)\s+(\d+)\s*$", self._cmd_admin_add_xp, name="quest admin addxp", admin_only=True)
 
     def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
         """Retrieves a player's profile, creating and back-filling new fields as needed."""
         players = self.get_state("players", {})
         player = players.get(user_id)
-        
-        if not isinstance(player, dict): player = None
-            
-        if not player:
-            player = {"name": username, "level": 1, "xp": 0}
-        
+        if not isinstance(player, dict): player = {"name": username, "level": 1, "xp": 0}
         player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
         player.setdefault("last_fight", None)
         player.setdefault("last_win_date", None)
         player.setdefault("energy", self.MAX_ENERGY)
         player["name"] = username
-        
         return player
 
     def _calculate_xp_for_level(self, level: int) -> int:
@@ -131,173 +142,218 @@ class Quest(SimpleCommandModule):
 
     def _grant_xp(self, user_id: str, username: str, amount: int, is_win: bool = False) -> List[str]:
         """Grants XP to a player and handles leveling up."""
-        player = self._get_player(user_id, username)
-        messages = []
-        
+        player, messages = self._get_player(user_id, username), []
         total_xp_gain = int(amount)
-
         today = datetime.now(UTC).date().isoformat()
         if is_win and player.get("last_win_date") != today:
             total_xp_gain += self.DAILY_BONUS_XP
             player["last_win_date"] = today
             messages.append(f"You receive a 'First Victory of the Day' bonus of {self.DAILY_BONUS_XP} XP!")
-
         player["xp"] += total_xp_gain
-        
         leveled_up = False
         while player["xp"] >= player["xp_to_next_level"]:
             player["xp"] -= player["xp_to_next_level"]
             player["level"] += 1
             player["xp_to_next_level"] = self._calculate_xp_for_level(player["level"])
             leveled_up = True
-            
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
-        self.save_state()
-
+        # Defer save_state() call to the calling function
         if leveled_up:
             messages.append(f"Congratulations, you have reached Level {player['level']}!")
         return messages
-        
+
     def _deduct_xp(self, user_id: str, username: str, amount: int):
         player = self._get_player(user_id, username)
         player["xp"] = max(0, player["xp"] - int(amount))
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
-        self.save_state()
+        # Defer save_state() call
 
-    def _calculate_win_chance(self, player_level: int, monster_level: int, energy_modifier: float = 0.0) -> float:
-        """Calculates win chance, including energy penalties."""
+    def _calculate_win_chance(self, player_level: int, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0) -> float:
+        """Calculates win chance, including energy and group penalties/bonuses."""
         level_diff = player_level - monster_level
-        chance = self.BASE_WIN_CHANCE + (level_diff * self.WIN_CHANCE_MOD_PER_LEVEL) + energy_modifier
+        chance = self.BASE_WIN_CHANCE + (level_diff * self.WIN_CHANCE_MOD_PER_LEVEL) + energy_modifier + group_modifier
         return max(self.MIN_WIN_CHANCE, min(self.MAX_WIN_CHANCE, chance))
+
+    # --- Solo Quest Commands & Logic ---
 
     def _cmd_profile(self, connection, event, msg, username, match):
         target_user_nick = match.group(1) or username
         user_id = self.bot.get_user_id(target_user_nick)
         player = self._get_player(user_id, target_user_nick)
-        
         title = self.bot.title_for(player["name"])
-        profile_parts = [
-            f"Profile for {title}: Level {player['level']}",
-            f"XP: {player['xp']}/{player['xp_to_next_level']}"
-        ]
+        profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}"]
         if self.ENERGY_ENABLED:
             profile_parts.append(f"Energy: {player['energy']}/{self.MAX_ENERGY}")
-
         self.safe_reply(connection, event, " | ".join(profile_parts))
         return True
 
     def _cmd_story(self, connection, event, msg, username, match):
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username)
+        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
         lore = random.choice(self.WORLD_LORE) if self.WORLD_LORE else "The world is vast."
-        last_fight = player.get("last_fight")
         history = ""
-        if last_fight:
+        if last_fight := player.get("last_fight"):
             outcome = "victorious against" if last_fight['win'] else "defeated by"
             history = f" You last remember being {outcome} a Level {last_fight['monster_level']} {last_fight['monster_name']}."
         self.safe_reply(connection, event, f"{lore}{history}")
         return True
 
     def _cmd_quest(self, connection, event, msg, username, match):
-        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS:
-            return False
-
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username)
-
-        # Initial energy check. Can the user even attempt a quest?
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
+        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
             return True
-            
-        difficulty = (match.group(1) or "normal").lower()
-        diff_mod = self.DIFFICULTY_MODS.get(difficulty)
-        player_level = player['level']
-
-        # Check if a monster appears
+        difficulty, diff_mod, player_level = (match.group(1) or "normal").lower(), self.DIFFICULTY_MODS.get(difficulty), player['level']
         if random.random() > self.MONSTER_SPAWN_CHANCE:
-            xp_gain = 10
-            self.safe_reply(connection, event, f"The lands are quiet. You gain {xp_gain} XP for your diligence. (No energy was spent).")
-            messages = self._grant_xp(user_id, username, xp_gain)
-            for m in messages: self.safe_reply(connection, event, m)
-            # No monster, no energy cost, so we save the player state and exit.
-            players = self.get_state("players")
-            players[user_id] = player
-            self.set_state("players", players)
+            self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence. (No energy was spent).")
+            for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)
             self.save_state()
             return True
-
-        # A monster has appeared! Now we deduct energy.
-        if self.ENERGY_ENABLED:
-            player["energy"] -= 1
-
+        if self.ENERGY_ENABLED: player["energy"] -= 1
         target_monster_level = player_level + diff_mod["level_mod"]
         possible_monsters = [m for m in self.MONSTERS if isinstance(m, dict) and m['min_level'] <= target_monster_level <= m['max_level']]
         if not possible_monsters:
             self.safe_reply(connection, event, "The lands are eerily quiet... no suitable monsters could be found.")
             return True
-        
         monster = random.choice(possible_monsters)
-        bound1, bound2 = player_level - 1, player_level + diff_mod["level_mod"]
-        monster_level = max(1, random.randint(min(bound1, bound2), max(bound1, bound2)))
-
-        # Include the monster's level in the encounter message
+        monster_level = max(1, random.randint(min(player_level - 1, player_level + diff_mod["level_mod"]), max(player_level - 1, player_level + diff_mod["level_mod"])))
         monster_name_with_level = f"Level {monster_level} {monster['name']}"
-        story = f"{random.choice(self.STORY_BEATS.get('openers',[]))} {random.choice(self.STORY_BEATS.get('actions',[]))}".format(user=username, monster=monster_name_with_level)
-        self.safe_reply(connection, event, story)
+        self.safe_reply(connection, event, f"{random.choice(self.STORY_BEATS.get('openers',[]))} {random.choice(self.STORY_BEATS.get('actions',[]))}".format(user=username, monster=monster_name_with_level))
         time.sleep(1.5)
-        
-        # Energy Penalties
-        energy_xp_mult = 1.0
-        energy_win_chance_mod = 0.0
+        energy_xp_mult, energy_win_chance_mod = 1.0, 0.0
         if self.ENERGY_ENABLED:
             for penalty in sorted(self.ENERGY_PENALTIES, key=lambda x: x['threshold'], reverse=True):
                 if player["energy"] <= penalty["threshold"]:
-                    energy_xp_mult = penalty["xp_multiplier"]
-                    energy_win_chance_mod = penalty["win_chance_modifier"]
+                    energy_xp_mult, energy_win_chance_mod = penalty["xp_multiplier"], penalty["win_chance_modifier"]
                     self.safe_reply(connection, event, f"You feel fatigued... (Energy penalties are in effect!)")
                     break
-
         win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod)
         win = random.random() < win_chance
-        
-        last_fight_data = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
-        player['last_fight'] = last_fight_data
-        
-        base_xp_gain = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
-        level_bonus = player_level * self.XP_LEVEL_MULTIPLIER
-        difficulty_bonus = diff_mod["xp_mult"]
-        total_xp_gain = (base_xp_gain + level_bonus) * difficulty_bonus * energy_xp_mult
-
+        player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
+        base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
+        total_xp = (base_xp + player_level * self.XP_LEVEL_MULTIPLIER) * diff_mod["xp_mult"] * energy_xp_mult
         if win:
-            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp_gain)} XP.")
-            messages = self._grant_xp(user_id, username, total_xp_gain, is_win=True)
-            for m in messages: self.safe_reply(connection, event, m)
+            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp)} XP.")
+            for m in self._grant_xp(user_id, username, total_xp, is_win=True): self.safe_reply(connection, event, m)
         else:
-            xp_loss = total_xp_gain * self.XP_LOSS_PERCENTAGE
+            xp_loss = total_xp * self.XP_LOSS_PERCENTAGE
             self.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
             self._deduct_xp(user_id, username, xp_loss)
-            
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
         self.save_state()
         return True
+
+    # --- Group Content (!mob) Commands & Logic ---
+
+    def _cmd_mob_start(self, connection, event, msg, username, match):
+        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
+        if self.get_state("active_mob"):
+            self.safe_reply(connection, event, "A mob is already forming!")
+            return True
+        user_id, player = self.bot.get_user_id(username), self._get_player(username, username)
+        if self.ENERGY_ENABLED and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
+            return True
+        boss = random.choice(self.BOSS_MONSTERS)
+        self.set_state("active_mob", {
+            "starter": username, "participants": {user_id: username}, "boss": boss,
+            "room": event.target, "close_epoch": time.time() + self.MOB_JOIN_WINDOW
+        })
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)} is gathering a party to hunt a {boss['name']}! Type !join in the next {self.MOB_JOIN_WINDOW} seconds to join the hunt!")
+        schedule.every(self.MOB_JOIN_WINDOW).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+        return True
+
+    def _cmd_mob_join(self, connection, event, msg, username, match):
+        active_mob = self.get_state("active_mob")
+        if not active_mob or active_mob.get("room") != event.target:
+            return False # No active mob in this channel
+        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        if self.ENERGY_ENABLED and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted to join the mob, {self.bot.title_for(username)}.")
+            return True
+        if user_id in active_mob["participants"]:
+            self.safe_reply(connection, event, f"You are already in the party, {self.bot.title_for(username)}.")
+            return True
+        active_mob["participants"][user_id] = username
+        self.set_state("active_mob", active_mob)
+        self.save_state()
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)} has joined the hunt! Party size: {len(active_mob['participants'])}.")
+        return True
+
+    def _close_mob_window(self):
+        schedule.clear("mob_close")
+        active_mob = self.get_state("active_mob")
+        if not active_mob: return
+        self.set_state("active_mob", None) # Clear it immediately to prevent race conditions
+        
+        party = active_mob["participants"]
+        if not party: return
+        
+        # 1. Deduct energy from all participants
+        if self.ENERGY_ENABLED:
+            players = self.get_state("players")
+            for user_id in party.keys():
+                if user_id in players:
+                    players[user_id]["energy"] = max(0, players[user_id].get("energy", 0) - 1)
+            self.set_state("players", players)
+        
+        # 2. Calculate party strength and monster level
+        avg_level = sum(self._get_player(uid, name).get("level", 1) for uid, name in party.items()) / len(party)
+        boss = active_mob["boss"]
+        boss_level = max(boss['min_level'], min(boss['max_level'], int(avg_level + self.MOB_LEVEL_MOD)))
+        
+        # 3. Determine win chance modifier from party size
+        party_size_mod = 0.0
+        for mod in sorted(self.MOB_WIN_CHANCE_MODS, key=lambda x: x['players']):
+            if len(party) >= mod['players']:
+                party_size_mod = mod['modifier']
+        
+        win_chance = self._calculate_win_chance(avg_level, boss_level, group_modifier=party_size_mod)
+        win = random.random() < win_chance
+        
+        boss_name_with_level = f"Level {boss_level} {boss['name']}"
+        party_names = ", ".join(party.values())
+        self.safe_say(f"The party of {party_names} confronts the {boss_name_with_level}! (Win Chance: {win_chance:.0%})", active_mob["room"])
+        time.sleep(2)
+        
+        # 4. Determine outcome and distribute XP
+        if win:
+            base_xp = random.randint(boss.get('xp_win_min', 100), boss.get('xp_win_max', 200))
+            xp_scaling_mult = 1.0
+            for scale in sorted(self.MOB_XP_SCALING, key=lambda x: x['players']):
+                if len(party) >= scale['players']:
+                    xp_scaling_mult = scale['multiplier']
+            
+            total_xp_gain = int(base_xp * xp_scaling_mult)
+            self.safe_say(f"Victory! The party has defeated the {boss_name_with_level} and gains {total_xp_gain} XP each!", active_mob["room"])
+            
+            for user_id, username in party.items():
+                for m in self._grant_xp(user_id, username, total_xp_gain, is_win=True):
+                    self.safe_say(m, active_mob["room"])
+        else:
+            self.safe_say(f"Defeat! The {boss_name_with_level} has bested the party!", active_mob["room"])
+            # In the future, a "Wounded" debuff could be applied here.
+        
+        self.save_state() # Save all XP and energy changes
+        return schedule.CancelJob
+
+    # --- Admin ---
         
     @admin_required
     def _cmd_admin_add_xp(self, connection, event, msg, username, match):
         target_user, amount_str = match.groups()
-        user_id = self.bot.get_user_id(target_user)
-        amount = int(amount_str)
-        
+        user_id, amount = self.bot.get_user_id(target_user), int(amount_str)
         self.safe_reply(connection, event, f"Granted {amount} XP to {target_user}.")
         messages = self._grant_xp(user_id, target_user, amount)
         if messages:
              for message in messages:
-                self.safe_reply(connection, event, f"{target_user} leveled up! {message}")
+                self.safe_reply(connection, event, f"{target_user}: {message}")
+        self.save_state()
         return True
 

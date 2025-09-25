@@ -205,6 +205,40 @@ quest:
           xp_win_min: 200
           xp_win_max: 400
 
+    # --- New Group Content Settings ---
+    group_content:
+        join_window_seconds: 90
+        # Monster level is avg_party_level + level_modifier.
+        level_modifier: 5
+        # Win chance is modified based on the number of participants.
+        win_chance_modifiers:
+          - { players: 1, modifier: -0.40 } # Very difficult for one player
+          - { players: 2, modifier: -0.15 } # Slim chance for two
+          - { players: 3, modifier: 0.05 }  # Fair chance for three
+          - { players: 4, modifier: 0.20 }  # Likely win for four
+        # XP reward is scaled for larger groups to prevent farming.
+        xp_scaling:
+          - { players: 5, multiplier: 0.8 }
+          - { players: 6, multiplier: 0.6 }
+          - { players: 7, multiplier: 0.5 } # etc.
+    
+    boss_monsters:
+        - name: "The Tyrant Lizard"
+          min_level: 10
+          max_level: 20
+          xp_win_min: 500
+          xp_win_max: 1000
+        - name: "Matriarch Elephant"
+          min_level: 15
+          max_level: 25
+          xp_win_min: 800
+          xp_win_max: 1500
+        - name: "The Horned One (Rhino)"
+          min_level: 20
+          max_level: 30
+          xp_win_min: 1200
+          xp_win_max: 2000
+
 roadtrip:
     hours_between_trips:
         min: 3

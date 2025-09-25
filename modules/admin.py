@@ -173,3 +173,4 @@ class Admin(SimpleCommandModule):
             self.safe_privmsg(username, line)
         self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent you the details privately.")
         return True
+

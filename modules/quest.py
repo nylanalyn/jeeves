@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.2.0" # Refactored to a single robust command handler
+    version = "3.2.1" # Fixed cooldown exploit with subcommands
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -110,7 +110,9 @@ class Quest(SimpleCommandModule):
             self.save_state()
 
     def _register_commands(self):
+        # Master handler for all !quest commands. Cooldown is handled internally.
         self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
+        # Mob commands have their own cooldowns.
         self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob", cooldown=self.COOLDOWN)
         self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join")
 
@@ -247,6 +249,12 @@ class Quest(SimpleCommandModule):
 
     def _handle_solo_quest(self, connection, event, username, difficulty):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
+        
+        # Manually check cooldown for the solo quest action
+        if not self.check_user_cooldown(username, "quest_solo", self.COOLDOWN):
+            self.safe_reply(connection, event, f"You are still recovering from your last adventure, {self.bot.title_for(username)}. Please wait a moment.")
+            return True
+
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:

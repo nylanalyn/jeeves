@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.0.3" # Reverted class system, corrected !mob difficulty scaling
+    version = "3.0.4" # Fixed UnboundLocalError in multiple commands
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -167,15 +167,18 @@ class Quest(SimpleCommandModule):
 
     def _cmd_profile(self, connection, event, msg, username, match):
         target_user_nick = match.group(1) or username
-        user_id, player = self.bot.get_user_id(target_user_nick), self._get_player(user_id, target_user_nick)
-        title, profile_parts = self.bot.title_for(player["name"]), [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}"]
+        user_id = self.bot.get_user_id(target_user_nick)
+        player = self._get_player(user_id, target_user_nick)
+        title = self.bot.title_for(player["name"])
+        profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}"]
         if self.ENERGY_ENABLED:
             profile_parts.append(f"Energy: {player['energy']}/{self.MAX_ENERGY}")
         self.safe_reply(connection, event, " | ".join(profile_parts))
         return True
 
     def _cmd_story(self, connection, event, msg, username, match):
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         lore = random.choice(self.WORLD_LORE) if self.WORLD_LORE else "The world is vast."
         history = ""
         if last_fight := player.get("last_fight"):
@@ -186,7 +189,8 @@ class Quest(SimpleCommandModule):
 
     def _cmd_quest(self, connection, event, msg, username, match):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
             return True
@@ -239,7 +243,8 @@ class Quest(SimpleCommandModule):
         if self.get_state("active_mob"):
             self.safe_reply(connection, event, "A mob is already forming!")
             return True
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
             return True
@@ -253,7 +258,8 @@ class Quest(SimpleCommandModule):
     def _cmd_mob_join(self, connection, event, msg, username, match):
         active_mob = self.get_state("active_mob")
         if not active_mob or active_mob.get("room") != event.target: return False
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to join the mob, {self.bot.title_for(username)}.")
             return True

@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "2.6.0" # Energy and Rested XP Systems
+    version = "2.7.0" # Removed Rested XP System
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -32,34 +32,33 @@ class Quest(SimpleCommandModule):
 
     def on_config_reload(self, config):
         """Handles reloading the module's configuration."""
-        quest_config = config.get(self.name, config)
-        self.ALLOWED_CHANNELS = quest_config.get("allowed_channels", [])
-        self.COOLDOWN = quest_config.get("cooldown_seconds", 300)
-        self.XP_CURVE_FORMULA = quest_config.get("xp_curve_formula", "level * 100")
-        self.MONSTER_SPAWN_CHANCE = quest_config.get("monster_spawn_chance", 0.8)
-        self.MONSTERS = quest_config.get("monsters", [])
-        self.STORY_BEATS = quest_config.get("story_beats", {})
-        self.WORLD_LORE = quest_config.get("world_lore", [])
+        self.ALLOWED_CHANNELS = config.get("allowed_channels", [])
+        self.COOLDOWN = config.get("cooldown_seconds", 300)
+        self.XP_CURVE_FORMULA = config.get("xp_curve_formula", "level * 100")
+        self.MONSTER_SPAWN_CHANCE = config.get("monster_spawn_chance", 0.8)
+        self.MONSTERS = config.get("monsters", [])
+        self.STORY_BEATS = config.get("story_beats", {})
+        self.WORLD_LORE = config.get("world_lore", [])
         
-        difficulty_settings = quest_config.get("difficulty", {})
+        difficulty_settings = config.get("difficulty", {})
         self.DIFFICULTY_MODS = {
             "easy": difficulty_settings.get("easy", {"level_mod": -2, "xp_mult": 0.7}),
             "normal": difficulty_settings.get("normal", {"level_mod": 1, "xp_mult": 1.0}),
             "hard": difficulty_settings.get("hard", {"level_mod": 3, "xp_mult": 1.5}),
         }
         
-        combat_settings = quest_config.get("combat", {})
+        combat_settings = config.get("combat", {})
         self.BASE_WIN_CHANCE = combat_settings.get("base_win_chance", 0.5)
         self.WIN_CHANCE_MOD_PER_LEVEL = combat_settings.get("win_chance_level_modifier", 0.1)
         self.MIN_WIN_CHANCE = combat_settings.get("min_win_chance", 0.05)
         self.MAX_WIN_CHANCE = combat_settings.get("max_win_chance", 0.95)
         
-        self.XP_LOSS_PERCENTAGE = quest_config.get("xp_loss_percentage", 0.25)
-        self.DAILY_BONUS_XP = quest_config.get("first_win_bonus_xp", 50)
-        self.XP_LEVEL_MULTIPLIER = quest_config.get("xp_level_multiplier", 2)
+        self.XP_LOSS_PERCENTAGE = config.get("xp_loss_percentage", 0.25)
+        self.DAILY_BONUS_XP = config.get("first_win_bonus_xp", 50)
+        self.XP_LEVEL_MULTIPLIER = config.get("xp_level_multiplier", 2)
 
-        # --- New Energy System Config ---
-        energy_settings = quest_config.get("energy_system", {})
+        # --- Energy System Config ---
+        energy_settings = config.get("energy_system", {})
         self.ENERGY_ENABLED = energy_settings.get("enabled", True)
         self.MAX_ENERGY = energy_settings.get("max_energy", 10)
         self.ENERGY_REGEN_MINUTES = energy_settings.get("regen_minutes", 10)
@@ -67,13 +66,6 @@ class Quest(SimpleCommandModule):
             {"threshold": 5, "xp_multiplier": 0.5, "win_chance_modifier": 0},
             {"threshold": 2, "xp_multiplier": 0.5, "win_chance_modifier": -0.15}
         ])
-
-        # --- New Rested XP Config ---
-        rested_settings = quest_config.get("rested_xp_system", {})
-        self.RESTED_XP_ENABLED = rested_settings.get("enabled", True)
-        self.RESTED_XP_CAP_MULTIPLIER = rested_settings.get("cap_level_multiplier", 2)
-        self.RESTED_XP_PER_HOUR = rested_settings.get("xp_per_hour", 50)
-        self.RESTED_XP_MESSAGES = rested_settings.get("messages", ["You feel well-rested."])
 
         # Reschedule energy regen if the interval changed
         if self._is_loaded:
@@ -111,7 +103,6 @@ class Quest(SimpleCommandModule):
 
     def _register_commands(self):
         """Registers all the commands for the quest module."""
-        # Commands remain the same as previous versions
         self.register_command(r"^\s*!quest\s+profile(?:\s+(\S+))?\s*$", self._cmd_profile, name="quest profile")
         self.register_command(r"^\s*!quest\s+story\s*$", self._cmd_story, name="quest story")
         self.register_command(r"^\s*!quest(?:\s+(easy|normal|hard))?\s*$", self._cmd_quest, name="quest", cooldown=self.COOLDOWN)
@@ -132,8 +123,6 @@ class Quest(SimpleCommandModule):
         player.setdefault("last_fight", None)
         player.setdefault("last_win_date", None)
         player.setdefault("energy", self.MAX_ENERGY)
-        player.setdefault("rested_xp_pool", 0)
-        player.setdefault("last_quest_timestamp", 0)
         player["name"] = username
         
         return player
@@ -143,18 +132,11 @@ class Quest(SimpleCommandModule):
         except: return level * 100
 
     def _grant_xp(self, user_id: str, username: str, amount: int, is_win: bool = False) -> List[str]:
-        """Grants XP to a player, handles leveling up and rested XP bonus."""
+        """Grants XP to a player and handles leveling up."""
         player = self._get_player(user_id, username)
         messages = []
         
-        # --- Apply Rested XP Bonus ---
-        rested_bonus = 0
-        if is_win and self.RESTED_XP_ENABLED and player.get("rested_xp_pool", 0) > 0:
-            rested_bonus = min(player["rested_xp_pool"], int(amount))
-            player["rested_xp_pool"] -= rested_bonus
-            messages.append(f"{random.choice(self.RESTED_XP_MESSAGES)} You gain a rested bonus of {rested_bonus} XP!")
-        
-        total_xp_gain = int(amount) + rested_bonus
+        total_xp_gain = int(amount)
 
         today = datetime.now(UTC).date().isoformat()
         if is_win and player.get("last_win_date") != today:
@@ -206,8 +188,6 @@ class Quest(SimpleCommandModule):
         ]
         if self.ENERGY_ENABLED:
             profile_parts.append(f"Energy: {player['energy']}/{self.MAX_ENERGY}")
-        if self.RESTED_XP_ENABLED:
-             profile_parts.append(f"Rested XP Bonus: {player['rested_xp_pool']}")
 
         self.safe_reply(connection, event, " | ".join(profile_parts))
         return True
@@ -237,21 +217,6 @@ class Quest(SimpleCommandModule):
                 self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
                 return True
             player["energy"] -= 1
-
-        # --- Rested XP Accrual ---
-        if self.RESTED_XP_ENABLED:
-            now = time.time()
-            time_since_last_quest = now - player.get("last_quest_timestamp", now)
-            hours_rested = time_since_last_quest / 3600
-            xp_to_add = int(hours_rested * self.RESTED_XP_PER_HOUR)
-            
-            cap = self._calculate_xp_for_level(player['level']) * self.RESTED_XP_CAP_MULTIPLIER
-            
-            if xp_to_add > 0:
-                current_pool = player.get("rested_xp_pool", 0)
-                player["rested_xp_pool"] = min(cap, current_pool + xp_to_add)
-
-        player["last_quest_timestamp"] = time.time()
 
         difficulty = (match.group(1) or "normal").lower()
         diff_mod = self.DIFFICULTY_MODS.get(difficulty)
@@ -327,4 +292,3 @@ class Quest(SimpleCommandModule):
              for message in messages:
                 self.safe_reply(connection, event, f"{target_user} leveled up! {message}")
         return True
-

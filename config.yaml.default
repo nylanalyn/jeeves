@@ -149,15 +149,6 @@ quest:
             - { threshold: 5, xp_multiplier: 0.5, win_chance_modifier: 0.0 }
             - { threshold: 2, xp_multiplier: 0.5, win_chance_modifier: -0.15 }
 
-    rested_xp_system:
-        enabled: true
-        cap_level_multiplier: 2
-        xp_per_hour: 50
-        messages:
-            - "Having defragmented your memories, you feel invigorated."
-            - "After clearing the cache, you feel ready for a new challenge."
-            - "The data stream is clear, and you feel accomplished."
-
     # --- Setting: The Static City ---
     world_lore:
         - "The world is a decaying network, a city of ghosts in the machine. They call it the Static."

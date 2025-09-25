@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.0.0" # Implemented Group Content (!mob command)
+    version = "3.0.1" # Fixed UnboundLocalError in command handlers
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -192,7 +192,8 @@ class Quest(SimpleCommandModule):
         return True
 
     def _cmd_story(self, connection, event, msg, username, match):
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         lore = random.choice(self.WORLD_LORE) if self.WORLD_LORE else "The world is vast."
         history = ""
         if last_fight := player.get("last_fight"):
@@ -203,11 +204,17 @@ class Quest(SimpleCommandModule):
 
     def _cmd_quest(self, connection, event, msg, username, match):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
             return True
-        difficulty, diff_mod, player_level = (match.group(1) or "normal").lower(), self.DIFFICULTY_MODS.get(difficulty), player['level']
+        difficulty = (match.group(1) or "normal").lower()
+        diff_mod = self.DIFFICULTY_MODS.get(difficulty)
+        player_level = player['level']
+
         if random.random() > self.MONSTER_SPAWN_CHANCE:
             self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence. (No energy was spent).")
             for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)
@@ -256,7 +263,10 @@ class Quest(SimpleCommandModule):
         if self.get_state("active_mob"):
             self.safe_reply(connection, event, "A mob is already forming!")
             return True
-        user_id, player = self.bot.get_user_id(username), self._get_player(username, username)
+        
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
             return True
@@ -272,8 +282,11 @@ class Quest(SimpleCommandModule):
     def _cmd_mob_join(self, connection, event, msg, username, match):
         active_mob = self.get_state("active_mob")
         if not active_mob or active_mob.get("room") != event.target:
-            return False # No active mob in this channel
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+            return False
+        
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+        
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to join the mob, {self.bot.title_for(username)}.")
             return True
@@ -290,12 +303,11 @@ class Quest(SimpleCommandModule):
         schedule.clear("mob_close")
         active_mob = self.get_state("active_mob")
         if not active_mob: return
-        self.set_state("active_mob", None) # Clear it immediately to prevent race conditions
+        self.set_state("active_mob", None) 
         
         party = active_mob["participants"]
         if not party: return
         
-        # 1. Deduct energy from all participants
         if self.ENERGY_ENABLED:
             players = self.get_state("players")
             for user_id in party.keys():
@@ -303,12 +315,10 @@ class Quest(SimpleCommandModule):
                     players[user_id]["energy"] = max(0, players[user_id].get("energy", 0) - 1)
             self.set_state("players", players)
         
-        # 2. Calculate party strength and monster level
         avg_level = sum(self._get_player(uid, name).get("level", 1) for uid, name in party.items()) / len(party)
         boss = active_mob["boss"]
         boss_level = max(boss['min_level'], min(boss['max_level'], int(avg_level + self.MOB_LEVEL_MOD)))
         
-        # 3. Determine win chance modifier from party size
         party_size_mod = 0.0
         for mod in sorted(self.MOB_WIN_CHANCE_MODS, key=lambda x: x['players']):
             if len(party) >= mod['players']:
@@ -322,7 +332,6 @@ class Quest(SimpleCommandModule):
         self.safe_say(f"The party of {party_names} confronts the {boss_name_with_level}! (Win Chance: {win_chance:.0%})", active_mob["room"])
         time.sleep(2)
         
-        # 4. Determine outcome and distribute XP
         if win:
             base_xp = random.randint(boss.get('xp_win_min', 100), boss.get('xp_win_max', 200))
             xp_scaling_mult = 1.0
@@ -338,9 +347,8 @@ class Quest(SimpleCommandModule):
                     self.safe_say(m, active_mob["room"])
         else:
             self.safe_say(f"Defeat! The {boss_name_with_level} has bested the party!", active_mob["room"])
-            # In the future, a "Wounded" debuff could be applied here.
         
-        self.save_state() # Save all XP and energy changes
+        self.save_state()
         return schedule.CancelJob
 
     # --- Admin ---

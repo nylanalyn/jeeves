@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.0.6" # Fixed UnboundLocalError in command handlers
+    version = "3.2.0" # Refactored to a single robust command handler
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -28,7 +28,8 @@ class Quest(SimpleCommandModule):
         super().__init__(bot)
         
         self.set_state("players", self.get_state("players", {}))
-        self.set_state("active_mob", self.get_state("active_mob", None)) # For group content
+        self.set_state("active_mob", self.get_state("active_mob", None))
+        self.set_state("player_classes", self.get_state("player_classes", {}))
         self.save_state()
 
     def on_config_reload(self, config):
@@ -40,6 +41,7 @@ class Quest(SimpleCommandModule):
         self.MONSTERS = config.get("monsters", [])
         self.STORY_BEATS = config.get("story_beats", {})
         self.WORLD_LORE = config.get("world_lore", [])
+        self.CLASSES = config.get("classes", {})
         
         difficulty_settings = config.get("difficulty", {})
         self.DIFFICULTY_MODS = {
@@ -64,7 +66,6 @@ class Quest(SimpleCommandModule):
         self.ENERGY_REGEN_MINUTES = energy_settings.get("regen_minutes", 10)
         self.ENERGY_PENALTIES = energy_settings.get("penalties", [])
 
-        # --- Group Content Config ---
         group_config = config.get("group_content", {})
         self.MOB_JOIN_WINDOW = group_config.get("join_window_seconds", 90)
         self.MOB_WIN_CHANCE_MODS = group_config.get("win_chance_modifiers", [])
@@ -77,7 +78,6 @@ class Quest(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         self._schedule_energy_regen()
-        
         active_mob = self.get_state("active_mob")
         if active_mob:
             close_time = active_mob.get("close_epoch", 0)
@@ -87,7 +87,6 @@ class Quest(SimpleCommandModule):
             else:
                 remaining = close_time - now
                 schedule.every(remaining).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
-
         self._is_loaded = True
 
     def on_unload(self):
@@ -111,12 +110,9 @@ class Quest(SimpleCommandModule):
             self.save_state()
 
     def _register_commands(self):
-        self.register_command(r"^\s*!quest\s+profile(?:\s+(\S+))?\s*$", self._cmd_profile, name="quest profile")
-        self.register_command(r"^\s*!quest\s+story\s*$", self._cmd_story, name="quest story")
-        self.register_command(r"^\s*!quest(?:\s+(easy|normal|hard))?\s*$", self._cmd_quest, name="quest", cooldown=self.COOLDOWN)
+        self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
         self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob", cooldown=self.COOLDOWN)
         self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join")
-        self.register_command(r"^\s*!quest\s+admin\s+addxp\s+(\S+)\s+(\d+)\s*$", self._cmd_admin_add_xp, name="quest admin addxp", admin_only=True)
 
     def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
         players = self.get_state("players", {})
@@ -166,18 +162,49 @@ class Quest(SimpleCommandModule):
         chance = self.BASE_WIN_CHANCE + (level_diff * self.WIN_CHANCE_MOD_PER_LEVEL) + energy_modifier + group_modifier
         return max(self.MIN_WIN_CHANCE, min(self.MAX_WIN_CHANCE, chance))
 
-    def _cmd_profile(self, connection, event, msg, username, match):
-        target_user_nick = match.group(1) or username
+    def _get_action_text(self, user_id: str) -> str:
+        player_classes = self.get_state("player_classes", {})
+        player_class = player_classes.get(user_id)
+        if player_class and player_class in self.CLASSES:
+            return random.choice(self.CLASSES[player_class].get("actions", ["..."]))
+        return random.choice(self.STORY_BEATS.get('actions', ["..."]))
+
+    # --- Master Command Handler ---
+    def _cmd_quest_master(self, connection, event, msg, username, match):
+        args_str = (match.group(1) or "").strip()
+        args = args_str.split()
+        
+        if not args_str or args[0].lower() in self.DIFFICULTY_MODS:
+            return self._handle_solo_quest(connection, event, username, args[0] if args else "normal")
+
+        subcommand = args[0].lower()
+        if subcommand == "profile":
+            return self._handle_profile(connection, event, username, args[1:])
+        elif subcommand == "story":
+            return self._handle_story(connection, event, username)
+        elif subcommand == "class":
+            return self._handle_class(connection, event, username, args[1:])
+        elif subcommand == "admin":
+            return self._handle_admin(connection, event, username, args[1:])
+        else:
+            self.safe_reply(connection, event, f"Unknown quest command '{subcommand}'. Use '!quest' to start an adventure, or '!quest <profile|story|class>'.")
+            return True
+
+    # --- Subcommand Handlers ---
+    def _handle_profile(self, connection, event, username, args):
+        target_user_nick = args[0] if args else username
         user_id = self.bot.get_user_id(target_user_nick)
         player = self._get_player(user_id, target_user_nick)
         title = self.bot.title_for(player["name"])
-        profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}"]
+        player_classes = self.get_state("player_classes", {})
+        player_class = player_classes.get(user_id, "None")
+        profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}", f"Class: {player_class.capitalize()}"]
         if self.ENERGY_ENABLED:
             profile_parts.append(f"Energy: {player['energy']}/{self.MAX_ENERGY}")
         self.safe_reply(connection, event, " | ".join(profile_parts))
         return True
 
-    def _cmd_story(self, connection, event, msg, username, match):
+    def _handle_story(self, connection, event, username):
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
         lore = random.choice(self.WORLD_LORE) if self.WORLD_LORE else "The world is vast."
@@ -188,18 +215,44 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, f"{lore}{history}")
         return True
 
-    def _cmd_quest(self, connection, event, msg, username, match):
+    def _handle_class(self, connection, event, username, args):
+        user_id = self.bot.get_user_id(username)
+        chosen_class = args[0].lower() if args else ""
+        player_classes = self.get_state("player_classes", {})
+        if not chosen_class:
+            current_class = player_classes.get(user_id, "no class")
+            available_classes = ", ".join(self.CLASSES.keys())
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your current class is: {current_class}. Available classes: {available_classes}.")
+            return True
+        if chosen_class not in self.CLASSES:
+            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but that is not a recognized class.")
+            return True
+        player_classes[user_id] = chosen_class
+        self.set_state("player_classes", player_classes)
+        self.save_state()
+        self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You are now a {chosen_class.capitalize()}. Your actions will reflect this new path.")
+        return True
+
+    def _handle_admin(self, connection, event, username, args):
+        if not self.bot.is_admin(event.source): return True
+        if not args:
+            self.safe_reply(connection, event, "Usage: !quest admin addxp <user> <amount>")
+            return True
+        admin_subcommand = args[0].lower()
+        if admin_subcommand == "addxp" and len(args) == 3:
+            return self._cmd_admin_add_xp(connection, event, "", username, args[1:])
+        else:
+            self.safe_reply(connection, event, "Unknown admin command or incorrect usage.")
+            return True
+
+    def _handle_solo_quest(self, connection, event, username, difficulty):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
-            self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
+            self.safe_reply(connection, event, f"You are too exhausted for a quest, {self.bot.title_for(username)}. You must rest.")
             return True
-        
-        difficulty = (match.group(1) or "normal").lower()
-        diff_mod = self.DIFFICULTY_MODS.get(difficulty)
-        player_level = player['level']
-
+        diff_mod, player_level = self.DIFFICULTY_MODS.get(difficulty), player['level']
         if random.random() > self.MONSTER_SPAWN_CHANCE:
             self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence. (No energy was spent).")
             for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)
@@ -214,7 +267,7 @@ class Quest(SimpleCommandModule):
         monster = random.choice(possible_monsters)
         monster_level = max(1, random.randint(min(player_level - 1, player_level + diff_mod["level_mod"]), max(player_level - 1, player_level + diff_mod["level_mod"])))
         monster_name_with_level = f"Level {monster_level} {monster['name']}"
-        action_text = random.choice(self.STORY_BEATS.get('actions', ["..."]))
+        action_text = self._get_action_text(user_id)
         story = f"{random.choice(self.STORY_BEATS.get('openers',[]))} {action_text}".format(user=username, monster=monster_name_with_level)
         self.safe_reply(connection, event, story)
         time.sleep(1.5)
@@ -248,8 +301,7 @@ class Quest(SimpleCommandModule):
         if self.get_state("active_mob"):
             self.safe_reply(connection, event, "A mob is already forming!")
             return True
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username)
+        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
             return True
@@ -263,8 +315,7 @@ class Quest(SimpleCommandModule):
     def _cmd_mob_join(self, connection, event, msg, username, match):
         active_mob = self.get_state("active_mob")
         if not active_mob or active_mob.get("room") != event.target: return False
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username)
+        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to join the mob, {self.bot.title_for(username)}.")
             return True
@@ -299,8 +350,8 @@ class Quest(SimpleCommandModule):
         win_chance = self._calculate_win_chance(avg_level, boss_level, group_modifier=party_size_mod)
         win = random.random() < win_chance
         boss_name_with_level = f"Level {boss_level} {boss['name']}"
-        party_names = ", ".join(party.values())
-        action_text = random.choice(self.STORY_BEATS.get('actions', ["..."]))
+        party_names, starter_id = ", ".join(party.values()), self.bot.get_user_id(active_mob["starter"])
+        action_text = self._get_action_text(starter_id)
         story = f"The party of {party_names} confronts the {boss_name_with_level}! {action_text.format(user='', monster='')}"
         self.safe_say(f"{story} (Win Chance: {win_chance:.0%})", active_mob["room"])
         time.sleep(2)
@@ -319,9 +370,8 @@ class Quest(SimpleCommandModule):
         self.save_state()
         return schedule.CancelJob
 
-    @admin_required
-    def _cmd_admin_add_xp(self, connection, event, msg, username, match):
-        target_user, amount_str = match.groups()
+    def _cmd_admin_add_xp(self, connection, event, msg, username, args):
+        target_user, amount_str = args
         user_id, amount = self.bot.get_user_id(target_user), int(amount_str)
         self.safe_reply(connection, event, f"Granted {amount} XP to {target_user}.")
         messages = self._grant_xp(user_id, target_user, amount)

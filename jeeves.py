@@ -159,11 +159,9 @@ class PluginManager:
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
-        # The modern way to handle SSL connections, compatible with Python 3.10+
-        # The irc library requires a factory that wraps the socket in an SSL context.
-        context = ssl.create_default_context()
-        ssl_factory = Factory(wrapper=lambda sock: context.wrap_socket(sock, server_hostname=server))
-        super().__init__([(server, port)], nickname, nickname, connect_factory=ssl_factory)
+        # This is the modern way to connect with SSL using the irc library
+        connect_factory = Factory(wrapper=ssl.wrap_socket) if port == 6697 else Factory()
+        super().__init__([(server, port)], nickname, nickname, connect_factory=connect_factory)
         self.server = server
         self.port = port
         self.primary_channel = channel
@@ -200,11 +198,8 @@ class Jeeves(SingleServerIRCBot):
             self.config = new_config
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
-                    module_config = self.config.get(name, self.config)
-                    if isinstance(module_config, dict):
-                        instance.on_config_reload(module_config)
-                    else:
-                         instance.on_config_reload({})
+                    module_config = self.config.get(name, {}) # Always provide a dict
+                    instance.on_config_reload(module_config)
             return True
         except Exception as e:
             print(f"[core] FAILED to reload configuration: {e}", file=sys.stderr)
@@ -220,22 +215,28 @@ class Jeeves(SingleServerIRCBot):
         except IndexError:
             return False
 
-        admin_nicks = {n.strip().lower() for n in self.config.get("admins", [])}
+        admin_nicks = {n.strip().lower() for n in self.config.get("core", {}).get("admins", [])}
         if nick.lower() not in admin_nicks:
             return False
 
+        # If the nick is in the admin list, we proceed.
         user_id = self.get_user_id(nick)
         courtesy_state = self.get_module_state("courtesy")
         admin_hostnames = courtesy_state.get("admin_hostnames", {})
 
-        if user_id in admin_hostnames:
-            return admin_hostnames[user_id] == host
-        else:
-            print(f"[core] Registering new admin host for {nick} ({user_id}): {host}", file=sys.stderr)
+        stored_host = admin_hostnames.get(user_id)
+
+        # If the current host matches the stored one, or if there's no stored host yet,
+        # we update and grant access. This allows admins to connect from new locations.
+        if stored_host != host:
+            print(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}", file=sys.stderr)
             admin_hostnames[user_id] = host
             self.update_module_state("courtesy", {"admin_hostnames": admin_hostnames})
-            self.connection.privmsg(nick, f"For security, I have registered your hostname ({host}) for admin access. This is a one-time process.")
-            return True
+            # Notify the user of the update for security awareness.
+            self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
+        
+        # Access is granted because the nick is in the admin list and the host is now registered.
+        return True
 
     def is_user_ignored(self, username: str) -> bool:
         courtesy_module = self.pm.plugins.get("courtesy")
@@ -391,6 +392,15 @@ def main():
     state_manager = StateManager(STATE_PATH)
 
     config = load_config()
+    
+    # --- Diagnostic Logging for Admins ---
+    loaded_admins = config.get("core", {}).get("admins", [])
+    if loaded_admins:
+        print(f"[boot] Loaded admins from config: {', '.join(loaded_admins)}", file=sys.stderr)
+    else:
+        print("[boot] WARNING: No admins loaded from config.yaml. Admin commands will not work.", file=sys.stderr)
+    # --- End Diagnostic Logging ---
+        
     irc_config = config.get("connection", {})
     
     server = irc_config.get("server", "irc.libera.chat")

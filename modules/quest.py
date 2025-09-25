@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.0.5" # Fixed UnboundLocalError in _get_player
+    version = "3.0.6" # Fixed UnboundLocalError in command handlers
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -195,7 +195,11 @@ class Quest(SimpleCommandModule):
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to go on a quest, {self.bot.title_for(username)}. You must rest.")
             return True
-        difficulty, diff_mod, player_level = (match.group(1) or "normal").lower(), self.DIFFICULTY_MODS.get(difficulty), player['level']
+        
+        difficulty = (match.group(1) or "normal").lower()
+        diff_mod = self.DIFFICULTY_MODS.get(difficulty)
+        player_level = player['level']
+
         if random.random() > self.MONSTER_SPAWN_CHANCE:
             self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence. (No energy was spent).")
             for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)

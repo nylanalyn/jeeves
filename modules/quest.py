@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.0.4" # Fixed UnboundLocalError in multiple commands
+    version = "3.0.5" # Fixed UnboundLocalError in _get_player
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -119,7 +119,8 @@ class Quest(SimpleCommandModule):
         self.register_command(r"^\s*!quest\s+admin\s+addxp\s+(\S+)\s+(\d+)\s*$", self._cmd_admin_add_xp, name="quest admin addxp", admin_only=True)
 
     def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
-        players, player = self.get_state("players", {}), players.get(user_id)
+        players = self.get_state("players", {})
+        player = players.get(user_id)
         if not isinstance(player, dict): player = {"name": username, "level": 1, "xp": 0}
         player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
         player.setdefault("last_fight", None)
@@ -181,7 +182,7 @@ class Quest(SimpleCommandModule):
         player = self._get_player(user_id, username)
         lore = random.choice(self.WORLD_LORE) if self.WORLD_LORE else "The world is vast."
         history = ""
-        if last_fight := player.get("last_fight"):
+        if (last_fight := player.get("last_fight")):
             outcome = "victorious against" if last_fight['win'] else "defeated by"
             history = f" You last remember being {outcome} a Level {last_fight['monster_level']} {last_fight['monster_name']}."
         self.safe_reply(connection, event, f"{lore}{history}")

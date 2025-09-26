@@ -12,28 +12,22 @@ def setup(bot, config):
 
 class Clock(SimpleCommandModule):
     name = "clock"
-    version = "2.0.2" # State fallback fix
+    version = "3.0.0" # Dynamic configuration refactor
     description = "Provides the local time for users based on their set location."
 
     def __init__(self, bot, config):
-        self.on_config_reload(config)
         super().__init__(bot)
-        
         self.tf = TimezoneFinder()
-
-    def on_config_reload(self, config):
-        clock_config = config.get(self.name, config)
-        self.COOLDOWN = clock_config.get("cooldown_seconds", 10.0)
 
     def _register_commands(self):
         self.register_command(r"^\s*!time\s*$", self._cmd_time_self, 
                               name="time", 
                               description="Get the local time for your default location.",
-                              cooldown=self.COOLDOWN)
+                              cooldown=10.0) # Base cooldown, can be overridden per-channel
         self.register_command(r"^\s*!time\s+(.+)$", self._cmd_time_other, 
                               name="time other", 
                               description="Get the time for another user, a location, or the server.",
-                              cooldown=self.COOLDOWN)
+                              cooldown=10.0)
 
     def _get_time_for_coords(self, lat: str, lon: str) -> Optional[str]:
         """Gets the formatted local time string for a given latitude and longitude."""
@@ -52,7 +46,6 @@ class Clock(SimpleCommandModule):
         user_loc = user_locations.get(user_id)
 
         if user_loc:
-            # --- Defensive check for legacy data ---
             location_name = user_loc.get('short_name') or user_loc.get('display_name') or 'your location'
             time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'])
             
@@ -83,7 +76,6 @@ class Clock(SimpleCommandModule):
             user_locations = self.bot.get_module_state("weather").get("user_locations", {})
             target_user_loc = user_locations.get(target_user_id)
             if target_user_loc:
-                # --- Defensive check for legacy data ---
                 location_name = target_user_loc.get('short_name') or target_user_loc.get('display_name') or 'their location'
                 time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'])
                 if time_str:
@@ -104,4 +96,3 @@ class Clock(SimpleCommandModule):
         else:
             self.safe_reply(connection, event, f"I could not find a user or location named '{query}'.")
         return True
-

@@ -13,23 +13,16 @@ def setup(bot, config):
 
 class Memos(SimpleCommandModule):
     name = "memos"
-    version = "3.0.1" # Initialization fix
+    version = "4.0.0" # Dynamic configuration refactor
     description = "Provides memo functionality for leaving messages for users."
 
     ACKS = [ "Indeed, {title}; I shall make a note of it.", "Very good, {title}. Your message is recorded.", "Quite so, {title}; I shall see that it is delivered." ]
     DELIVER_LINES = [ "Ah, {to}! {from_} left you a message; {says}: {text}", "{to}, a note from {from_}: {text}", "Message for {to} from {from_}: {text}" ]
 
     def __init__(self, bot, config):
-        self.on_config_reload(config)
         super().__init__(bot)
-        
         self.set_state("pending", self.get_state("pending", {}))
         self.save_state()
-
-    def on_config_reload(self, config):
-        memos_config = config.get(self.name, config)
-        self.MAX_DELIVER_PER_BURST = memos_config.get("max_deliver_per_burst", 3)
-        self.MAX_PENDING_PER_USER = memos_config.get("max_pending_per_user", 3)
 
     def _register_commands(self):
         self.register_command(r"^\s*!memo\s+(\S+)\s+(.+)$", self._cmd_memo, name="memo", description="Leave a message for someone.")
@@ -38,15 +31,19 @@ class Memos(SimpleCommandModule):
         self.register_command(r"^\s*!memos\s+mine\s*$", self._cmd_memos_mine, name="memos mine", description="Show your pending messages.")
 
     def on_ambient_message(self, connection, event, msg, username):
+        if not self.is_enabled(event.target):
+            return False
+            
         user_id = self.bot.get_user_id(username)
         pending = self.get_state("pending", {})
         bucket = pending.get(user_id, [])
         
         if not bucket:
             return False
-            
-        to_deliver = bucket[:self.MAX_DELIVER_PER_BURST]
-        remainder = bucket[self.MAX_DELIVER_PER_BURST:]
+        
+        max_deliver = self.get_config_value("max_deliver_per_burst", event.target, 3)
+        to_deliver = bucket[:max_deliver]
+        remainder = bucket[max_deliver:]
         
         for item in to_deliver:
             line = self._deliver_line(username, item.get("from","?"), item.get("text",""))
@@ -85,8 +82,9 @@ class Memos(SimpleCommandModule):
         pending = self.get_state("pending")
         bucket = pending.get(to_user_id, [])
         
-        if len(bucket) >= self.MAX_PENDING_PER_USER:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {to_nick} already has {self.MAX_PENDING_PER_USER} memos queued.")
+        max_pending = self.get_config_value("max_pending_per_user", event.target, 3)
+        if len(bucket) >= max_pending:
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {to_nick} already has {max_pending} memos queued.")
             return True
             
         bucket.append({
@@ -98,7 +96,8 @@ class Memos(SimpleCommandModule):
         
         self.set_state("pending", pending)
         self.save_state()
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {random.choice(self.ACKS).format(title=self.bot.title_for(username))}")
+        ack_template = random.choice(self.ACKS)
+        self.safe_reply(connection, event, ack_template.format(title=self.bot.title_for(username)))
         return True
 
     def _cmd_memos_mine(self, connection, event, msg, username, match):
@@ -108,8 +107,9 @@ class Memos(SimpleCommandModule):
         if not bucket:
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, there are no memos awaiting you.")
             return True
-            
-        shown = bucket[:self.MAX_DELIVER_PER_BURST]
+        
+        max_deliver = self.get_config_value("max_deliver_per_burst", event.target, 3)
+        shown = bucket[:max_deliver]
         more = len(bucket) - len(shown)
         
         for item in shown:
@@ -119,4 +119,3 @@ class Memos(SimpleCommandModule):
         if more > 0:
             self.safe_reply(connection, event, f"{username}, …and {more} more memo(s) queued.")
         return True
-

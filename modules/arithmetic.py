@@ -10,20 +10,16 @@ def setup(bot, config):
 
 class Arithmetic(SimpleCommandModule):
     name = "arithmetic"
-    version = "1.1.0" # version bumped for refactor
+    version = "2.0.0" # Dynamic configuration refactor
     description = "Performs calculations with configurable reliability."
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        self.RELIABILITY_PERCENT = config.get("reliability_percent", 85)
-        self.MAX_FUDGE_FACTOR = config.get("max_fudge_factor", 2)
-        
         self.set_state("calculations_performed", self.get_state("calculations_performed", 0))
         self.set_state("whimsical_results", self.get_state("whimsical_results", 0))
         self.save_state()
         
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
-        # This regex will look for "what is/what's" followed by a math expression.
         self.RE_NATURAL_CALC = re.compile(
             rf"\b{name_pat}[,!\s]*\s*(?:what'?s|what\s+is)\s+([0-9\s\+\-\*/\^\.\(\)]+)\??",
             re.IGNORECASE
@@ -36,6 +32,9 @@ class Arithmetic(SimpleCommandModule):
                               name="arithmetic stats", admin_only=True, description="Show calculation statistics.")
 
     def on_ambient_message(self, connection, event, msg, username):
+        if not self.is_enabled(event.target):
+            return False
+            
         match = self.RE_NATURAL_CALC.search(msg)
         if match:
             expression = match.group(1).strip()
@@ -52,16 +51,20 @@ class Arithmetic(SimpleCommandModule):
     def _handle_calculation(self, connection, event, username, expression):
         try:
             result = self._safe_eval(expression)
-            is_reliable = random.randint(1, 100) <= self.RELIABILITY_PERCENT
+            
+            # Fetch reliability settings dynamically for the current channel
+            reliability_percent = self.get_config_value("reliability_percent", event.target, 85)
+            max_fudge_factor = self.get_config_value("max_fudge_factor", event.target, 2)
+
+            is_reliable = random.randint(1, 100) <= reliability_percent
             
             self.set_state("calculations_performed", self.get_state("calculations_performed", 0) + 1)
 
             if is_reliable:
                 response = f"If my calculations are correct, {self.bot.title_for(username)}, the answer is {result}."
             else:
-                fudge = random.uniform(-self.MAX_FUDGE_FACTOR, self.MAX_FUDGE_FACTOR)
+                fudge = random.uniform(-max_fudge_factor, max_fudge_factor)
                 
-                # Make the fudge more "natural" - integers for integer results
                 if isinstance(result, int):
                     whimsical_result = result + int(fudge)
                 else:
@@ -79,15 +82,14 @@ class Arithmetic(SimpleCommandModule):
             self.safe_reply(connection, event, f"I'm afraid that calculation is beyond my station, {self.bot.title_for(username)}.")
 
     def _safe_eval(self, expr):
-        """A simple, safe evaluator for basic arithmetic, now with DoS protection."""
+        """A simple, safe evaluator for basic arithmetic with DoS protection."""
         if len(expr) > 100:
             raise ValueError("Expression is too long for my abacus.")
-        if expr.count('**') > 2 and expr.count('^') > 2:
+        if expr.count('**') > 2 or expr.count('^') > 2:
             raise ValueError("Such exponentiation is beyond my humble abilities.")
             
         expr = expr.replace('^', '**')
         
-        # Corrected regex to allow for the possibility of `**` being formed.
         if not re.match(r"^[0-9\s\+\-\*/\.\(\)\^]+$", expr.replace('**', '^')):
             raise ValueError("Invalid characters in expression.")
 
@@ -105,4 +107,3 @@ class Arithmetic(SimpleCommandModule):
             f"Observed reliability: {reliability:.1f}%."
         )
         return True
-

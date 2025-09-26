@@ -10,7 +10,7 @@ def setup(bot, config):
 class Intro(SimpleCommandModule):
     """Handles the one-time !intro command."""
     name = "intro"
-    version = "2.0.0" # UUID Refactor
+    version = "3.0.0" # Dynamic configuration refactor
     description = "Provides a one-time introduction for new users."
 
     def __init__(self, bot, config):
@@ -29,6 +29,7 @@ class Intro(SimpleCommandModule):
 
     def _cmd_intro(self, connection, event, msg, username, match):
         """Handles the !intro command logic."""
+        # The is_enabled check is handled by the base class's command dispatcher.
         user_id = self.bot.get_user_id(username)
         introduced_users = self.get_state("users_introduced", [])
         is_admin = self.bot.is_admin(event.source)
@@ -58,4 +59,3 @@ class Intro(SimpleCommandModule):
             self.save_state()
 
         return True
-

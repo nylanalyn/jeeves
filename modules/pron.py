@@ -8,7 +8,7 @@ def setup(bot, config):
 
 class Pron(SimpleCommandModule):
     name = "pron"
-    version = "1.0.0"
+    version = "2.0.0" # Dynamic configuration refactor
     description = "Provides wholesome, helpful scenarios with a suggestive trigger."
 
     SCENARIOS = [
@@ -30,16 +30,15 @@ class Pron(SimpleCommandModule):
     ]
 
     def __init__(self, bot, config):
-        self.COOLDOWN = config.get("cooldown_seconds", 30.0)
+        # Cooldown is now handled by the command registration and dynamic config.
         super().__init__(bot)
 
     def _register_commands(self):
         self.register_command(r"^\s*!pron\s*$", self._cmd_pron,
-                              name="pron", cooldown=self.COOLDOWN,
+                              name="pron", cooldown=30.0, # This is the default cooldown
                               description="Receive a wholesome scenario.")
 
     def _cmd_pron(self, connection, event, msg, username, match):
         scenario = random.choice(self.SCENARIOS)
         self.safe_reply(connection, event, f"{username}, {scenario}")
         return True
-

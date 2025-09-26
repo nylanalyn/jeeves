@@ -78,9 +78,11 @@ class StateManager:
     def update_module_state(self, name, updates):
         with self._lock:
             mods = self._state.setdefault("modules", {})
-            mod = mods.setdefault(name, {})
-            mod.update(updates)
+            # Always replace the entire object for a given module to ensure
+            # state is clean, especially for complex objects like the main config.
+            mods[name] = updates
             self._mark_dirty()
+
 
     def _mark_dirty(self):
         self._dirty = True
@@ -126,11 +128,16 @@ class PluginManager:
         self.modules = {}
         loaded_names = []
         
+        # --- Diagnostic Logging ---
+        self.bot.log_debug(f"[plugins] Loading modules from: {ROOT / 'modules'}")
+        module_files = list(ROOT.glob("modules/*.py"))
+        self.bot.log_debug(f"[plugins] Found {len(module_files)} python files in modules directory.")
+        
         blacklist = {f.strip() for f in self.bot.config.get("core", {}).get("module_blacklist", [])}
         if blacklist:
             self.bot.log_debug(f"[plugins] Blacklist active: {', '.join(sorted(list(blacklist)))}")
 
-        for py in sorted(ROOT.glob("modules/*.py")):
+        for py in sorted(module_files):
             name = py.stem
             if name in ("__init__", "base"): continue
             
@@ -144,8 +151,7 @@ class PluginManager:
                 sys.modules[f"modules.{name}"] = mod
                 spec.loader.exec_module(mod)
                 if hasattr(mod, "setup"):
-                    module_config = self.bot.config.get(name, {})
-                    instance = mod.setup(self.bot, module_config)
+                    instance = mod.setup(self.bot, self.bot.config.get(name, {}))
                     if instance:
                         self.plugins[name] = instance
                         loaded_names.append(name)
@@ -162,6 +168,7 @@ class PluginManager:
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
         self.config = config or {}
+        self.ROOT = ROOT # Make root path available to modules
         self._setup_logging()
 
         if port == 6697:
@@ -198,7 +205,6 @@ class Jeeves(SingleServerIRCBot):
         formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         handler.setFormatter(formatter)
         
-        # Clear existing handlers to prevent duplicate logs on reload
         if (self.logger.hasHandlers()):
             self.logger.handlers.clear()
             
@@ -213,24 +219,40 @@ class Jeeves(SingleServerIRCBot):
         self.debug_mode = status
         self.log_debug(f"[core] Debug mode has been turned {'ON' if status else 'OFF'}.")
 
-
     def core_reload_plugins(self):
-        """Core function to reload all plugins, called by the admin module."""
         return self.pm.load_all()
 
     def core_reload_config(self):
-        """Core function to reload config, called by the admin module."""
-        self.log_debug("[core] Reloading configuration file...")
+        self.log_debug("[core] Reloading configuration from state...")
         try:
-            new_config = load_config()
-            self.config = new_config
+            self.config = state_manager.get_module_state("config")
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
-                    module_config = self.config.get(name, {})
-                    instance.on_config_reload(module_config)
+                    instance.on_config_reload(self.config.get(name, {}))
             return True
         except Exception as e:
-            self.log_debug(f"[core] FAILED to reload configuration: {e}")
+            self.log_debug(f"[core] FAILED to reload configuration from state: {e}")
+            return False
+
+    def core_reset_and_reload_config(self):
+        """Core function to reset the config from the yaml file and reload everything."""
+        self.log_debug("[core] Resetting configuration from config.yaml...")
+        try:
+            fresh_yaml_config = load_config()
+            if not fresh_yaml_config:
+                self.log_debug("[core] RESET FAILED: Could not read config.yaml")
+                return False
+
+            self.update_module_state("config", fresh_yaml_config)
+            state_manager.force_save()
+            
+            self.core_reload_config()
+            self.core_reload_plugins()
+            
+            self.log_debug("[core] Configuration has been reset from config.yaml.")
+            return True
+        except Exception as e:
+            self.log_debug(f"[core] FAILED to reset configuration: {e}")
             return False
 
     def get_user_id(self, nick: str) -> str:
@@ -421,7 +443,21 @@ def main():
     global state_manager
     state_manager = StateManager(STATE_PATH)
 
-    config = load_config()
+    # --- Configuration Seeding Logic ---
+    config_from_state = state_manager.get_module_state("config")
+    if not config_from_state:
+        print("[boot] No config found in state, seeding from config.yaml...", file=sys.stderr)
+        yaml_config = load_config()
+        if yaml_config:
+            state_manager.update_module_state("config", yaml_config)
+            state_manager.force_save()
+            config = yaml_config
+        else:
+            print("[boot] CRITICAL: config.yaml is empty or could not be read.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print("[boot] Loading configuration from state.json.", file=sys.stderr)
+        config = config_from_state
         
     irc_config = config.get("connection", {})
     server = irc_config.get("server", "irc.libera.chat")

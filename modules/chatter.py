@@ -18,7 +18,7 @@ def setup(bot, config):
 
 class Chatter(SimpleCommandModule):
     name = "chatter"
-    version = "2.2.2"
+    version = "3.0.0" # Dynamic configuration refactor
     description = "Provides scheduled messages and conversational responses."
 
     ANIMAL_WORDS = re.compile(r"\b(?:duck|ducks|cat|cats|kitten|kittens|puppy|puppies|dog|dogs|rabbit|rabbits|bird|birds|fish|hamster|guinea\s+pig)\b", re.IGNORECASE)
@@ -36,22 +36,11 @@ class Chatter(SimpleCommandModule):
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        self.on_config_reload(config)
         self.set_state("last_daily", self.get_state("last_daily", None))
         self.set_state("last_weekly", self.get_state("last_weekly", None))
         self.set_state("response_counts", self.get_state("response_counts", {}))
         self.set_state("schedule_times", self.get_state("schedule_times", {}))
         self.save_state()
-
-    def on_config_reload(self, config):
-        config_cooldowns = config.get("cooldowns", {})
-        self._response_cooldowns = {
-            "animal":   config_cooldowns.get("animal", 3600),
-            "weather":  config_cooldowns.get("weather", 1800),
-            "tech":     config_cooldowns.get("tech", 900),
-            "food":     config_cooldowns.get("food", 1200),
-            "greeting": config_cooldowns.get("greeting", 300),
-        }
 
     def _register_commands(self):
         self.register_command(r"^\s*!chatter\s+stats\s*$", self._cmd_stats,
@@ -62,6 +51,9 @@ class Chatter(SimpleCommandModule):
                               name="chatter test weekly", admin_only=True, description="Force a weekly message.")
     
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+            
         response_handlers = [
             (self.ANIMAL_WORDS, "animal", 0.25),
             (self.WEATHER_WORDS, "weather", 0.3),
@@ -72,20 +64,22 @@ class Chatter(SimpleCommandModule):
         
         for pattern, response_type, probability in response_handlers:
             if pattern.search(msg) and random.random() <= probability:
-                response = self._handle_contextual_response(response_type, msg, username)
+                response = self._handle_contextual_response(event.target, response_type, msg, username)
                 if response:
                     self.safe_reply(connection, event, response)
                     return True
         return False
 
-    def _handle_contextual_response(self, response_type: str, msg: str, username: str) -> Optional[str]:
-        cooldown = self._response_cooldowns.get(response_type, 300)
+    def _handle_contextual_response(self, channel: str, response_type: str, msg: str, username: str) -> Optional[str]:
+        # Cooldowns can be configured per-channel via a dictionary
+        cooldowns_config = self.get_config_value("cooldowns", channel, {})
+        default_cooldowns = {"animal": 3600, "weather": 1800, "tech": 900, "food": 1200, "greeting": 300}
+        cooldown = cooldowns_config.get(response_type, default_cooldowns.get(response_type, 300))
         
-        # This is the new, corrected logic to disable the response if cooldown is negative.
-        if cooldown < 0:
+        if cooldown < 0: # A negative cooldown disables the response
             return None
             
-        if not self.check_rate_limit(response_type, cooldown):
+        if not self.check_rate_limit(f"{response_type}-{channel}", cooldown):
             return None
             
         responses = {
@@ -152,7 +146,10 @@ class Chatter(SimpleCommandModule):
         today = datetime.now(UTC).strftime("%Y-%m-%d")
         if self.get_state("last_daily") == today: return
         message = self._format_line(random.choice(self.DAILY_LINES))
-        self.safe_say(message, self.bot.primary_channel)
+        # Say the message in all channels where the module is enabled
+        for channel in self.bot.joined_channels:
+            if self.is_enabled(channel):
+                self.safe_say(message, channel)
         self.set_state("last_daily", today)
         self.set_state("daily_count", self.get_state("daily_count", 0) + 1)
         self.save_state()
@@ -163,7 +160,10 @@ class Chatter(SimpleCommandModule):
         week_key = f"{year}-{week:02d}"
         if self.get_state("last_weekly") == week_key: return
         message = self._format_line(random.choice(self.WEEKLY_LINES))
-        self.safe_say(message, self.bot.primary_channel)
+        # Say the message in all channels where the module is enabled
+        for channel in self.bot.joined_channels:
+            if self.is_enabled(channel):
+                self.safe_say(message, channel)
         self.set_state("last_weekly", week_key)
         self.set_state("weekly_count", self.get_state("weekly_count", 0) + 1)
         self.save_state()
@@ -189,4 +189,3 @@ class Chatter(SimpleCommandModule):
         self._say_weekly()
         self.safe_reply(connection, event, "Weekly message triggered.")
         return True
-

@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Replies(SimpleCommandModule):
     name = "replies"
-    version = "2.2.0"
+    version = "3.0.0" # Dynamic configuration refactor
     description = "Answers general, advice, and philosophical questions."
 
     YES_LINES = [ "Indeed, {title}.", "At once, {title}.", "Very good, {title}.", "As you wish, {title}.", "Quite so, {title}.", "Naturally, {title}.", "I shall see to it, {title}.", "Absolutely, {title}.", "Without question, {title}.", "Most certainly, {title}.", "I believe so, {title}.", "Undoubtedly, {title}." ]
@@ -34,6 +34,9 @@ class Replies(SimpleCommandModule):
         pass
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
         if self.RE_PHILOSOPHY.search(msg):
             self._handle_philosophical_question(connection, event, username)
             return True
@@ -73,4 +76,3 @@ class Replies(SimpleCommandModule):
             template = random.choice(self.MAYBE_LINES)
         response = self._format_response(template, username)
         self.safe_reply(connection, event, f"{username}, {response}")
-

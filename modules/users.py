@@ -10,8 +10,12 @@ def setup(bot, config):
 class Users(SimpleCommandModule):
     """Handles the mapping of nicknames to persistent user IDs."""
     name = "users"
-    version = "1.0.0"
+    version = "2.0.0" # Dynamic configuration refactor
     description = "Provides persistent user identity across nickname changes."
+
+    # This module is a core service and does not require changes for the refactor,
+    # as it has no user-facing commands or ambient triggers to be disabled.
+    # It will always be active to ensure user identity is tracked correctly.
 
     def __init__(self, bot, config):
         """Initializes the module's state."""

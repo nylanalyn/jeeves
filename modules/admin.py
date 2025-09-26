@@ -1,8 +1,10 @@
 # modules/admin.py
-# Simplified admin conveniences that call core bot functions for stability.
+# Administrative bot controls with dynamic configuration management.
 import re
 import time
 import sys
+import yaml
+from pathlib import Path
 from .base import SimpleCommandModule, admin_required
 
 def setup(bot, config):
@@ -10,40 +12,33 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.8.0" # Added debug mode toggle
+    version = "3.1.0" # Added !admin modules and enhanced set/get
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
         super().__init__(bot)
         if not hasattr(self.bot, "joined_channels"):
             self.bot.joined_channels = {self.bot.primary_channel}
+        
+        self.static_keys = [
+            "api_keys", "admins", "module_blacklist", "name_pattern", "connection",
+            "monsters", "story_beats", "world_lore", "classes", "boss_monsters",
+            "events", "locations", "animals", "item_adjectives", "item_nouns"
+        ]
 
     def _register_commands(self):
-        # Master command for all admin functions
         self.register_command(r"^\s*!admin(?:\s+(.*))?$", self._cmd_admin_master,
                               name="admin", admin_only=True, description="Main admin command. Use '!admin help' for subcommands.")
-        # Aliases for convenience
-        self.register_command(r"^\s*!reload\s*$", self._cmd_reload_alias,
+        self.register_command(r"^\s*!reload\s*$", lambda c, e, m, u, ma: self._cmd_reload(c, e, u),
                               name="reload", admin_only=True, description="Alias for '!admin reload'.")
         self.register_command(r"^\s*!say(?:\s+(#\S+))?\s+(.+)$", self._cmd_say_alias,
                               name="say", admin_only=True, description="Alias for '!admin say'.")
-        
-        # Emergency command remains top-level for critical access
         self.register_command(r"^\s*!emergency\s+quit(?:\s+(.+))?\s*$", self._cmd_emergency_quit,
                               name="emergency quit", admin_only=True, description="Emergency shutdown.")
-
-    def _update_stats(self, command_name):
-        """Updates and saves the admin command usage statistics."""
-        stats = self.get_state("stats", {"commands_used": 0, "last_used": None})
-        stats["commands_used"] = stats.get("commands_used", 0) + 1
-        stats["last_used"] = time.time()
-        self.set_state("stats", stats)
-        self.save_state()
 
     # --- Master Command Handler ---
 
     def _cmd_admin_master(self, connection, event, msg, username, match):
-        """The single entry point for all '!admin' commands."""
         args_str = (match.group(1) or "").strip()
         
         if not args_str:
@@ -53,131 +48,220 @@ class Admin(SimpleCommandModule):
         args = args_str.split()
         subcommand = args[0].lower()
         
-        # Route to the appropriate handler
         if subcommand == "reload":
             return self._cmd_reload(connection, event, username)
         elif subcommand == "config" and len(args) > 1 and args[1].lower() == "reload":
             return self._cmd_config_reload(connection, event, username)
-        elif subcommand == "stats":
-            return self._cmd_stats(connection, event, username)
+        elif subcommand in ("on", "off"):
+            if len(args) < 2: return self._usage(connection, event, "on|off <module> [#channel]")
+            module, channel = args[1], args[2] if len(args) > 2 else event.target
+            return self._cmd_toggle_module(connection, event, username, module, channel, subcommand == "on")
+        elif subcommand == "set":
+            if len(args) < 3: return self._usage(connection, event, "set <module.setting.path> <value> [#channel]")
+            path, value_str = args[1], " ".join(args[2:])
+            channel = event.target # Default to current channel
+            if value_str.rpartition(' ')[-1].startswith('#'):
+                 parts = value_str.rpartition(' ')
+                 value_str = parts[0]
+                 channel = parts[2]
+            return self._cmd_set_config(connection, event, username, path, value_str, channel)
+        elif subcommand == "get":
+            if len(args) < 2: return self._usage(connection, event, "get <module.setting.path> [#channel]")
+            path = args[1]
+            channel = args[2] if len(args) > 2 and args[2].startswith('#') else event.target
+            return self._cmd_get_config(connection, event, username, path, channel)
+        elif subcommand == "save":
+             return self._cmd_save_config(connection, event, username)
+        elif subcommand == "reset":
+             return self._cmd_reset_config(connection, event, username)
+        elif subcommand == "modules":
+             return self._cmd_list_modules(connection, event, username)
         elif subcommand == "join" and len(args) > 1:
             return self._cmd_join(connection, event, username, args[1])
         elif subcommand == "part" and len(args) > 1:
-            part_msg = " ".join(args[2:]) if len(args) > 2 else ""
-            return self._cmd_part(connection, event, username, args[1], part_msg)
-        elif subcommand == "channels":
-            return self._cmd_channels(connection, event, username)
+            return self._cmd_part(connection, event, username, args[1], " ".join(args[2:]))
         elif subcommand == "say" and len(args) > 1:
             target = args[1] if args[1].startswith('#') else event.target
             message = " ".join(args[2:]) if args[1].startswith('#') else " ".join(args[1:])
             return self._cmd_say(connection, event, username, target, message)
-        elif subcommand == "nick" and len(args) > 1:
-            return self._cmd_nick(connection, event, username, args[1])
         elif subcommand == "debug" and len(args) > 1:
             return self._cmd_debug_toggle(connection, event, username, args[1])
         elif subcommand == "help":
             return self._cmd_help(connection, event, username)
         else:
-            self.safe_reply(connection, event, f"Unknown admin command or incorrect usage. Use '!admin help'.")
+            self.safe_reply(connection, event, f"Unknown admin command. Use '!admin help'.")
             return True
 
-    def _cmd_reload_alias(self, connection, event, msg, username, match):
-        """Alias for !admin reload."""
-        return self._cmd_reload(connection, event, username)
-
-    def _cmd_say_alias(self, connection, event, msg, username, match):
-        """Alias for !admin say."""
-        target, message = match.groups()
-        return self._cmd_say(connection, event, username, target or event.target, message)
+    def _usage(self, connection, event, command_args):
+        self.safe_reply(connection, event, f"Usage: !admin {command_args}")
+        return True
 
     # --- Subcommand Logic ---
     
     def _cmd_reload(self, connection, event, username):
-        self._update_stats("reload")
-        loaded_modules = self.bot.core_reload_plugins()
-        self.safe_reply(connection, event, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
+        loaded = self.bot.core_reload_plugins()
+        self.safe_reply(connection, event, f"Modules reloaded: {', '.join(sorted(loaded))}")
         return True
 
     def _cmd_config_reload(self, connection, event, username):
-        self._update_stats("config reload")
         if self.bot.core_reload_config():
-            self.safe_reply(connection, event, "Configuration file reloaded.")
+            self.safe_reply(connection, event, "Configuration reloaded from state.")
         else:
-            self.safe_reply(connection, event, "There was an error reloading the configuration.")
+            self.safe_reply(connection, event, "Error reloading configuration.")
         return True
 
-    def _cmd_stats(self, connection, event, username):
-        stats = self.get_state("stats", {})
-        last_used_time = stats.get("last_used")
-        last_used_str = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(last_used_time)) if last_used_time else "never"
-        response = (f"Admin stats: {stats.get('commands_used', 0)} commands used. "
-                    f"Last used: {last_used_str}.")
-        self.safe_reply(connection, event, response)
+    def _cmd_toggle_module(self, connection, event, username, module_name, channel, new_status):
+        if module_name not in self.bot.pm.plugins:
+            self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
+            return True
+        
+        config_copy = self.bot.get_module_state("config")
+        module_cfg = config_copy.setdefault(module_name, {})
+        channels_cfg = module_cfg.setdefault("channels", {})
+        channels_cfg.setdefault(channel, {})["enabled"] = new_status
+        
+        self.bot.update_module_state("config", config_copy)
+        self.bot.core_reload_config()
+        
+        status_str = "enabled" if new_status else "disabled"
+        self.safe_reply(connection, event, f"Module '{module_name}' has been {status_str} for {channel}.")
         return True
 
-    def _cmd_join(self, connection, event, username, room_to_join):
-        self._update_stats("join")
-        self.bot.connection.join(room_to_join)
-        self.safe_reply(connection, event, f"Joined {room_to_join}.")
-        return True
+    def _cmd_set_config(self, connection, event, username, path, value_str, channel):
+        keys = path.split('.')
+        module_name = keys[0]
 
-    def _cmd_part(self, connection, event, username, room_to_part, part_msg):
-        self._update_stats("part")
-        if room_to_part in self.bot.joined_channels:
-            self.bot.connection.part(room_to_part, part_msg or "Leaving per request.")
-            self.safe_reply(connection, event, f"Left {room_to_part}.")
+        if module_name not in self.bot.pm.plugins:
+            self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
+            return True
+
+        if any(key in self.static_keys for key in keys):
+            self.safe_reply(connection, event, f"My apologies, but '{path}' contains a static key and cannot be changed at runtime.")
+            return True
+
+        try:
+            if value_str.lower() in ['true', 'on']: value = True
+            elif value_str.lower() in ['false', 'off']: value = False
+            elif '.' in value_str: value = float(value_str)
+            else: value = int(value_str)
+        except ValueError:
+            value = value_str
+
+        config_copy = self.bot.get_module_state("config")
+        
+        # Navigate to the right dictionary for either global or channel-specific setting
+        if channel == "global":
+            d = config_copy
         else:
-            self.safe_reply(connection, event, f"I am not in {room_to_part}.")
+            d = config_copy.setdefault(module_name, {}).setdefault("channels", {}).setdefault(channel, {})
+            # If we're setting a channel override, the path doesn't need the module name
+            if keys[0] == module_name: keys.pop(0)
+
+        for key in keys[:-1]:
+            d = d.setdefault(key, {})
+        d[keys[-1]] = value
+
+        self.bot.update_module_state("config", config_copy)
+        self.bot.core_reload_config()
+        self.safe_reply(connection, event, f"Config for '{path}' in {channel} set to '{value}'.")
         return True
-    
-    def _cmd_channels(self, connection, event, username):
-        self._update_stats("channels")
-        channels_list = ", ".join(sorted(list(self.bot.joined_channels)))
-        self.safe_reply(connection, event, f"I am currently in these channels: {channels_list}")
+
+    def _cmd_get_config(self, connection, event, username, path, channel):
+        keys = path.split('.')
+        module_name = keys[0]
+        
+        module_instance = self.bot.pm.plugins.get(module_name)
+        if not module_instance:
+            self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
+            return True
+            
+        config_copy = self.bot.get_module_state("config")
+        
+        # Get channel-specific value if it exists
+        d = config_copy.get(module_name, {}).get("channels", {}).get(channel, {})
+        val = d
+        try:
+             for key in keys[1:]: val = val[key]
+             is_channel_override = True
+        except KeyError:
+             val = config_copy
+             for key in keys: val = val[key]
+             is_channel_override = False
+
+        self.safe_reply(connection, event, f"Config for '{path}' in {channel} is '{val}' {'(Channel Override)' if is_channel_override else '(Global)'}")
+        return True
+
+    def _cmd_save_config(self, connection, event, username):
+        saved_path = Path(self.bot.ROOT) / "config" / "config.yaml.saved"
+        try:
+            with open(saved_path, 'w') as f:
+                yaml.dump(self.bot.config, f, default_flow_style=False, sort_keys=False)
+            self.safe_reply(connection, event, f"Current running configuration has been saved to {saved_path.name}")
+        except Exception as e:
+            self.safe_reply(connection, event, f"An error occurred while saving the configuration: {e}")
+        return True
+
+    def _cmd_reset_config(self, connection, event, username):
+        if self.bot.core_reset_and_reload_config():
+             self.safe_reply(connection, event, "Configuration has been reset from config.yaml and all modules have been reloaded.")
+        else:
+             self.safe_reply(connection, event, "There was an error resetting the configuration. Please check the debug log.")
+        return True
+
+    def _cmd_list_modules(self, connection, event, username):
+        loaded_modules = sorted(list(self.bot.pm.plugins.keys()))
+        self.safe_reply(connection, event, f"Loaded modules ({len(loaded_modules)}): {', '.join(loaded_modules)}")
+        return True
+
+    def _cmd_join(self, connection, event, username, room):
+        self.bot.connection.join(room)
+        self.safe_reply(connection, event, f"Joined {room}.")
+        return True
+
+    def _cmd_part(self, connection, event, username, room, msg):
+        if room in self.bot.joined_channels:
+            self.bot.connection.part(room, msg or "Leaving per request.")
+            self.safe_reply(connection, event, f"Left {room}.")
+        else:
+            self.safe_reply(connection, event, f"I am not in {room}.")
         return True
 
     def _cmd_say(self, connection, event, username, target, message):
-        self._update_stats("say")
         self.bot.connection.privmsg(target, message)
         return True
-
-    def _cmd_emergency_quit(self, connection, event, msg, username, match):
-        self._update_stats("emergency quit")
-        quit_msg = match.group(1)
-        self.bot.connection.quit(quit_msg or "Emergency quit.")
-        return True
-    
-    def _cmd_nick(self, connection, event, username, new_nick):
-        self._update_stats("nick")
-        self.bot.connection.nick(new_nick)
-        self.safe_reply(connection, event, f"Nickname changed to {new_nick}.")
-        return True
+        
+    def _cmd_say_alias(self, connection, event, msg, username, match):
+        target, message = match.groups()
+        return self._cmd_say(connection, event, username, target or event.target, message)
 
     def _cmd_debug_toggle(self, connection, event, username, state: str):
-        self._update_stats("debug")
         state_bool = state.lower() in ['on', 'true', '1', 'enable']
         self.bot.set_debug_mode(state_bool)
         self.safe_reply(connection, event, f"Debug mode is now {'ON' if state_bool else 'OFF'}.")
         return True
+        
+    def _cmd_emergency_quit(self, connection, event, msg, username, match):
+        self.bot.connection.quit(match.group(1) or "Emergency quit.")
+        return True
 
     def _cmd_help(self, connection, event, username):
-        """Displays admin-specific help."""
         help_lines = [
-            "!admin reload - Reload all modules from disk (!reload also works).",
-            "!admin config reload - Reload the bot's config.yaml file.",
-            "!admin stats - Show admin command usage stats.",
-            "!admin join <#channel> - Join a channel.",
-            "!admin part <#channel> [message] - Leave a channel.",
-            "!admin channels - List all channels I'm in.",
-            "!say [#channel] <message> - Make the bot say something.",
-            "!admin nick <newnick> - Change bot nickname.",
+            "!admin reload - Reload all modules.",
+            "!admin config reload - Reload config from state.json.",
+            "!admin modules - List all currently loaded modules.",
+            "!admin on|off <module> [#channel] - Enable/disable a module in a channel.",
+            "!admin get <module.setting.path> [#channel] - View a config value.",
+            "!admin set <module.setting.path> <value> [#channel|global] - Set a config value.",
+            "!admin save - Save the current running config to config.yaml.saved.",
+            "!admin reset - DANGEROUS: Reloads config from the original config.yaml.",
+            "!admin join|part <#channel> [message] - Join or leave a channel.",
+            "!say [#channel] <message> - Make the bot speak.",
             "!admin debug <on|off> - Toggle verbose file logging.",
             "!emergency quit [message] - Emergency shutdown."
         ]
         
-        self.safe_reply(connection, event, f"--- {self.name.capitalize()} Commands ---")
+        self.safe_reply(connection, event, "I have sent you the admin command list privately.")
         for line in help_lines:
             self.safe_privmsg(username, line)
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent you the details privately.")
         return True
 

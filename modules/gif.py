@@ -17,30 +17,23 @@ def setup(bot, config):
 
 class Gif(SimpleCommandModule):
     name = "gif"
-    version = "1.3.0" # Final refactor fix
+    version = "2.0.0" # Dynamic configuration refactor
     description = "Searches Giphy for a GIF and posts the link."
     
     def __init__(self, bot, config, api_key):
         """Initializes the module's state and configuration."""
-        # --- Pre-super() setup ---
-        self.API_KEY = api_key
-        self.COOLDOWN = config.get("cooldown_seconds", 10.0)
-        
-        # --- super() call ---
         super().__init__(bot)
-
-        # --- Post-super() setup ---
+        self.API_KEY = api_key
         self.set_state("gifs_requested", self.get_state("gifs_requested", 0))
         self.set_state("gifs_found", self.get_state("gifs_found", 0))
         self.save_state()
-        
         self.http_session = self.requests_retry_session()
 
     def _register_commands(self):
         """Registers the !gif command."""
         self.register_command(
             r"^\s*!gif\s+(.+)$", self._cmd_gif,
-            name="gif", cooldown=self.COOLDOWN,
+            name="gif", cooldown=10.0, # Base cooldown, can be overridden per-channel
             description="Search Giphy for a GIF. Usage: !gif <search term>"
         )
         self.register_command(
@@ -79,17 +72,12 @@ class Gif(SimpleCommandModule):
 
     def _cmd_gif(self, connection, event, msg, username, match):
         """Handles the !gif command."""
-        if not self.API_KEY:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the GIF service is not configured correctly.")
-            return True
-
         query = match.group(1).strip()
         gif_url = self._get_gif_url(query)
         
         shorten_module = self.bot.pm.plugins.get("shorten")
-        if shorten_module and shorten_module.enabled and gif_url:
-            short_url = shorten_module._shorten_url(gif_url)
-            if short_url:
+        if shorten_module and shorten_module.is_enabled(event.target) and gif_url:
+            if short_url := shorten_module._shorten_url(gif_url):
                 gif_url = short_url
 
         if gif_url:
@@ -108,4 +96,3 @@ class Gif(SimpleCommandModule):
         
         self.safe_reply(connection, event, f"GIF stats: {found}/{requested} successful requests ({success_rate:.1f}% success rate).")
         return True
-

@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Bell(SimpleCommandModule):
     name = "bell"
-    version = "2.0.0" # UUID Refactor
+    version = "3.0.0" # Dynamic configuration refactor
     description = "A reaction game to answer the service bell."
 
     def __init__(self, bot, config):
@@ -24,14 +24,7 @@ class Bell(SimpleCommandModule):
         self.set_state("scores", self.get_state("scores", {})) # Keyed by user_id
         self.set_state("active_bell", self.get_state("active_bell", None))
         self.set_state("next_ring_time", self.get_state("next_ring_time", None))
-        self.on_config_reload(config)
-
-    def on_config_reload(self, config):
-        bell_config = config.get(self.name, {})
-        self.MIN_HOURS = bell_config.get("min_hours_between_rings", 1)
-        self.MAX_HOURS = bell_config.get("max_hours_between_rings", 8)
-        self.WINDOW = bell_config.get("response_window_seconds", 15)
-        self.ALLOWED_CHANNELS = bell_config.get("allowed_channels", [])
+        self.save_state()
 
     def on_load(self):
         super().on_load()
@@ -66,10 +59,11 @@ class Bell(SimpleCommandModule):
                               name="bell ring", admin_only=True, description="Force the bell to ring now.")
 
     def _schedule_next_bell(self):
-        if not self.ALLOWED_CHANNELS:
-            return
+        # Scheduler uses global config because it's a single, global timer
+        min_hours = self.get_config_value("min_hours_between_rings", default=1)
+        max_hours = self.get_config_value("max_hours_between_rings", default=8)
 
-        delay_hours = random.uniform(self.MIN_HOURS, self.MAX_HOURS)
+        delay_hours = random.uniform(min_hours, max_hours)
         next_ring_time = datetime.now(UTC) + timedelta(hours=delay_hours)
         
         self.set_state("next_ring_time", next_ring_time.isoformat())
@@ -80,29 +74,37 @@ class Bell(SimpleCommandModule):
     def _ring_the_bell(self):
         schedule.clear("ring")
         
-        active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
+        # Ring only happens in channels where the module is currently enabled
+        active_channels = [
+            room for room in self.bot.joined_channels 
+            if self.is_enabled(room)
+        ]
         
         if not active_channels:
             self._schedule_next_bell()
             return schedule.CancelJob
 
+        # The response window is global as there is only one bell
+        response_window = self.get_config_value("response_window_seconds", default=15)
+        
         for room in active_channels:
             self.safe_say("The service bell has been rung!", target=room)
         
-        end_time = time.time() + self.WINDOW
-        self.set_state("active_bell", {"end_time": end_time})
+        end_time = time.time() + response_window
+        self.set_state("active_bell", {"end_time": end_time, "channels": active_channels})
         self.set_state("next_ring_time", None)
         self.save_state()
 
-        schedule.every(self.WINDOW).seconds.do(self._end_bell_round).tag(self.name, "end")
+        schedule.every(response_window).seconds.do(self._end_bell_round).tag(self.name, "end")
         return schedule.CancelJob
 
     def _end_bell_round(self):
-        if self.get_state("active_bell"):
+        active_bell = self.get_state("active_bell")
+        if active_bell:
             self.set_state("active_bell", None)
             self.save_state()
-            active_channels = [room for room in self.ALLOWED_CHANNELS if room in self.bot.joined_channels]
-            for room in active_channels:
+            # Announce in all channels where the bell originally rang
+            for room in active_bell.get("channels", []):
                 self.safe_say("Too slow. The bell has been silenced.", target=room)
         
         self._schedule_next_bell()
@@ -164,4 +166,3 @@ class Bell(SimpleCommandModule):
         self._ring_the_bell()
         self.safe_reply(connection, event, "As you wish. The bell has been rung.")
         return True
-

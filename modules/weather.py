@@ -11,7 +11,7 @@ def setup(bot, config):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "2.1.0" # Added country_code storage for better integration
+    version = "3.0.0" # Dynamic configuration refactor
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot, config):
@@ -27,16 +27,16 @@ class Weather(SimpleCommandModule):
             re.IGNORECASE)
 
     def _register_commands(self):
-        self.register_command(r"^\s*!location\s+(.+)$", self._cmd_set_location,
-            name="location", description="Set your default location. Usage: !location <city, state/country>")
-        self.register_command(r"^\s*!weather\s*$", self._cmd_weather_self,
-            name="weather", description="Get the weather for your default location.")
-        self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other,
-            name="weather other", description="Get the weather for a specific location or user. Usage: !weather <city/user>")
-        self.register_command(r"^\s*!w\s*$", self._cmd_weather_self, name="w", description="Alias for !weather.")
-        self.register_command(r"^\s*!w\s+(.+)$", self._cmd_weather_other, name="w other", description="Alias for !weather other.")
+        self.register_command(r"^\s*!location\s+(.+)$", self._cmd_set_location, name="location")
+        self.register_command(r"^\s*!weather\s*$", self._cmd_weather_self, name="weather")
+        self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other, name="weather other")
+        self.register_command(r"^\s*!w\s*$", self._cmd_weather_self, name="w")
+        self.register_command(r"^\s*!w\s+(.+)$", self._cmd_weather_other, name="w other")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
         if self.RE_NL_WEATHER.search(msg):
             user_id = self.bot.get_user_id(username)
             location_obj = self.get_state("user_locations", {}).get(user_id)
@@ -61,25 +61,22 @@ class Weather(SimpleCommandModule):
 
     def _format_weather_report(self, data: Dict[str, Any], location_name: str, requester: str, target_user: Optional[str] = None) -> str:
         try:
-            timeseries0 = data['properties']['timeseries'][0]
-            now = timeseries0['data']['instant']['details']
+            now = data['properties']['timeseries'][0]['data']['instant']['details']
             temp_c = now.get('air_temperature')
             wind_speed_ms = float(now.get('wind_speed', 0.0))
-            wind_speed_mph = round(wind_speed_ms * 2.2369)
-            wind_speed_kph = round(wind_speed_ms * 3.6)
-            summary_data = timeseries0['data'].get('next_1_hours')
-            summary_code = (summary_data['summary'].get('symbol_code', 'N/A')
-                            if summary_data and 'summary' in summary_data else 'N/A')
+            wind_mph = round(wind_speed_ms * 2.237)
+            wind_kph = round(wind_speed_ms * 3.6)
+            summary_code = data['properties']['timeseries'][0]['data'].get('next_1_hours', {}).get('summary', {}).get('symbol_code', 'N/A')
             summary = summary_code.replace('_', ' ').capitalize()
             temp_str = f"{int((temp_c * 9 / 5) + 32)}°F/{temp_c}°C" if temp_c is not None else "N/A"
             
-            report_string = f"{summary}. Temp: {temp_str}. Wind: {wind_speed_mph} mph / {wind_speed_kph} kph."
+            report = f"{summary}. Temp: {temp_str}. Wind: {wind_mph} mph / {wind_kph} kph."
             
             requester_title = self.bot.title_for(requester)
             if target_user:
-                return f"As you wish, {requester_title}. The weather for {self.bot.title_for(target_user)} in {location_name} is: {report_string}"
+                return f"As you wish, {requester_title}. The weather for {self.bot.title_for(target_user)} in {location_name} is: {report}"
             else:
-                return f"{requester_title}, the weather in {location_name} is: {report_string}"
+                return f"{requester_title}, the weather in {location_name} is: {report}"
         except (KeyError, IndexError, ValueError):
             return f"My apologies, {self.bot.title_for(requester)}, I could not format the weather report."
 
@@ -105,15 +102,9 @@ class Weather(SimpleCommandModule):
         country_code = geo_data.get("address", {}).get("country_code", "us").upper()
         user_id = self.bot.get_user_id(username)
         
-        user_locations = self.get_state("user_locations")
-        user_locations[user_id] = {
-            "lat": lat, 
-            "lon": lon, 
-            "short_name": short_name, 
-            "display_name": geo_data.get("display_name"),
-            "country_code": country_code
-        }
-        self.set_state("user_locations", user_locations)
+        locations = self.get_state("user_locations")
+        locations[user_id] = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name"), "country_code": country_code}
+        self.set_state("user_locations", locations)
         self.save_state()
         
         self.safe_reply(connection, event, f"Noted, {self.bot.title_for(username)}. Your location is set to '{short_name}'.")
@@ -132,16 +123,11 @@ class Weather(SimpleCommandModule):
         query = match.group(1).strip()
         
         users_module = self.bot.pm.plugins.get("users")
-        target_user_id = None
-        if users_module:
-            nick_map = users_module.get_state("nick_map", {})
-            target_user_id = nick_map.get(query.lower())
+        target_user_id = users_module.get_state("nick_map", {}).get(query.lower()) if users_module else None
             
-        if target_user_id:
-            location_obj = self.get_state("user_locations", {}).get(target_user_id)
-            if location_obj:
-                self._reply_with_weather(connection, event, location_obj, username, target_user=query)
-                return True
+        if target_user_id and (location_obj := self.get_state("user_locations", {}).get(target_user_id)):
+            self._reply_with_weather(connection, event, location_obj, username, target_user=query)
+            return True
 
         geo_data_tuple = self._get_geocode_data(query)
         if not geo_data_tuple:
@@ -149,14 +135,9 @@ class Weather(SimpleCommandModule):
             return True
         
         lat, lon, geo_data = geo_data_tuple
-        short_name = self._format_location_name(geo_data)
-        country_code = geo_data.get("address", {}).get("country_code", "us").upper()
         location_obj = {
-            "lat": lat, 
-            "lon": lon, 
-            "short_name": short_name, 
-            "display_name": geo_data.get("display_name"),
-            "country_code": country_code
+            "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data), 
+            "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
         }
         self._reply_with_weather(connection, event, location_obj, username)
         return True

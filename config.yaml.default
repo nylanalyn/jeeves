@@ -110,6 +110,9 @@ convenience:
       - "procrastination"
       - "slacker"
       - "work-shy"
+    titles_enabled: true
+  titles_cooldown_seconds: 5
+  titles_max_download_bytes: 32768
 
 fortune:
     cooldown_seconds: 10
@@ -272,11 +275,6 @@ shorten:
     enabled: true
     cooldown_seconds: 10
     min_length_for_auto_shorten: 70
-
-titles:
-    enabled: true
-    cooldown_seconds: 5
-    max_download_bytes: 32768
 
 translate:
     api_url: "https://libretranslate.com"

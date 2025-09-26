@@ -7,6 +7,7 @@ import threading
 import functools
 import requests
 import sys
+import traceback
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from abc import ABC, abstractmethod
@@ -24,7 +25,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.5.0" # Added self.log_debug() helper
+    version = "2.0.1" # Fixed SimpleCommandModule constructor
     description = "Base module class"
     
     def __init__(self, bot):
@@ -46,7 +47,7 @@ class ModuleBase(ABC):
         self.save_state(force=True)
 
     def on_config_reload(self, new_config: Dict[str, Any]) -> None:
-        """Called when config.yaml is reloaded. Override in subclasses to react to changes."""
+        """Called when config is reloaded. Override in subclasses to react to changes."""
         pass
 
     def requests_retry_session(self, retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
@@ -120,6 +121,35 @@ class ModuleBase(ABC):
             if self._state_dirty or force:
                 self.bot.update_module_state(self.name, self._state_cache)
                 self._state_dirty = False
+                
+    # --- NEW: Dynamic Configuration Management ---
+
+    def get_config_value(self, key: str, channel: Optional[str] = None, default: Any = None) -> Any:
+        """
+        Gets a configuration value for the module, checking for a channel-specific
+        override before falling back to the global setting.
+        """
+        try:
+            full_config = self.bot.config
+            module_config = full_config.get(self.name, {})
+
+            if channel:
+                channel_override = module_config.get("channels", {}).get(channel, {}).get(key)
+                if channel_override is not None:
+                    return channel_override
+
+            global_value = module_config.get(key)
+            if global_value is not None:
+                return global_value
+        except Exception as e:
+            self.log_debug(f"Error reading config key '{key}': {e}")
+        
+        return default
+
+    def is_enabled(self, channel: str) -> bool:
+        """Checks if the module is enabled for a given channel."""
+        return self.get_config_value("enabled", channel, default=True)
+
 
     # --- Command and Message Handling ---
 
@@ -135,7 +165,6 @@ class ModuleBase(ABC):
         }
 
     def check_rate_limit(self, key: str, limit: float) -> bool:
-        """Check if rate limit allows action."""
         now = time.time()
         last_time = self._rate_limits.get(key, 0)
         if now - last_time >= limit:
@@ -183,6 +212,10 @@ class ModuleBase(ABC):
             return False
 
     def _dispatch_commands(self, connection, event, msg: str, username: str) -> bool:
+        # MODIFIED: Check if module is enabled before processing any commands
+        if not self.is_enabled(event.target):
+            return False
+            
         for cmd_id, cmd_info in self._commands.items():
             match = cmd_info["pattern"].match(msg)
             if match:
@@ -190,7 +223,11 @@ class ModuleBase(ABC):
                 if cmd_info["admin_only"] and not self.bot.is_admin(event.source): 
                     self.log_debug(f"Denying admin command '{cmd_info['name']}' for non-admin {username}")
                     continue
-                if not self.check_user_cooldown(username, cmd_id, cmd_info["cooldown"]): 
+                
+                # Cooldown is now fetched dynamically
+                cooldown_val = self.get_config_value("cooldown_seconds", event.target, cmd_info["cooldown"])
+
+                if not self.check_user_cooldown(username, cmd_id, cooldown_val): 
                     self.log_debug(f"Command '{cmd_info['name']}' on cooldown for user {username}")
                     continue
                 try:
@@ -204,20 +241,22 @@ class ModuleBase(ABC):
         return False
         
     def _record_error(self, error_msg: str) -> None:
-        """Logs an error to stderr and the debug log."""
         print(f"[{self.name}] ERROR: {error_msg}", file=sys.stderr)
         self.log_debug(f"ERROR: {error_msg}")
         
     def log_debug(self, message: str):
-        """A helper for modules to write to the bot's debug log."""
         self.bot.log_debug(f"[{self.name}] {message}")
 
 class SimpleCommandModule(ModuleBase):
-    def __init__(self, bot):
+    def __init__(self, bot): # CORRECTED: Removed 'config' parameter
         super().__init__(bot)
         self._register_commands()
     
+    @abstractmethod
     def _register_commands(self) -> None:
         """Abstract method to be overridden in subclasses."""
         pass
 
+    # IMPORTANT: Any module implementing on_ambient_message must now
+    # add `if not self.is_enabled(event.target): return False`
+    # as the first line of that method.

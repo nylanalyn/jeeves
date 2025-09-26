@@ -12,15 +12,12 @@ def setup(bot, config):
 
 class Flirt(SimpleCommandModule):
     name = "flirt"
-    version = "2.3.0"
+    version = "3.0.0" # Dynamic configuration refactor
     description = "Polite and professional flirt handling."
 
     def __init__(self, bot, config):
         super().__init__(bot)
         
-        self.GLOBAL_COOLDOWN = config.get("global_cooldown", 30.0)
-        self.PER_USER_COOLDOWN = config.get("per_user_cooldown", 60.0)
-
         self.set_state("total_flirts_received", self.get_state("total_flirts_received", 0))
         self.set_state("responses_given", self.get_state("responses_given", 0))
         self.set_state("last_global_response", self.get_state("last_global_response", 0.0))
@@ -47,29 +44,37 @@ class Flirt(SimpleCommandModule):
                               name="flirt reset", admin_only=True, description="Reset flirt cooldowns.")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+            
         for intent, pattern in self.patterns.items():
             if pattern.search(msg):
                 if self._handle_flirt(connection, event, intent, username):
                     return True
         return False
 
-    def _can_respond_globally(self) -> bool:
+    def _can_respond_globally(self, channel: str) -> bool:
+        cooldown = self.get_config_value("global_cooldown", channel, 30.0)
         last_response = self.get_state("last_global_response", 0.0)
-        return time.time() - last_response >= self.GLOBAL_COOLDOWN
+        return time.time() - last_response >= cooldown
 
-    def _can_respond_to_user(self, username: str) -> bool:
+    def _can_respond_to_user(self, username: str, channel: str) -> bool:
+        cooldown = self.get_config_value("per_user_cooldown", channel, 60.0)
         user_responses = self.get_state("user_last_response", {})
         last_response = user_responses.get(username.lower(), 0.0)
-        return time.time() - last_response >= self.PER_USER_COOLDOWN
+        return time.time() - last_response >= cooldown
 
     def _handle_flirt(self, connection, event, intent: str, username: str) -> bool:
-        if not self._can_respond_globally() or not self._can_respond_to_user(username):
+        channel = event.target
+        if not self._can_respond_globally(channel) or not self._can_respond_to_user(username, channel):
             return False
         
         reply = self._choose_reply(intent, username)
         self.safe_reply(connection, event, f"{username}, {reply}")
 
-        self.update_state({"total_flirts_received": self.get_state("total_flirts_received") + 1, "responses_given": self.get_state("responses_given") + 1, "last_global_response": time.time()})
+        self.set_state("total_flirts_received", self.get_state("total_flirts_received") + 1)
+        self.set_state("responses_given", self.get_state("responses_given") + 1)
+        self.set_state("last_global_response", time.time())
         user_last_response = self.get_state("user_last_response", {})
         user_last_response[username.lower()] = time.time()
         self.set_state("user_last_response", user_last_response)
@@ -77,7 +82,7 @@ class Flirt(SimpleCommandModule):
         return True
 
     def _get_reply_templates(self):
-        return {"marry": ["An honour to be asked, but alas I am already married to my duties, {title}.", "I fear matrimony would interfere with my housekeeping, {title}.", "My schedule leaves little room for vows beyond those to service, {title}.", "While flattered, I must remain wedded to excellence in all things domestic, {title}."], "date": ["My calendar is devoted to your convenience, not my own, {title}, I'm afraid.", "I must decline, {title}, but shall cheerfully arrange a splendid evening for you nonetheless.", "Alas, I am all appointments and brass polish, not courtship, {title}.", "My social schedule consists entirely of serving schedules, {title}."],"like_me": ["Immensely—in the professional sense, {title}.", "With the fondness appropriate to a devoted servant, {title}.", "I esteem you highly, {title}—strictly within the remit of service.", "My admiration is both profound and thoroughly appropriate, {title}."], "love_you": ["With due propriety, {title}, I reserve my affections for excellence and punctuality.", "A butler's heart belongs to the household, {title}.", "In my fashion, yes—loyalty is the butler's love language, {title}.", "My devotion is steadfast, professional, and comes with fresh linens, {title}."], "kiss": ["I shall offer a bow of precisely the correct depth instead, {title}.", "A discreet nod must suffice; one does try to keep fingerprints off the silver, {title}.", "I fear HR would frown; may I offer tea instead, {title}?", "Professional distance maintains the shine on both reputation and silverware, {title}."], "compliment_me": ["Radiant, if I may say so, {title}—and I have your pronouns as {pronouns}.", "Positively dashing—one might even call it 'server-room chic,' {title}.", "You cut a fine figure, {title}; the carpet approves.", "Most becoming, {title}—you wear confidence as well as your preferred pronouns: {pronouns}."], "be_mine": ["I am yours already, {title}—professionally, comprehensively, and on retainer.", "At your service, {title}—ever and always, within policy.", "I belong to the bell, as tradition dictates, {title}.", "You have my complete devotion in all matters domestic and digital, {title}."], "i_want_you": ["I recommend wanting tea and biscuits, {title}; I can supply those at once.", "Allow me to redirect that admirable enthusiasm toward refreshments, {title}.", "Desire noted, {title}; I'll file it under 'appreciations' between candlesticks and cufflinks.", "Perhaps we might channel that energy into organizing something delightful instead, {title}."], "flirt_generic": ["Flattery will get you excellent service and a fresh napkin, {title}.", "One blushes, discreetly, and fetches the tea, {title}.", "You are most kind; shall I book a table as well, {title}?", "Your charm is noted and filed under 'reasons for extra care with the good china,' {title}."], "fallback": ["You are charming; I remain dutiful, {title}.", "Ever your servant—professionally immaculate, {title}.", "Consider me flattered and reliably at your disposal, {title}.", "Your sentiment is treasured and my service unchanged, {title}."]}
+        return {"marry": ["An honour to be asked, but alas I am already married to my duties, {title}.", "I fear matrimony would interfere with my housekeeping, {title}."], "date": ["My calendar is devoted to your convenience, not my own, {title}, I'm afraid.", "I must decline, {title}, but shall cheerfully arrange a splendid evening for you nonetheless."],"like_me": ["Immensely—in the professional sense, {title}.", "With the fondness appropriate to a devoted servant, {title}."], "love_you": ["With due propriety, {title}, I reserve my affections for excellence and punctuality.", "A butler's heart belongs to the household, {title}."], "kiss": ["I shall offer a bow of precisely the correct depth instead, {title}.", "A discreet nod must suffice; one does try to keep fingerprints off the silver, {title}."], "compliment_me": ["Radiant, if I may say so, {title}—and I have your pronouns as {pronouns}.", "Positively dashing—one might even call it 'server-room chic,' {title}."], "be_mine": ["I am yours already, {title}—professionally, comprehensively, and on retainer.", "At your service, {title}—ever and always, within policy."], "i_want_you": ["I recommend wanting tea and biscuits, {title}; I can supply those at once.", "Allow me to redirect that admirable enthusiasm toward refreshments, {title}."], "flirt_generic": ["Flattery will get you excellent service and a fresh napkin, {title}.", "One blushes, discreetly, and fetches the tea, {title}."], "fallback": ["You are charming; I remain dutiful, {title}.", "Ever your servant—professionally immaculate, {title}."]}
 
     def _choose_reply(self, intent: str, username: str) -> str:
         templates = self._get_reply_templates()
@@ -89,19 +94,16 @@ class Flirt(SimpleCommandModule):
 
     @admin_required
     def _cmd_stats(self, connection, event, msg, username, match):
-        stats = self.get_state()
-        response_rate = 0.0
-        total_received = stats.get("total_flirts_received", 0)
-        responses_given = stats.get("responses_given", 0)
-        if total_received > 0:
-            response_rate = (responses_given / total_received) * 100
-        self.safe_reply(connection, event, f"Flirt stats: Received={total_received}, Responded={responses_given} ({response_rate:.1f}%)")
+        total = self.get_state("total_flirts_received", 0)
+        responded = self.get_state("responses_given", 0)
+        rate = (responded / total * 100) if total > 0 else 0
+        self.safe_reply(connection, event, f"Flirt stats: Received={total}, Responded={responded} ({rate:.1f}% response rate).")
         return True
 
     @admin_required
     def _cmd_reset(self, connection, event, msg, username, match):
-        self.update_state({"last_global_response": 0.0, "user_last_response": {}})
+        self.set_state("last_global_response", 0.0)
+        self.set_state("user_last_response", {})
         self.save_state()
-        self.safe_reply(connection, event, "Flirt cooldowns reset.")
+        self.safe_reply(connection, event, "Flirt cooldowns have been reset.")
         return True
-

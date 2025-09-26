@@ -9,13 +9,11 @@ from .base import SimpleCommandModule, admin_required
 UTC = timezone.utc
 
 def setup(bot, config):
-    """Initializes the Courtesy module."""
     return Courtesy(bot, config)
 
 class Courtesy(SimpleCommandModule):
-    """Handles user courtesy, pronouns, and ignore lists using persistent IDs."""
     name = "courtesy"
-    version = "4.0.0"
+    version = "5.0.0" # Dynamic configuration refactor
     description = "User courtesy, pronoun, and ignore list management"
 
     PRONOUN_MAP = {
@@ -32,12 +30,11 @@ class Courtesy(SimpleCommandModule):
     }
 
     def __init__(self, bot, config):
-        """Initializes the module's state and commands."""
         super().__init__(bot)
         
-        self.set_state("profiles", self.get_state("profiles", {})) # Keyed by user_id
-        self.set_state("ignored_users", self.get_state("ignored_users", [])) # List of user_ids
-        self.set_state("admin_hostnames", self.get_state("admin_hostnames", {})) # Keyed by user_id
+        self.set_state("profiles", self.get_state("profiles", {}))
+        self.set_state("ignored_users", self.get_state("ignored_users", []))
+        self.set_state("admin_hostnames", self.get_state("admin_hostnames", {}))
         self.save_state()
 
         name_pat = self.bot.JEEVES_NAME_RE
@@ -49,7 +46,6 @@ class Courtesy(SimpleCommandModule):
             rf"\b{name_pat}[,!\s]*\s*(?:don't\s+assume\s+my\s+gender|use\s+neutral)\b", re.IGNORECASE)
 
     def _register_commands(self):
-        """Registers all commands for the module."""
         self.register_command(r"^\s*!gender\s+(.+)\s*$", self._cmd_gender, name="gender", description="Set your gender/title")
         self.register_command(r"^\s*!pronouns\s+(.+)\s*$", self._cmd_pronouns, name="pronouns", description="Set your pronouns")
         self.register_command(r"^\s*!whoami\s*$", self._cmd_whoami, name="whoami", description="Show your profile")
@@ -61,7 +57,9 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!setpronouns\s+(\S+)\s+(.+)\s*$", self._cmd_set_pronouns, name="setpronouns", admin_only=True, description="[Admin] Set a user's pronouns.")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
-        """Handles natural language triggers in channel messages."""
+        if not self.is_enabled(event.target):
+            return False
+            
         user_id = self.bot.get_user_id(username)
 
         gender_match = self.RE_GENDER_SET.search(msg)
@@ -88,7 +86,6 @@ class Courtesy(SimpleCommandModule):
         return False
 
     def is_user_ignored(self, user_id: str) -> bool:
-        """Checks if a user's ID is in the ignore list."""
         return user_id in self.get_state("ignored_users", [])
 
     def _cmd_ignore(self, connection, event, msg, username, match):
@@ -178,10 +175,8 @@ class Courtesy(SimpleCommandModule):
         if profile:
             profile_title_raw = profile.get("title")
             title_display = "Not set"
-            if profile_title_raw == "sir":
-                title_display = "Sir"
-            elif profile_title_raw == "madam":
-                title_display = "Madam"
+            if profile_title_raw == "sir": title_display = "Sir"
+            elif profile_title_raw == "madam": title_display = "Madam"
             
             pronouns = profile.get("pronouns", "Not set")
             self.safe_reply(connection, event, f"Preferences for {nick}: title={title_display}, pronouns={pronouns}.")
@@ -215,12 +210,9 @@ class Courtesy(SimpleCommandModule):
         return self.GENDER_MAP.get(gender.lower().strip(), "neutral")
         
     def _get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves a user's profile from the state using their UUID."""
-        profiles = self.get_state("profiles", {})
-        return profiles.get(user_id)
+        return self.get_state("profiles", {}).get(user_id)
 
     def _set_user_profile(self, user_id: str, *, title: Optional[str] = None, pronouns: Optional[str] = None):
-        """Sets or updates a user's profile using their UUID."""
         profiles = self.get_state("profiles", {})
         profile = profiles.get(user_id, {})
         
@@ -238,4 +230,3 @@ class Courtesy(SimpleCommandModule):
         profiles[user_id] = profile
         self.set_state("profiles", profiles)
         self.save_state()
-

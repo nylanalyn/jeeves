@@ -18,7 +18,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.2.1" # Fixed cooldown exploit with subcommands
+    version = "3.2.2" # Fixed UnboundLocalError in mob commands
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -250,7 +250,6 @@ class Quest(SimpleCommandModule):
     def _handle_solo_quest(self, connection, event, username, difficulty):
         if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
         
-        # Manually check cooldown for the solo quest action
         if not self.check_user_cooldown(username, "quest_solo", self.COOLDOWN):
             self.safe_reply(connection, event, f"You are still recovering from your last adventure, {self.bot.title_for(username)}. Please wait a moment.")
             return True
@@ -309,7 +308,8 @@ class Quest(SimpleCommandModule):
         if self.get_state("active_mob"):
             self.safe_reply(connection, event, "A mob is already forming!")
             return True
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
             return True
@@ -323,7 +323,8 @@ class Quest(SimpleCommandModule):
     def _cmd_mob_join(self, connection, event, msg, username, match):
         active_mob = self.get_state("active_mob")
         if not active_mob or active_mob.get("room") != event.target: return False
-        user_id, player = self.bot.get_user_id(username), self._get_player(user_id, username)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
         if self.ENERGY_ENABLED and player["energy"] < 1:
             self.safe_reply(connection, event, f"You are too exhausted to join the mob, {self.bot.title_for(username)}.")
             return True
@@ -358,7 +359,8 @@ class Quest(SimpleCommandModule):
         win_chance = self._calculate_win_chance(avg_level, boss_level, group_modifier=party_size_mod)
         win = random.random() < win_chance
         boss_name_with_level = f"Level {boss_level} {boss['name']}"
-        party_names, starter_id = ", ".join(party.values()), self.bot.get_user_id(active_mob["starter"])
+        party_names = ", ".join(party.values())
+        starter_id = self.bot.get_user_id(active_mob["starter"])
         action_text = self._get_action_text(starter_id)
         story = f"The party of {party_names} confronts the {boss_name_with_level}! {action_text.format(user='', monster='')}"
         self.safe_say(f"{story} (Win Chance: {win_chance:.0%})", active_mob["room"])

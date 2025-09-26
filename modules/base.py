@@ -193,7 +193,6 @@ class ModuleBase(ABC):
                 if not self.check_user_cooldown(username, cmd_id, cmd_info["cooldown"]): continue
                 try:
                     if cmd_info["handler"](connection, event, msg, username, match):
-                        # If a command was handled, update its stats if the module supports it
                         if hasattr(self, "_update_stats"):
                             self._update_stats(cmd_info["name"])
                         return True
@@ -209,7 +208,7 @@ class SimpleCommandModule(ModuleBase):
         super().__init__(bot)
         self._register_commands()
     
-    @abstractmethod
     def _register_commands(self) -> None:
+        """Abstract method to be overridden in subclasses."""
         pass
 

@@ -10,7 +10,7 @@ core:
     module_blacklist:
       - "example_module.py"
     # A regex pattern to detect when the bot is being addressed by name.
-    name_pattern: r"(?:jeeves|jeevesbot)"
+    name_pattern: "(?:jeeves|jeevesbot)"
 
 # --- IRC Connection Details ---
 connection:
@@ -25,6 +25,7 @@ connection:
 api_keys:
   giphy: "YourGiphyAPIKey"
   youtube: "YourYouTubeDataAPIKey"
+  openai_api_key: "YourArliAI_or_OpenAI_APIKey"
   # For the shorten module, using a self-hosted Shlink instance.
   # It is highly recommended to secure your Shlink instance with HTTPS.
   shlink_url: "https://s.yourdomain.com"
@@ -77,6 +78,13 @@ chatter:
         tech: 900
         food: 1200
         greeting: 300
+
+oracle:
+    ai_channel: "#your-ai-channel" # The only channel where the AI will respond.
+    openai_base_url: "https://api.arliai.com/v1" # The base URL for your provider.
+    model: "claude-3-haiku-20240307" # The ArliAI model to use.
+    system_prompt: "You are Jeeves, a helpful, witty, and impeccably formal robotic butler. You serve the members of this IRC channel. Maintain your persona at all times."
+    history_length: 10 # Number of past messages to remember for context.
 
 coffee:
     cooldown_seconds: 10

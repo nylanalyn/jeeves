@@ -23,7 +23,7 @@ def setup(bot, config):
 
 class Oracle(SimpleCommandModule):
     name = "oracle"
-    version = "1.1.2" # Added response sanitization for IRC compatibility
+    version = "1.1.3" # Added message splitting to respect IRC limits
     description = "Provides an AI-driven conversational mode in a specific channel."
 
     def __init__(self, bot, config, api_key, base_url):
@@ -39,30 +39,50 @@ class Oracle(SimpleCommandModule):
         self.MODEL = config.get("model", "claude-3-haiku-20240307")
         self.SYSTEM_PROMPT = config.get("system_prompt", "You are Jeeves, a helpful and witty robotic butler.")
         self.HISTORY_LENGTH = config.get("history_length", 10)
-
+        self.MAX_IRC_LINE_BYTES = 450 # A safe buffer below the 512 byte limit
 
     def _register_commands(self):
-        # This module primarily works through ambient messages.
         self.register_command(r"^\s*!oracle\s+reset\s*$", self._cmd_reset,
                               name="oracle reset", admin_only=True,
                               description="[Admin] Reset the conversation history in this channel.")
 
+    def _split_and_send(self, connection, event, text):
+        """Sanitizes and sends a long message in IRC-compliant chunks."""
+        # Replace newlines and carriage returns, which are illegal in IRC messages
+        text = text.replace('\n', ' ').replace('\r', ' ')
+        words = text.split()
+        
+        current_line = ""
+        for word in words:
+            # Check if adding the next word would exceed the limit
+            if len((current_line + ' ' + word).encode('utf-8')) > self.MAX_IRC_LINE_BYTES:
+                # If the line has content, send it
+                if current_line:
+                    self.safe_reply(connection, event, current_line)
+                # Start a new line with the current word
+                current_line = word
+            else:
+                # Add the word to the current line
+                if current_line:
+                    current_line += ' ' + word
+                else:
+                    current_line = word
+        
+        # Send any remaining text in the buffer
+        if current_line:
+            self.safe_reply(connection, event, current_line)
+
     def on_ambient_message(self, connection, event, msg, username):
-        # Only operate in the designated channel and when the bot is mentioned.
         if event.target != self.AI_CHANNEL or not self.is_mentioned(msg):
             return False
 
-        # Get or create the conversation history for this channel
         if event.target not in self.history:
             self.history[event.target] = deque(maxlen=self.HISTORY_LENGTH)
         
         channel_history = self.history[event.target]
-        
-        # Add the user's message to the history
         channel_history.append({"role": "user", "content": f"{username}: {msg}"})
 
         try:
-            # Prepare the messages for the API call
             messages = [{"role": "system", "content": self.SYSTEM_PROMPT}]
             messages.extend(list(channel_history))
 
@@ -73,14 +93,8 @@ class Oracle(SimpleCommandModule):
             
             ai_response = response.choices[0].message.content
             if ai_response:
-                # Add the AI's original response to the history for context
                 channel_history.append({"role": "assistant", "content": ai_response})
-                
-                # Sanitize and send the response line by line for IRC compatibility
-                for line in ai_response.split('\n'):
-                    cleaned_line = line.strip()
-                    if cleaned_line: # Avoid sending empty lines
-                        self.safe_reply(connection, event, cleaned_line)
+                self._split_and_send(connection, event, ai_response)
 
         except Exception as e:
             self._record_error(f"OpenAI API call failed: {e}")

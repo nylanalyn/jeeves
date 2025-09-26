@@ -7,7 +7,7 @@ import random
 from urllib.parse import quote_plus
 from typing import Optional, Dict, Any
 
-from .base import ModuleBase # Inherit from ModuleBase for more control
+from .base import ModuleBase 
 
 try:
     from bs4 import BeautifulSoup
@@ -26,10 +26,12 @@ def setup(bot, config):
         print("[convenience] google-api-python-client is not installed. !yt command will not load.")
     return Convenience(bot, config)
 
-class Convenience(ModuleBase): # Changed to ModuleBase
+class Convenience(ModuleBase):
     name = "convenience"
-    version = "1.4.4" # Implemented robust news fallback logic
+    version = "1.5.0" # Restored ambient YouTube title announcer
     description = "Provides convenient, common search commands."
+
+    YOUTUBE_URL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w\-]{11})')
 
     def __init__(self, bot, config):
         super().__init__(bot)
@@ -63,7 +65,28 @@ class Convenience(ModuleBase): # Changed to ModuleBase
         self.register_command(r"^\s*!news\s*$", self._cmd_news, name="news", cooldown=self.COOLDOWN_NEWS)
         self.register_command(r"^\s*!yt\s+(.+)$", self._cmd_yt, name="yt", cooldown=self.COOLDOWN_YT)
 
-    # --- Command Handlers ---
+    def on_ambient_message(self, connection, event, msg, username):
+        """Handles ambient YouTube links to announce their titles."""
+        match = self.YOUTUBE_URL_PATTERN.search(msg)
+        if not match:
+            return False
+
+        if not self.check_rate_limit("ambient_yt_link", 30.0):
+            return False
+
+        video_id = match.group(1)
+        video_info = self._get_youtube_video_info_by_id(video_id)
+
+        if video_info:
+            title = self.bot.title_for(username)
+            view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "an unknown number of"
+            response = (
+                f"Ah, {title}, I see you've found \"{video_info['title']}\". "
+                f"It runs for {video_info['duration']} and has garnered {view_str} views."
+            )
+            self.safe_reply(connection, event, response)
+            return True
+        return False
 
     def _cmd_google(self, connection, event, msg, username, match):
         query = match.group(1).strip()
@@ -156,34 +179,23 @@ class Convenience(ModuleBase): # Changed to ModuleBase
     def _cmd_news(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         location_obj = self.bot.get_module_state("weather").get("user_locations", {}).get(user_id)
-        
-        # Attempt 1: Specific local news
         if location_obj and location_obj.get("short_name"):
-            short_name = location_obj["short_name"]
-            cc = location_obj.get("country_code", "US").upper()
+            short_name, cc = location_obj["short_name"], location_obj.get("country_code", "US").upper()
             rss_url = f"https://news.google.com/rss/search?q={quote_plus(short_name)}&hl=en-{cc}&gl={cc}&ceid={cc}:en"
-            news_item = self._get_news_from_rss(rss_url)
-            if news_item:
+            if (news_item := self._get_news_from_rss(rss_url)):
                 self.safe_reply(connection, event, f"The top story for {short_name} is: \"{news_item['title']}\"")
                 self.safe_reply(connection, event, self._get_short_url(news_item['link']))
                 return True
             else:
-                self.safe_reply(connection, event, f"I found no specific news for {short_name}, broadening the search to the national level...")
-
-        # Attempt 2: National news (if location is set)
+                self.safe_reply(connection, event, f"I found no specific news for {short_name}, broadening the search...")
         if location_obj and location_obj.get("country_code"):
             cc = location_obj.get("country_code", "US").upper()
             rss_url = f"https://news.google.com/rss?hl=en-{cc}&gl={cc}&ceid={cc}:en"
-            news_item = self._get_news_from_rss(rss_url)
-            if news_item:
+            if (news_item := self._get_news_from_rss(rss_url)):
                 self.safe_reply(connection, event, f"The top national story is: \"{news_item['title']}\"")
                 self.safe_reply(connection, event, self._get_short_url(news_item['link']))
                 return True
-
-        # Attempt 3: Global news (fallback)
-        rss_url = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-        news_item = self._get_news_from_rss(rss_url)
-        if news_item:
+        if (news_item := self._get_news_from_rss("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")):
             self.safe_reply(connection, event, f"The top global story is: \"{news_item['title']}\"")
             self.safe_reply(connection, event, self._get_short_url(news_item['link']))
         else:
@@ -195,7 +207,7 @@ class Convenience(ModuleBase): # Changed to ModuleBase
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the YouTube service is not configured correctly.")
             return True
         query = match.group(1).strip()
-        video_info = self._get_youtube_video_info(query)
+        video_info = self._get_youtube_video_info_by_query(query)
         if video_info:
             view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "N/A"
             self.safe_reply(connection, event, f"For '{query}', I present: \"{video_info['title']}\".")
@@ -221,13 +233,10 @@ class Convenience(ModuleBase): # Changed to ModuleBase
         parts = [f"{int(p)}{unit}" for p, unit in zip((hours, minutes, seconds), ('h', 'm', 's')) if p]
         return " ".join(parts) if parts else "0s"
 
-    def _get_youtube_video_info(self, query: str) -> Optional[dict]:
+    def _get_youtube_video_info_by_id(self, video_id: str) -> Optional[dict]:
+        """Gets video details for a given video ID."""
         if not self.youtube_service: return None
         try:
-            search_request = self.youtube_service.search().list(q=query, part='snippet', maxResults=1, type='video', order='relevance')
-            search_response = search_request.execute()
-            if not search_response.get('items'): return None
-            video_id = search_response['items'][0]['id']['videoId']
             video_request = self.youtube_service.videos().list(part='snippet,statistics,contentDetails', id=video_id)
             video_response = video_request.execute()
             if not video_response.get('items'): return None
@@ -238,6 +247,19 @@ class Convenience(ModuleBase): # Changed to ModuleBase
                 "duration": self._parse_duration(video_data['contentDetails']['duration']),
                 "url": f"https://www.youtube.com/watch?v={video_id}"
             }
+        except Exception as e:
+            self._record_error(f"YouTube API video request failed for ID '{video_id}': {e}")
+            return None
+
+    def _get_youtube_video_info_by_query(self, query: str) -> Optional[dict]:
+        """Searches for a video by relevance and returns its details."""
+        if not self.youtube_service: return None
+        try:
+            search_request = self.youtube_service.search().list(q=query, part='snippet', maxResults=1, type='video', order='relevance')
+            search_response = search_request.execute()
+            if not search_response.get('items'): return None
+            video_id = search_response['items'][0]['id']['videoId']
+            return self._get_youtube_video_info_by_id(video_id)
         except Exception as e:
             self._record_error(f"YouTube API request failed for query '{query}': {e}")
             return None

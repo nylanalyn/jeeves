@@ -5,6 +5,7 @@ config.yaml
 state.json.bak_uuid_migration
 state.json.bak_event_uuid
 state.json.bak_ducks_uuid
+debug.log
 # Local environment variable files.
 .env
 jeeves.env

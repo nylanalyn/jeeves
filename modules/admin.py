@@ -10,7 +10,7 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "2.7.1" # Added debug logging and restored !say alias
+    version = "2.8.0" # Added debug mode toggle
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
@@ -52,7 +52,6 @@ class Admin(SimpleCommandModule):
 
         args = args_str.split()
         subcommand = args[0].lower()
-        print(f"[admin_debug] Received admin command: '{subcommand}' from {username}", file=sys.stderr)
         
         # Route to the appropriate handler
         if subcommand == "reload":
@@ -74,6 +73,8 @@ class Admin(SimpleCommandModule):
             return self._cmd_say(connection, event, username, target, message)
         elif subcommand == "nick" and len(args) > 1:
             return self._cmd_nick(connection, event, username, args[1])
+        elif subcommand == "debug" and len(args) > 1:
+            return self._cmd_debug_toggle(connection, event, username, args[1])
         elif subcommand == "help":
             return self._cmd_help(connection, event, username)
         else:
@@ -82,12 +83,10 @@ class Admin(SimpleCommandModule):
 
     def _cmd_reload_alias(self, connection, event, msg, username, match):
         """Alias for !admin reload."""
-        print(f"[admin_debug] Received alias command: '!reload' from {username}", file=sys.stderr)
         return self._cmd_reload(connection, event, username)
 
     def _cmd_say_alias(self, connection, event, msg, username, match):
         """Alias for !admin say."""
-        print(f"[admin_debug] Received alias command: '!say' from {username}", file=sys.stderr)
         target, message = match.groups()
         return self._cmd_say(connection, event, username, target or event.target, message)
 
@@ -95,14 +94,12 @@ class Admin(SimpleCommandModule):
     
     def _cmd_reload(self, connection, event, username):
         self._update_stats("reload")
-        print(f"[admin_debug] Executing core plugin reload...", file=sys.stderr)
         loaded_modules = self.bot.core_reload_plugins()
         self.safe_reply(connection, event, f"Reloaded. Modules loaded: {', '.join(sorted(loaded_modules))}")
         return True
 
     def _cmd_config_reload(self, connection, event, username):
         self._update_stats("config reload")
-        print(f"[admin_debug] Executing core config reload...", file=sys.stderr)
         if self.bot.core_reload_config():
             self.safe_reply(connection, event, "Configuration file reloaded.")
         else:
@@ -156,6 +153,13 @@ class Admin(SimpleCommandModule):
         self.safe_reply(connection, event, f"Nickname changed to {new_nick}.")
         return True
 
+    def _cmd_debug_toggle(self, connection, event, username, state: str):
+        self._update_stats("debug")
+        state_bool = state.lower() in ['on', 'true', '1', 'enable']
+        self.bot.set_debug_mode(state_bool)
+        self.safe_reply(connection, event, f"Debug mode is now {'ON' if state_bool else 'OFF'}.")
+        return True
+
     def _cmd_help(self, connection, event, username):
         """Displays admin-specific help."""
         help_lines = [
@@ -167,6 +171,7 @@ class Admin(SimpleCommandModule):
             "!admin channels - List all channels I'm in.",
             "!say [#channel] <message> - Make the bot say something.",
             "!admin nick <newnick> - Change bot nickname.",
+            "!admin debug <on|off> - Toggle verbose file logging.",
             "!emergency quit [message] - Emergency shutdown."
         ]
         

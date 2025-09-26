@@ -14,6 +14,7 @@ import importlib.util
 import yaml
 import shutil
 import functools
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
@@ -117,7 +118,7 @@ class PluginManager:
                 try:
                     obj.on_unload()
                 except Exception as e:
-                    print(f"[plugins] error unloading {name}: {e}", file=sys.stderr)
+                    self.bot.log_debug(f"[plugins] error unloading {name}: {e}")
 
     def load_all(self):
         self.unload_all()
@@ -127,14 +128,14 @@ class PluginManager:
         
         blacklist = {f.strip() for f in self.bot.config.get("core", {}).get("module_blacklist", [])}
         if blacklist:
-            print(f"[boot] module blacklist active: {', '.join(sorted(list(blacklist)))}", file=sys.stderr)
+            self.bot.log_debug(f"[plugins] Blacklist active: {', '.join(sorted(list(blacklist)))}")
 
         for py in sorted(ROOT.glob("modules/*.py")):
             name = py.stem
             if name in ("__init__", "base"): continue
             
             if py.name in blacklist:
-                print(f"[plugins] skipping blacklisted module: {py.name}", file=sys.stderr)
+                self.bot.log_debug(f"[plugins] Skipping blacklisted module: {py.name}")
                 continue
                 
             try:
@@ -148,9 +149,9 @@ class PluginManager:
                     if instance:
                         self.plugins[name] = instance
                         loaded_names.append(name)
+                        self.bot.log_debug(f"[plugins] Loaded module: {name}")
             except Exception as e:
-                print(f"[plugins] FAILED to load {name}: {e}", file=sys.stderr)
-                traceback.print_exc()
+                self.bot.log_debug(f"[plugins] FAILED to load {name}: {e}\n{traceback.format_exc()}")
         
         for name, obj in self.plugins.items():
             if hasattr(obj, "on_load"): obj.on_load()
@@ -160,6 +161,9 @@ class PluginManager:
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
+        self.config = config or {}
+        self._setup_logging()
+
         if port == 6697:
             ssl_context = ssl.create_default_context()
             wrapper = functools.partial(ssl_context.wrap_socket, server_hostname=server)
@@ -172,8 +176,7 @@ class Jeeves(SingleServerIRCBot):
         self.port = port
         self.primary_channel = channel
         self.nickname = nickname
-        self.config = config or {}
-        self.JEEVES_NAME_RE = self.config.get("core", {}).get("name_pattern", r"(?:jeeves|jeevesbot)")
+        self.JEEVES_NAME_RE = self.config.get("core", {}).get("name_pattern", "(?:jeeves|jeevesbot)")
         self.nickserv_pass = self.config.get("connection", {}).get("nickserv_pass", "")
         self.pm = PluginManager(self)
         
@@ -184,13 +187,40 @@ class Jeeves(SingleServerIRCBot):
 
     # --- Core Bot Functions ---
 
+    def _setup_logging(self):
+        self.debug_mode = self.config.get("core", {}).get("debug_mode_on_startup", False)
+        log_file = self.config.get("core", {}).get("debug_log_file", "debug.log")
+        
+        self.logger = logging.getLogger('jeeves_debug')
+        self.logger.setLevel(logging.INFO)
+        
+        handler = logging.FileHandler(ROOT / log_file, encoding='utf-8')
+        formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        handler.setFormatter(formatter)
+        
+        # Clear existing handlers to prevent duplicate logs on reload
+        if (self.logger.hasHandlers()):
+            self.logger.handlers.clear()
+            
+        self.logger.addHandler(handler)
+        self.log_debug(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}.")
+
+    def log_debug(self, message: str):
+        if self.debug_mode:
+            self.logger.info(message)
+    
+    def set_debug_mode(self, status: bool):
+        self.debug_mode = status
+        self.log_debug(f"[core] Debug mode has been turned {'ON' if status else 'OFF'}.")
+
+
     def core_reload_plugins(self):
         """Core function to reload all plugins, called by the admin module."""
         return self.pm.load_all()
 
     def core_reload_config(self):
         """Core function to reload config, called by the admin module."""
-        print("[core] Reloading configuration file...", file=sys.stderr)
+        self.log_debug("[core] Reloading configuration file...")
         try:
             new_config = load_config()
             self.config = new_config
@@ -200,7 +230,7 @@ class Jeeves(SingleServerIRCBot):
                     instance.on_config_reload(module_config)
             return True
         except Exception as e:
-            print(f"[core] FAILED to reload configuration: {e}", file=sys.stderr)
+            self.log_debug(f"[core] FAILED to reload configuration: {e}")
             return False
 
     def get_user_id(self, nick: str) -> str:
@@ -238,7 +268,7 @@ class Jeeves(SingleServerIRCBot):
         stored_host = admin_hostnames.get(user_id)
 
         if not stored_host or stored_host.lower() != host.lower():
-            print(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}", file=sys.stderr)
+            self.log_debug(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}")
             admin_hostnames[user_id] = host
             self.update_module_state("courtesy", {"admin_hostnames": admin_hostnames})
             self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
@@ -255,11 +285,12 @@ class Jeeves(SingleServerIRCBot):
     # --- IRC Event Handlers ---
 
     def on_welcome(self, connection, event):
+        self.log_debug("[core] on_welcome received, identifying and joining channels...")
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
         
         loaded_modules = self.pm.load_all()
-        print(f"[core] modules loaded: {', '.join(sorted(loaded_modules))}", file=sys.stderr)
+        self.log_debug(f"[core] Modules loaded: {', '.join(sorted(loaded_modules))}")
 
         for channel in list(self.joined_channels):
             connection.join(channel)
@@ -267,6 +298,7 @@ class Jeeves(SingleServerIRCBot):
         self._ensure_scheduler_thread()
 
     def on_join(self, connection, event):
+        self.log_debug(f"[core] JOIN event: {event.source.nick} joined {event.target}")
         if event.source.nick == self.connection.get_nickname():
             self.joined_channels.add(event.target)
             self._update_joined_channels_state()
@@ -274,23 +306,23 @@ class Jeeves(SingleServerIRCBot):
             self.get_user_id(event.source.nick)
 
     def on_part(self, connection, event):
+        self.log_debug(f"[core] PART event: {event.source.nick} left {event.target}")
         if event.source.nick == self.connection.get_nickname():
             if event.target in self.joined_channels:
                 self.joined_channels.remove(event.target)
                 self._update_joined_channels_state()
 
     def on_kick(self, connection, event):
-        try:
-            if event.target == self.connection.get_nickname():
-                kicked_from_channel = event.arguments[0]
-                if kicked_from_channel in self.joined_channels:
-                    self.joined_channels.remove(kicked_from_channel)
-                    self._update_joined_channels_state()
-        except Exception:
-            pass
+        kicked_nick = event.arguments[0]
+        self.log_debug(f"[core] KICK event: {kicked_nick} was kicked from {event.target} by {event.source.nick}")
+        if kicked_nick == self.connection.get_nickname():
+            if event.target in self.joined_channels:
+                self.joined_channels.remove(event.target)
+                self._update_joined_channels_state()
 
     def on_nick(self, connection, event):
         old_nick, new_nick = event.source.nick, event.target
+        self.log_debug(f"[core] NICK event: {old_nick} is now known as {new_nick}")
         users_module = self.pm.plugins.get("users")
         if users_module:
             users_module.on_nick(connection, event, old_nick, new_nick)
@@ -322,10 +354,12 @@ class Jeeves(SingleServerIRCBot):
 
     def on_pubmsg(self, connection, event):
         msg, username = event.arguments[0], event.source.nick
+        self.log_debug(f"PUBMSG from {username} in {event.target}: {msg}")
         
         self.get_user_id(username)
 
         if self.is_user_ignored(username) and not msg.strip().lower().startswith("!unignore"):
+            self.log_debug(f"Ignoring message from ignored user {username}")
             return
 
         command_handled = False
@@ -336,7 +370,7 @@ class Jeeves(SingleServerIRCBot):
                         command_handled = True
                         break 
                 except Exception as e:
-                    print(f"[plugins] command error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                    self.log_debug(f"[plugins] Command error in {name}: {e}\n{traceback.format_exc()}")
         if command_handled:
             return
 
@@ -344,18 +378,22 @@ class Jeeves(SingleServerIRCBot):
             if hasattr(obj, "on_ambient_message"):
                 try:
                     if obj.on_ambient_message(connection, event, msg, username):
+                        self.log_debug(f"Ambient trigger handled by module: {name}")
                         break
                 except Exception as e:
-                    print(f"[plugins] ambient error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                    self.log_debug(f"[plugins] Ambient error in {name}: {e}\n{traceback.format_exc()}")
                         
     def on_privmsg(self, connection, event):
+        msg, username = event.arguments[0], event.source.nick
+        self.log_debug(f"PRIVMSG from {username}: {msg}")
         for name, obj in self.pm.plugins.items():
             if hasattr(obj, "on_privmsg"):
                 try:
                     if obj.on_privmsg(connection, event):
+                        self.log_debug(f"Private message handled by module: {name}")
                         break
                 except Exception as e:
-                    print(f"[plugins] privmsg error in {name}: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                    self.log_debug(f"[plugins] privmsg error in {name}: {e}\n{traceback.format_exc()}")
 
     def _ensure_scheduler_thread(self):
         def loop():
@@ -371,45 +409,21 @@ state_manager = None
 def main():
     CONFIG_DEFAULT_PATH = ROOT / "config.yaml.default"
     
-    config_created = False
-    if not CONFIG_PATH.exists():
-        print("[boot] config.yaml not found.", file=sys.stderr)
-        if CONFIG_DEFAULT_PATH.exists():
-            print(f"[boot] Creating default config from {CONFIG_DEFAULT_PATH}...", file=sys.stderr)
-            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            shutil.copy(CONFIG_DEFAULT_PATH, CONFIG_PATH)
-            config_created = True
-        else:
-            print(f"[boot] ERROR: Default config {CONFIG_DEFAULT_PATH} not found. Cannot proceed.", file=sys.stderr)
-            sys.exit(1)
-            
-    state_created = False
-    if not STATE_PATH.exists():
-        print("[boot] state.json not found. Creating empty state file...", file=sys.stderr)
+    if not CONFIG_PATH.exists() and CONFIG_DEFAULT_PATH.exists():
+        print(f"[boot] Creating default config from {CONFIG_DEFAULT_PATH}...", file=sys.stderr)
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text('{}', encoding='utf-8')
-        state_created = True
-
-    if config_created or state_created:
+        shutil.copy(CONFIG_DEFAULT_PATH, CONFIG_PATH)
         print("\n--- FIRST RUN SETUP COMPLETE ---", file=sys.stderr)
         print(f"A default configuration has been created at: {CONFIG_PATH}", file=sys.stderr)
         print("Please edit this file with your IRC server details and any necessary API keys.", file=sys.stderr)
-        print("Jeeves will now exit.", file=sys.stderr)
         sys.exit(0)
     
     global state_manager
     state_manager = StateManager(STATE_PATH)
 
     config = load_config()
-    
-    loaded_admins = config.get("core", {}).get("admins", [])
-    if loaded_admins:
-        print(f"[boot] Loaded admins from config: {', '.join(loaded_admins)}", file=sys.stderr)
-    else:
-        print("[boot] WARNING: No admins loaded from config.yaml. Admin commands will not work.", file=sys.stderr)
         
     irc_config = config.get("connection", {})
-    
     server = irc_config.get("server", "irc.libera.chat")
     port = irc_config.get("port", 6697)
     channel = irc_config.get("channel", "#bots")
@@ -425,7 +439,7 @@ def main():
     bot = Jeeves(server, port, channel, nick, config=config)
     
     def on_exit(sig, frame):
-        print("\n[core] shutting down...", file=sys.stderr)
+        bot.log_debug("[core] shutting down...")
         if state_manager:
             state_manager.force_save()
         if bot and bot.pm:
@@ -435,7 +449,7 @@ def main():
     signal.signal(signal.SIGINT, on_exit)
     signal.signal(signal.SIGTERM, on_exit)
 
-    print("[boot] Starting bot...", file=sys.stderr)
+    bot.log_debug("[boot] Starting bot...")
     bot.start()
 
 if __name__ == "__main__":

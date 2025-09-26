@@ -24,7 +24,7 @@ def admin_required(func):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "1.4.0"
+    version = "1.5.0" # Added self.log_debug() helper
     description = "Base module class"
     
     def __init__(self, bot):
@@ -63,7 +63,6 @@ class ModuleBase(ABC):
         """Fetches geographic coordinates and structured address for a location string."""
         geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location)}&format=json&limit=1&addressdetails=1"
         try:
-            # Use the requests_retry_session for resilience
             http_session = self.requests_retry_session()
             response = http_session.get(geo_url, headers={'User-Agent': 'JeevesIRCBot/1.0'}, timeout=10)
             response.raise_for_status()
@@ -80,7 +79,6 @@ class ModuleBase(ABC):
         address = geo_data.get("address", {})
         parts = []
         
-        # Find the most specific place name
         place = address.get("city") or address.get("town") or address.get("village") or address.get("hamlet")
         if place:
             parts.append(place)
@@ -94,7 +92,6 @@ class ModuleBase(ABC):
         if parts:
             return ", ".join(parts)
         
-        # Fallback to the long name if structured data is weird
         return geo_data.get("display_name", "an unknown location")
 
     # --- State Management ---
@@ -165,7 +162,7 @@ class ModuleBase(ABC):
             connection.privmsg(event.target, text)
             return True
         except Exception as e:
-            self._record_error(f"Failed to reply: {e}")
+            self.log_debug(f"Failed to reply: {e}")
             return False
             
     def safe_say(self, text: str, target: Optional[str] = None) -> bool:
@@ -174,7 +171,7 @@ class ModuleBase(ABC):
             self.bot.connection.privmsg(target, text)
             return True
         except Exception as e:
-            self._record_error(f"Failed to send message to {target}: {e}")
+            self.log_debug(f"Failed to send message to {target}: {e}")
             return False
 
     def safe_privmsg(self, username: str, text: str) -> bool:
@@ -182,26 +179,38 @@ class ModuleBase(ABC):
             self.bot.connection.privmsg(username, text)
             return True
         except Exception as e:
-            self._record_error(f"Failed to send privmsg to {username}: {e}")
+            self.log_debug(f"Failed to send privmsg to {username}: {e}")
             return False
 
     def _dispatch_commands(self, connection, event, msg: str, username: str) -> bool:
         for cmd_id, cmd_info in self._commands.items():
             match = cmd_info["pattern"].match(msg)
             if match:
-                if cmd_info["admin_only"] and not self.bot.is_admin(event.source): continue
-                if not self.check_user_cooldown(username, cmd_id, cmd_info["cooldown"]): continue
+                self.log_debug(f"Command '{cmd_info['name']}' matched by user {username} with pattern: {cmd_info['pattern'].pattern}")
+                if cmd_info["admin_only"] and not self.bot.is_admin(event.source): 
+                    self.log_debug(f"Denying admin command '{cmd_info['name']}' for non-admin {username}")
+                    continue
+                if not self.check_user_cooldown(username, cmd_id, cmd_info["cooldown"]): 
+                    self.log_debug(f"Command '{cmd_info['name']}' on cooldown for user {username}")
+                    continue
                 try:
                     if cmd_info["handler"](connection, event, msg, username, match):
+                        self.log_debug(f"Command '{cmd_info['name']}' handled successfully.")
                         if hasattr(self, "_update_stats"):
                             self._update_stats(cmd_info["name"])
                         return True
                 except Exception as e:
-                    self._record_error(f"Error in command {cmd_id}: {e}")
+                    self.log_debug(f"Error in command {cmd_id}: {e}\n{traceback.format_exc()}")
         return False
         
     def _record_error(self, error_msg: str) -> None:
+        """Logs an error to stderr and the debug log."""
         print(f"[{self.name}] ERROR: {error_msg}", file=sys.stderr)
+        self.log_debug(f"ERROR: {error_msg}")
+        
+    def log_debug(self, message: str):
+        """A helper for modules to write to the bot's debug log."""
+        self.bot.log_debug(f"[{self.name}] {message}")
 
 class SimpleCommandModule(ModuleBase):
     def __init__(self, bot):

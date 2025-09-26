@@ -11,6 +11,8 @@ core:
       - "example_module.py"
     # A regex pattern to detect when the bot is being addressed by name.
     name_pattern: "(?:jeeves|jeevesbot)"
+    debug_mode_on_startup: false
+    debug_log_file: "debug.log"
 
 # --- IRC Connection Details ---
 connection:

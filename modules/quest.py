@@ -4,6 +4,7 @@ import random
 import time
 import re
 import schedule
+import threading
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
@@ -18,7 +19,7 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.2.2" # Fixed UnboundLocalError in mob commands
+    version = "3.2.4" # Fixed UnboundLocalError in mob scheduler
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
@@ -30,6 +31,7 @@ class Quest(SimpleCommandModule):
         self.set_state("players", self.get_state("players", {}))
         self.set_state("active_mob", self.get_state("active_mob", None))
         self.set_state("player_classes", self.get_state("player_classes", {}))
+        self.mob_lock = threading.Lock() # Lock to prevent race conditions
         self.save_state()
 
     def on_config_reload(self, config):
@@ -304,20 +306,21 @@ class Quest(SimpleCommandModule):
         return True
 
     def _cmd_mob_start(self, connection, event, msg, username, match):
-        if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
-        if self.get_state("active_mob"):
-            self.safe_reply(connection, event, "A mob is already forming!")
-            return True
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username)
-        if self.ENERGY_ENABLED and player["energy"] < 1:
-            self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
-            return True
-        boss = random.choice(self.BOSS_MONSTERS)
-        self.set_state("active_mob", {"starter": username, "participants": {user_id: username}, "boss": boss, "room": event.target, "close_epoch": time.time() + self.MOB_JOIN_WINDOW})
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)} is gathering a party to hunt a {boss['name']}! Type !join in the next {self.MOB_JOIN_WINDOW} seconds to join the hunt!")
-        schedule.every(self.MOB_JOIN_WINDOW).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
-        self.save_state()
+        with self.mob_lock:
+            if self.ALLOWED_CHANNELS and event.target not in self.ALLOWED_CHANNELS: return False
+            if self.get_state("active_mob"):
+                self.safe_reply(connection, event, "A mob is already forming!")
+                return True
+            user_id = self.bot.get_user_id(username)
+            player = self._get_player(user_id, username)
+            if self.ENERGY_ENABLED and player["energy"] < 1:
+                self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
+                return True
+            boss = random.choice(self.BOSS_MONSTERS)
+            self.set_state("active_mob", {"starter": username, "participants": {user_id: username}, "boss": boss, "room": event.target, "close_epoch": time.time() + self.MOB_JOIN_WINDOW})
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)} is gathering a party to hunt a {boss['name']}! Type !join in the next {self.MOB_JOIN_WINDOW} seconds to join the hunt!")
+            schedule.every(self.MOB_JOIN_WINDOW).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+            self.save_state()
         return True
 
     def _cmd_mob_join(self, connection, event, msg, username, match):
@@ -351,7 +354,10 @@ class Quest(SimpleCommandModule):
                     players[user_id]["energy"] = max(0, players[user_id].get("energy", 0) - 1)
             self.set_state("players", players)
         avg_level = sum(self._get_player(uid, name).get("level", 1) for uid, name in party.items()) / len(party)
-        boss, boss_level = active_mob["boss"], max(boss['min_level'], min(boss['max_level'], int(avg_level)))
+        
+        boss = active_mob["boss"]
+        boss_level = max(boss['min_level'], min(boss['max_level'], int(avg_level)))
+        
         party_size_mod = 0.0
         for mod in sorted(self.MOB_WIN_CHANCE_MODS, key=lambda x: x['players']):
             if len(party) >= mod['players']:

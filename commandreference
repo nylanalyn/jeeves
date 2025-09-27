@@ -1,0 +1,175 @@
+Jeeves IRC Bot: Command & Feature Reference
+
+This document outlines all available commands and features for the Jeeves IRC Bot, organized by module.
+Core Concepts
+
+    Natural Language: Many modules respond to natural language. Simply mentioning Jeeves's name (e.g., "jeeves") in a sentence can often trigger a feature (e.g., jeeves, what is the weather?).
+
+    Per-Channel Configuration: Administrators can enable, disable, and configure most modules on a per-channel basis using the !admin commands. This means a command might be available in #general but disabled in #gaming.
+
+Admin Module (admin.py)
+
+These commands are restricted to users defined as administrators in the bot's configuration.
+
+    !admin reload or !reload: Reloads all modules, applying any code changes made to the files.
+
+    !admin config reload: Reloads the bot's configuration from the state.json file. This is useful after making changes with !admin set.
+
+    !admin on <module> [#channel]: Enables a specific module for a channel. If no channel is provided, it applies to the current channel.
+
+    !admin off <module> [#channel]: Disables a module for a channel.
+
+    !admin get <module.setting.path> [#channel]: Retrieves a configuration value. Use dot notation for nested settings (e.g., quest.energy_system.max_energy).
+
+    !admin set <module.setting.path> <value> [#channel]: Changes a configuration setting, either globally or for a specific channel. Uses dot notation for nested settings. Note: Sensitive or complex settings (like API keys or monster lists) cannot be changed at runtime.
+
+    !admin save: Saves the bot's entire current running configuration to a config.yaml.saved file. This creates a backup of your runtime changes.
+
+    !admin reset: (DANGEROUS) Resets the bot's entire configuration to the defaults found in the original config.yaml, discarding all runtime changes.
+
+    !admin join <#channel>: Commands the bot to join a new channel.
+
+    !admin part <#channel> [message]: Commands the bot to leave a channel.
+
+    !say [#channel] <message>: Makes the bot say a specific message in a channel (or the current one if not specified).
+
+    !admin debug <on|off>: Toggles the verbose debug logging to the bot's log file.
+
+    !emergency quit [message]: Shuts the bot down immediately.
+
+User Profile & Courtesy Module (courtesy.py)
+
+    !gender <identity>: Sets your preferred title for how Jeeves addresses you (e.g., sir, madam, or a neutral form).
+
+    !pronouns <pronouns>: Sets your pronouns (e.g., he/him, she/her, they/them).
+
+    !whoami: Displays your currently saved gender and pronoun preferences.
+
+    !profile <user>: Displays the preferences for another user.
+
+    !forgetme: Deletes your profile information from the bot's state.
+
+    !ignore [user]: Adds a user to your personal ignore list, or a global ignore if used by an admin on another user.
+
+    !unignore [user]: Removes a user from an ignore list.
+
+    Natural Language: You can also say things like jeeves, my pronouns are they/them or jeeves, I am a woman.
+
+Games & Activities
+Adventure Module (adventure.py)
+
+    !adventure: Starts a new choose-your-own-adventure vote in the channel.
+
+    !adventure status: Shows the current status, options, and vote counts for an ongoing adventure.
+
+    !adventure last: Displays the results of the most recently completed adventure.
+
+    !items [user]: Shows the cosmetic items you or another user has collected from adventures.
+
+    Ambient Trigger: During a vote, simply typing 1 or 2 will cast your vote for the respective option.
+
+Bell Module (bell.py)
+
+    !answer: When the service bell rings at random intervals, this is the command to answer it. The first person to answer wins a point.
+
+    !bell score: Checks your personal score.
+
+    !bell top: Displays the leaderboard of the most attentive users.
+
+Hunt Module (hunt.py)
+
+    !hunt: When an animal randomly appears in the channel, use this command to hunt it.
+
+    !hug: An alternative to hunting, you can choose to befriend the animal instead.
+
+    !release <hunt|hug>: Releases one of your previously caught or hugged animals back into the channel for anyone to interact with.
+
+    !hunt score [user]: Checks your or another user's hunting/hugging score.
+
+    !hunt top: Shows the leaderboard.
+
+    !hunt help: Provides hunt-specific command help via private message.
+
+Quest Module (quest.py)
+
+    !quest [difficulty]: Starts a solo RPG quest. Difficulty can be easy, normal, or hard.
+
+    !quest profile [user]: Displays your or another user's RPG profile (level, XP, etc.).
+
+    !quest story: Retrieves a random piece of world lore.
+
+    !quest class [class_name]: View or set your character class.
+
+    !mob: Starts a group boss fight, opening a window for others to join.
+
+    !join: Joins a currently forming mob.
+
+Roadtrip Module (roadtrip.py)
+
+    Ambient Trigger: The bot will randomly decide to start a roadtrip. When it asks who is coming, say coming jeeves or !me to join.
+
+    !roadtrip: Shows information about the most recent trip.
+
+Convenience & Utility Module (convenience.py)
+
+    !g <query>: Performs a Google search.
+
+    !ud <term>: Looks up a term on Urban Dictionary.
+
+    !wiki <query>: Searches for a Wikipedia article.
+
+    !news: Fetches the top news story based on your saved location.
+
+    !yt <query>: Searches YouTube for a video.
+
+    Ambient Triggers:
+
+        Automatically fetches and displays the title for any non-YouTube URL posted in the chat.
+
+        Automatically fetches and displays the title, duration, and view count for any YouTube URL posted in the chat.
+
+General Commands & Features
+
+    !calc <expression>: Calculates a mathematical expression. Can also be triggered with jeeves, what is 2+2?.
+
+    !clock / !time: Gets the current time based on your saved location.
+
+    !time <user|location>: Gets the time for another user or a specific location.
+
+    !coffee: Jeeves will offer you a beverage appropriate for your local time of day.
+
+    !fortune [category]: Provides a fortune cookie. Categories can be happy, sad, silly, or spooky.
+
+    !gif <query>: Fetches a random GIF from Giphy based on your search query.
+
+    !help or !help <command>: Provides a list of commands or help for a specific command via private message.
+
+    !intro: Receive a one-time private message introducing the bot's core features.
+
+    !location <city, country>: Sets your default location for weather and time commands.
+
+    !memo <user> <message> (or !note, !tell): Leaves a message for a user that will be delivered when they next speak.
+
+    !memos mine: Shows you the memos that are waiting for you.
+
+    !pron: Get a wholesome, humorously suggestive scenario.
+
+    !shorten <url>: Shortens a long URL.
+
+    !translate [lang] <text> (or !tr): Translates text to a specified language code (e.g., es for Spanish).
+
+    !weather / !w: Gets the weather for your saved location.
+
+    !weather <user|location>: Gets the weather for another user or a specific place.
+
+Passive & Ambient Features
+
+    Chatter: Jeeves will occasionally make random, scheduled daily or weekly comments, and may also chime in on conversations related to animals, weather, technology, food, or greetings.
+
+    Flirt: Jeeves will respond politely and professionally to flirtatious comments directed at him.
+
+    Replies: Jeeves will provide generic yes/no/maybe answers to simple questions, and offer vague advice or philosophical musings when appropriate.
+
+    Sailing: Responds with nautical lore when a specific user (witeshark2 by default) says the word "SAIL".
+
+    Sed Replace: You can correct your last message by using the syntax s/find/replace/.

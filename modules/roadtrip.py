@@ -1,5 +1,5 @@
 # modules/roadtrip.py
-# Enhanced surprise roadtrips with delayed event reporting
+# Surprise roadtrips with delayed event reporting and robust multi-channel support.
 import random
 import re
 import time
@@ -16,169 +16,203 @@ def setup(bot, config):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "4.0.0" # Dynamic configuration refactor
+    version = "3.2.0" # Fixed multi-channel state bug
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
-    # These are considered "fluff" and won't be editable at runtime.
     EVENTS = {
-        "the riverside park": {"solo": ["{p1} enjoyed a quiet moment by the water..."], "duo": ["{p1} and {p2} had a long conversation..."], "group": ["{p1} and the others started an impromptu game of frisbee..."]},
-        "the old museum": {"solo": ["{p1} spent a thoughtful afternoon wandering the halls..."], "duo": ["{p1} and {p2} got into a surprisingly intense debate..."], "group": ["{p1} and the group accidentally set off a minor alarm..."]},
-        "the observatory": {"solo": ["{p1} looked through the grand telescope..."], "duo": ["{p1} and {p2} stayed up late, pointing out constellations..."], "group": ["{p1} and the others watched a stunning meteor shower..."]},
-        "the seaside pier": {"solo": ["{p1} ate a truly questionable hot dog..."], "duo": ["{p1} and {p2} tried their luck at the arcade games..."], "group": ["{p1} and the group bravely rode the rickety old Ferris wheel..."]},
-        "the midnight diner": {"solo": ["{p1} drank lukewarm coffee..."], "duo": ["{p1} and {p2} shared a plate of questionable fries..."], "group": ["{p1} and the group somehow started a friendly pancake-eating contest..."]},
-        "fallback": {"solo": ["{p1} had a quiet, introspective time at {dest}."], "duo": ["{p1} and {p2} found a cozy corner and chatted for hours."], "group": ["{p1} and the group explored {dest} and had a lovely time."]}
+        "the riverside park": {
+            "solo": ["{p1} enjoyed a quiet moment by the water, skipping stones across the surface."],
+            "duo": ["{p1} and {p2} had a long conversation on a park bench, watching the boats go by."],
+            "group": ["{p1} and the others started an impromptu game of frisbee that went on for hours."]
+        },
+        "the old museum": {
+            "solo": ["{p1} spent a thoughtful afternoon wandering the halls, completely losing track of time."],
+            "duo": ["{p1} and {p2} got into a surprisingly intense debate about modern art in front of a very confusing sculpture."],
+            "group": ["{p1} and the group accidentally set off a minor alarm in the dinosaur exhibit, but played it cool."]
+        },
+        "fallback": {
+            "solo": ["{p1} had a quiet, introspective time at {dest}."],
+            "duo": ["{p1} and {p2} found a cozy corner at {dest} and chatted for hours."],
+            "group": ["{p1} and the group explored {dest} and generally had a lovely time."]
+        }
     }
+
     LOCATIONS = list(set(EVENTS.keys()) - {"fallback"})
-    TRIGGER_MESSAGES = ["Of course! I'll prepare the car.", "Very good! I shall ready the motor.", "An excellent notion let me fetch the keys."]
+
+    TRIGGER_MESSAGES = [ "Of course! I'll prepare the car.", "Very good! I shall ready the motor.", "An excellent notion; let me fetch the keys.", "Splendid idea; the vehicle awaits." ]
 
     def __init__(self, bot, config):
         super().__init__(bot)
-        self.static_keys = ["events", "locations", "trigger_messages"]
+        
+        # Per-channel state tracking
         self.set_state("messages_since_last", self.get_state("messages_since_last", {}))
         self.set_state("next_trip_earliest", self.get_state("next_trip_earliest", {}))
         self.set_state("next_trip_message_threshold", self.get_state("next_trip_message_threshold", {}))
+        
         self.set_state("current_rsvp", self.get_state("current_rsvp", None))
         self.set_state("pending_reports", self.get_state("pending_reports", []))
+        self.set_state("history", self.get_state("history", []))
         self.save_state()
 
         self._rsvp_pattern = re.compile(rf"^\s*coming\s+{self.bot.JEEVES_NAME_RE}!?\s*\.?\s*$", re.IGNORECASE)
         self._rsvp_alt_pattern = re.compile(r"^\s*!me\s*$", re.IGNORECASE)
 
     def _register_commands(self):
-        self.register_command(r"^\s*!roadtrip\s*$", lambda c, e, m, u, ma: self.safe_reply(c, e, "The last outing has concluded. Perhaps another soon?"), name="roadtrip")
-        self.register_command(r"^\s*!roadtrip\s+trigger\s*$", self._cmd_trigger, name="roadtrip trigger", admin_only=True)
+        self.register_command(r"^\s*!roadtrip\s*$", self._cmd_roadtrip,
+                              name="roadtrip", description="Show details of the most recent roadtrip.")
+        self.register_command(r"^\s*!roadtrip\s+stats\s*$", self._cmd_stats,
+                              name="roadtrip stats", admin_only=True, description="Show roadtrip statistics.")
+        self.register_command(r"^\s*!roadtrip\s+trigger\s*$", self._cmd_trigger,
+                              name="roadtrip trigger", admin_only=True, description="Force a roadtrip to start.")
 
     def on_load(self):
         super().on_load()
         schedule.clear(self.name)
-        for report in self.get_state("pending_reports", []):
+        pending_reports = self.get_state("pending_reports", [])
+        for report in pending_reports:
             report_time = datetime.fromisoformat(report["report_at"])
             now = datetime.now(UTC)
-            remaining_seconds = (report_time - now).total_seconds()
-            if remaining_seconds <= 0:
+            if now >= report_time:
                 self._report_roadtrip_events(report["id"])
             else:
-                schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
+                remaining_seconds = (report_time - now).total_seconds()
+                if remaining_seconds > 0:
+                    schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
 
     def on_unload(self):
         super().on_unload()
         schedule.clear(self.name)
 
     def on_ambient_message(self, connection, event, msg, username):
-        if not self.is_enabled(event.target):
-            return False
+        if not self.is_enabled(event.target): return False
+        
         if self._try_collect_rsvp(msg, username, event.target):
             return True
+            
         self._increment_message_count(event.target)
         if self._should_trigger_roadtrip(event.target):
             self._open_rsvp_window(connection, event)
         return False
 
-    def _get_or_set_channel_state(self, state_dict, channel, compute_func):
-        if channel not in state_dict:
-            state_dict[channel] = compute_func()
-        return state_dict[channel]
-
     def _compute_next_trip_time(self, channel):
         min_h = self.get_config_value("min_hours_between_trips", channel, 3)
         max_h = self.get_config_value("max_hours_between_trips", channel, 18)
-        return (datetime.now(UTC) + timedelta(hours=random.randint(min_h, max_h))).isoformat()
+        hours = random.randint(min_h, max_h)
+        return datetime.now(UTC) + timedelta(hours=hours)
 
     def _compute_message_threshold(self, channel):
         min_m = self.get_config_value("min_messages_for_trigger", channel, 35)
         max_m = self.get_config_value("max_messages_for_trigger", channel, 85)
         return random.randint(min_m, max_m)
 
+    def _time_gate_passed(self, channel: str) -> bool:
+        earliest_times = self.get_state("next_trip_earliest", {})
+        earliest_str = earliest_times.get(channel)
+        if not earliest_str: return True # If never run, allow it
+        return datetime.now(UTC) >= datetime.fromisoformat(earliest_str)
+
+    def _message_gate_passed(self, channel: str) -> bool:
+        message_counts = self.get_state("messages_since_last", {})
+        thresholds = self.get_state("next_trip_message_threshold", {})
+        current_count = message_counts.get(channel, 0)
+        threshold = thresholds.get(channel, self._compute_message_threshold(channel))
+        return current_count >= threshold
+
     def _should_trigger_roadtrip(self, channel: str) -> bool:
         if self.get_state("current_rsvp"): return False
-
-        earliest_times = self.get_state("next_trip_earliest", {})
-        earliest_time_str = self._get_or_set_channel_state(earliest_times, channel, lambda: self._compute_next_trip_time(channel))
+        if not self._time_gate_passed(channel) or not self._message_gate_passed(channel): return False
         
-        thresholds = self.get_state("next_trip_message_threshold", {})
-        threshold = self._get_or_set_channel_state(thresholds, channel, lambda: self._compute_message_threshold(channel))
-        
-        messages = self.get_state("messages_since_last", {}).get(channel, 0)
-
-        time_ok = datetime.now(UTC) >= datetime.fromisoformat(earliest_time_str)
-        msgs_ok = messages >= threshold
-        
-        prob = self.get_config_value("trigger_probability", channel, 0.25)
-        return time_ok and msgs_ok and random.random() < prob
+        trigger_prob = self.get_config_value("trigger_probability", channel, 0.25)
+        return random.random() < trigger_prob
 
     def _reset_trigger_conditions(self, channel: str):
-        for state_key, compute_func in [
-            ("messages_since_last", lambda c: 0),
-            ("next_trip_earliest", self._compute_next_trip_time),
-            ("next_trip_message_threshold", self._compute_message_threshold)
-        ]:
-            state_dict = self.get_state(state_key, {})
-            state_dict[channel] = compute_func(channel)
-            self.set_state(state_key, state_dict)
+        counts = self.get_state("messages_since_last", {})
+        counts[channel] = 0
+        self.set_state("messages_since_last", counts)
+
+        earliest_times = self.get_state("next_trip_earliest", {})
+        earliest_times[channel] = self._compute_next_trip_time(channel).isoformat()
+        self.set_state("next_trip_earliest", earliest_times)
+
+        thresholds = self.get_state("next_trip_message_threshold", {})
+        thresholds[channel] = self._compute_message_threshold(channel)
+        self.set_state("next_trip_message_threshold", thresholds)
+        
         self.save_state()
 
     def _open_rsvp_window(self, connection, event):
-        join_window = self.get_config_value("join_window_seconds", event.target, 120)
+        channel = event.target
         destination = random.choice(self.LOCATIONS)
-        trigger_msg = random.choice(self.TRIGGER_MESSAGES)
+        join_window = self.get_config_value("join_window_seconds", channel, 120)
         
-        self.safe_reply(connection, event, trigger_msg)
-        self.safe_reply(connection, event, f"I have in mind an excursion to {destination}. Say \"coming jeeves\" or \"!me\" within {join_window}s.")
+        self.safe_reply(connection, event, random.choice(self.TRIGGER_MESSAGES))
+        self.safe_reply(connection, event, f"Shall we? I've in mind a little excursion to {destination}. Say \"coming jeeves\" or \"!me\" within {join_window} seconds to be shown to the car.")
         
+        close_time = time.time() + join_window
         self.set_state("current_rsvp", {
-            "destination": destination, "room": event.target, "participants": [],
-            "close_epoch": time.time() + join_window
+            "destination": destination, "room": channel, "participants": [],
+            "close_epoch": close_time
         })
         self.save_state()
-        schedule.every(join_window).seconds.do(self._close_rsvp_window).tag(self.name, "rsvp-close")
+        schedule.every(join_window).seconds.do(self._close_rsvp_window).tag(self.name, f"rsvp-close")
 
     def _close_rsvp_window(self):
         current_rsvp = self.get_state("current_rsvp")
         if not current_rsvp: return schedule.CancelJob
-        schedule.clear("rsvp-close")
 
+        schedule.clear("rsvp-close")
         room, participants, dest = current_rsvp["room"], current_rsvp["participants"], current_rsvp["destination"]
+
         if participants:
             details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
-            self.safe_say(f"To {dest}: {', '.join(details)}. Do buckle up.", target=room)
+            self.safe_say(f"Very good. Outing to {dest}: {', '.join(details)}. Do buckle up.", target=room)
             
             report_id = f"{self.name}-{int(time.time())}"
-            delay = self.get_config_value("report_delay_seconds", room, 3600)
-            report_at = datetime.now(UTC) + timedelta(seconds=delay)
+            report_delay = self.get_config_value("report_delay_seconds", room, 3600)
+            report_at = datetime.now(UTC) + timedelta(seconds=report_delay)
             
-            pending = self.get_state("pending_reports", [])
-            pending.append({"id": report_id, "room": room, "destination": dest, "participants": participants, "report_at": report_at.isoformat()})
-            self.set_state("pending_reports", pending)
-            
-            schedule.every(delay).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(self.name, f"report-{report_id}")
+            pending_reports = self.get_state("pending_reports", [])
+            pending_reports.append({
+                "id": report_id, "room": room, "destination": dest,
+                "participants": participants, "report_at": report_at.isoformat()
+            })
+            self.set_state("pending_reports", pending_reports)
+            schedule.every(report_delay).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(self.name, f"report-{report_id}")
         else:
             self.safe_say(f"No takers. I shall cancel the reservation for {dest}.", target=room)
         
         self.set_state("current_rsvp", None)
-        self._reset_trigger_conditions(room)
+        self._reset_trigger_conditions(room) # Save state is called inside
         return schedule.CancelJob
 
     def _report_roadtrip_events(self, report_id: str):
-        pending = self.get_state("pending_reports", [])
-        report = next((r for r in pending if r["id"] == report_id), None)
+        pending_reports = self.get_state("pending_reports", [])
+        report = next((r for r in pending_reports if r["id"] == report_id), None)
         if not report: return schedule.CancelJob
 
-        self.set_state("pending_reports", [r for r in pending if r["id"] != report_id])
+        self.set_state("pending_reports", [r for r in pending_reports if r["id"] != report_id])
         self.save_state()
 
         p_count = len(report["participants"])
         size_key = "solo" if p_count == 1 else "duo" if p_count == 2 else "group"
+        
         events = self.EVENTS.get(report["destination"], self.EVENTS["fallback"])
         story = random.choice(events.get(size_key, self.EVENTS["fallback"][size_key]))
 
-        p = report["participants"]
-        story = story.format(p1=p[0], p2=p[1] if p_count > 1 else '', dest=report["destination"])
+        if p_count == 1:
+            story = story.format(p1=report["participants"][0], dest=report["destination"])
+        elif p_count == 2:
+            story = story.format(p1=report["participants"][0], p2=report["participants"][1], dest=report["destination"])
+        else:
+            story = story.format(p1=report["participants"][0], dest=report["destination"])
+
         self.safe_say(f"A report from the roadtrip to {report['destination']}: {story}", target=report["room"])
         return schedule.CancelJob
 
     def _try_collect_rsvp(self, msg: str, username: str, room: str) -> bool:
         current_rsvp = self.get_state("current_rsvp")
         if not current_rsvp or current_rsvp.get("room") != room: return False
+
         if time.time() > current_rsvp.get("close_epoch", 0):
             self._close_rsvp_window()
             return True
@@ -194,9 +228,19 @@ class Roadtrip(SimpleCommandModule):
 
     def _increment_message_count(self, channel: str):
         counts = self.get_state("messages_since_last", {})
+        if not isinstance(counts, dict): counts = {} # Defensive check
         counts[channel] = counts.get(channel, 0) + 1
         self.set_state("messages_since_last", counts)
         self.save_state()
+
+    def _cmd_roadtrip(self, connection, event, msg, username, match):
+        self.safe_reply(connection, event, "The last outing has already concluded. Perhaps another soon?")
+        return True
+
+    @admin_required
+    def _cmd_stats(self, connection, event, msg, username, match):
+        self.safe_reply(connection, event, f"Roadtrip stats: {len(self.get_state('pending_reports', []))} reports pending.")
+        return True
 
     @admin_required
     def _cmd_trigger(self, connection, event, msg, username, match):
@@ -205,3 +249,4 @@ class Roadtrip(SimpleCommandModule):
         else:
             self._open_rsvp_window(connection, event)
         return True
+

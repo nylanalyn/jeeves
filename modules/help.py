@@ -12,12 +12,12 @@ def setup(bot, config):
 class Help(SimpleCommandModule):
     """Provides a list of commands and help for specific commands."""
     name = "help"
-    version = "4.1.0" # Added configurable web reference link
+    version = "4.1.1" # Corrected __init__ call
     description = "Provides a list of commands and help for specific commands."
     
     def __init__(self, bot, config):
         """Initializes the module's state and registers commands."""
-        super().__init__(bot, config)
+        super().__init__(bot)
         self.set_state("last_help_time", self.get_state("last_help_time", {}))
         self.save_state()
 

@@ -13,14 +13,12 @@ def setup(bot, config):
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
-    version = "2.0.1" # Initialization fix
+    version = "2.1.0" # Made ambient trigger more specific
     description = "Provides fortunes from a fortune cookie."
     
-    FORTUNE_DIR = Path(__file__).parent.parent / "fortunes"
     CATEGORIES = ["spooky", "happy", "sad", "silly"]
     
     def __init__(self, bot, config):
-        self.on_config_reload(config)
         super().__init__(bot)
         
         self.set_state("last_fortune_time", self.get_state("last_fortune_time", {}))
@@ -29,8 +27,8 @@ class Fortune(SimpleCommandModule):
         self._load_all_fortunes()
 
     def on_config_reload(self, config):
-        fortune_config = config.get(self.name, config)
-        self.COOLDOWN_SECONDS = fortune_config.get("cooldown_seconds", 10.0)
+        # Settings are now fetched on-demand via get_config_value
+        pass
 
     def _register_commands(self):
         self.register_command(r"^\s*!fortune(?:\s+(\w+))?\s*$", self._cmd_fortune, 
@@ -40,11 +38,14 @@ class Fortune(SimpleCommandModule):
     
     def _cmd_fortune(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
-        if not self._can_give_fortune(user_id):
+        cooldown = self.get_config_value("cooldown_seconds", event.target, default=10.0)
+
+        if not self.check_user_cooldown(username, "fortune", cooldown):
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, please wait a moment before requesting another fortune.")
             return True
+            
         category = match.group(1).lower() if match.group(1) else None
-        self._give_fortune(connection, event, username, user_id, category)
+        self._give_fortune(connection, event, username, category)
         return True
 
     @admin_required
@@ -55,47 +56,39 @@ class Fortune(SimpleCommandModule):
         return True
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
-        user_id = self.bot.get_user_id(username)
-        if self._can_give_fortune(user_id) and self.is_mentioned(msg):
+        if not self.is_enabled(event.target): return False
+
+        cooldown = self.get_config_value("cooldown_seconds", event.target, default=10.0)
+
+        # Ambient trigger now requires mentioning Jeeves AND the word "fortune".
+        if self.check_user_cooldown(username, "fortune", cooldown) and self.is_mentioned(msg) and re.search(r"\bfortune\b", msg, re.IGNORECASE):
             category = self._extract_category_from_message(msg)
-            if category or re.search(r"\bfortune", msg, re.IGNORECASE):
-                self._give_fortune(connection, event, username, user_id, category)
-                return True
+            self._give_fortune(connection, event, username, category)
+            return True
         return False
 
-    def _give_fortune(self, connection, event, username, user_id, category):
+    def _give_fortune(self, connection, event, username, category):
         fortune_text, actual_category = self._get_fortune(category)
         if actual_category == "error":
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {fortune_text}")
             return
         response = self._format_fortune_response(username, fortune_text, actual_category)
-        self._mark_fortune_given(user_id)
         self.safe_reply(connection, event, response)
 
     def _load_all_fortunes(self):
-        if not self.FORTUNE_DIR.exists(): return
+        fortune_dir = Path(self.bot.ROOT) / "fortunes"
+        if not fortune_dir.exists(): return
         self._fortunes.clear()
         for category in self.CATEGORIES:
-            fortune_file = self.FORTUNE_DIR / f"{category}.txt"
+            fortune_file = fortune_dir / f"{category}.txt"
             if fortune_file.exists():
                 try:
                     content = fortune_file.read_text(encoding='utf-8').strip()
                     fortunes = [f.strip() for f in re.split(r'\n%\n|\n\n', content) if f.strip()]
                     self._fortunes[category] = fortunes
-                except Exception:
+                except Exception as e:
+                    self.log_debug(f"Failed to load fortune file for '{category}': {e}")
                     self._fortunes[category] = []
-
-    def _can_give_fortune(self, user_id: str) -> bool:
-        if self.COOLDOWN_SECONDS <= 0: return True
-        now = time.time()
-        last_times = self.get_state("last_fortune_time", {})
-        return now - last_times.get(user_id, 0) >= self.COOLDOWN_SECONDS
-
-    def _mark_fortune_given(self, user_id: str):
-        last_times = self.get_state("last_fortune_time", {})
-        last_times[user_id] = time.time()
-        self.set_state("last_fortune_time", last_times)
-        self.save_state()
 
     def _get_fortune(self, category: Optional[str] = None) -> Tuple[str, str]:
         all_fortunes = [(fortune, cat) for cat, fortunes in self._fortunes.items() for fortune in fortunes]
@@ -116,14 +109,18 @@ class Fortune(SimpleCommandModule):
 
     def _format_fortune_response(self, username: str, fortune: str, category: str) -> str:
         title = self.bot.title_for(username)
-        intros = {"spooky": f"{title}, the spirits whisper:", "happy": f"{title}, a most pleasant fortune awaits:", "sad": f"{title}, the omens are rather somber:", "silly": f"{title}, a rather whimsical fortune:"}
+        intros = {
+            "spooky": f"{title}, the spirits whisper:", 
+            "happy": f"{title}, a most pleasant fortune awaits:", 
+            "sad": f"{title}, the omens are rather somber:", 
+            "silly": f"{title}, a rather whimsical fortune:"
+        }
         intro = intros.get(category, f"{title}, your fortune:")
         return f"{username}, {intro} {fortune}"
 
     def _extract_category_from_message(self, msg: str) -> Optional[str]:
         msg_lower = msg.lower()
         for category in self.CATEGORIES:
-            if category in msg_lower:
+            if re.search(rf"\b{category}\b", msg_lower):
                 return category
         return None
-

@@ -78,8 +78,6 @@ class StateManager:
     def update_module_state(self, name, updates):
         with self._lock:
             mods = self._state.setdefault("modules", {})
-            # Always replace the entire object for a given module to ensure
-            # state is clean, especially for complex objects like the main config.
             mods[name] = updates
             self._mark_dirty()
 
@@ -115,12 +113,8 @@ class PluginManager:
         self.modules = {}
 
     def unload_all(self):
-        for name, obj in self.plugins.items():
-            if hasattr(obj, "on_unload"):
-                try:
-                    obj.on_unload()
-                except Exception as e:
-                    self.bot.log_debug(f"[plugins] error unloading {name}: {e}")
+        for name in list(self.plugins.keys()):
+            self.unload_module(name)
 
     def load_all(self):
         self.unload_all()
@@ -128,7 +122,6 @@ class PluginManager:
         self.modules = {}
         loaded_names = []
         
-        # --- Diagnostic Logging ---
         self.bot.log_debug(f"[plugins] Loading modules from: {ROOT / 'modules'}")
         module_files = list(ROOT.glob("modules/*.py"))
         self.bot.log_debug(f"[plugins] Found {len(module_files)} python files in modules directory.")
@@ -139,36 +132,64 @@ class PluginManager:
 
         for py in sorted(module_files):
             name = py.stem
-            if name in ("__init__", "base"): continue
-            
             if py.name in blacklist:
                 self.bot.log_debug(f"[plugins] Skipping blacklisted module: {py.name}")
                 continue
-                
-            try:
-                spec = importlib.util.spec_from_file_location(f"modules.{name}", py)
-                mod = importlib.util.module_from_spec(spec)
-                sys.modules[f"modules.{name}"] = mod
-                spec.loader.exec_module(mod)
-                if hasattr(mod, "setup"):
-                    instance = mod.setup(self.bot, self.bot.config.get(name, {}))
-                    if instance:
-                        self.plugins[name] = instance
-                        loaded_names.append(name)
-                        self.bot.log_debug(f"[plugins] Loaded module: {name}")
-            except Exception as e:
-                self.bot.log_debug(f"[plugins] FAILED to load {name}: {e}\n{traceback.format_exc()}")
-        
-        for name, obj in self.plugins.items():
-            if hasattr(obj, "on_load"): obj.on_load()
+            
+            if self.load_module(name):
+                loaded_names.append(name)
         
         return loaded_names
+
+    def unload_module(self, name: str) -> bool:
+        """Unloads a single module by name."""
+        if name in self.plugins:
+            obj = self.plugins[name]
+            if hasattr(obj, "on_unload"):
+                try:
+                    obj.on_unload()
+                except Exception as e:
+                    self.bot.log_debug(f"[plugins] error unloading {name}: {e}")
+            del self.plugins[name]
+            self.bot.log_debug(f"[plugins] Unloaded module: {name}")
+            return True
+        return False
+
+    def load_module(self, name: str) -> bool:
+        """Loads a single module by name."""
+        if name in self.plugins or name in ("__init__", "base"):
+            return False
+
+        py_path = ROOT / "modules" / f"{name}.py"
+        if not py_path.exists():
+            self.bot.log_debug(f"[plugins] FAILED to load {name}: file not found at {py_path}")
+            return False
+
+        try:
+            spec = importlib.util.spec_from_file_location(f"modules.{name}", py_path)
+            mod = importlib.util.module_from_spec(spec)
+            sys.modules[f"modules.{name}"] = mod
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "setup"):
+                # Correctly pass the module-specific config from the bot's live config
+                instance = mod.setup(self.bot, self.bot.config.get(name, {}))
+                if instance:
+                    self.plugins[name] = instance
+                    if hasattr(instance, "on_load"):
+                        instance.on_load()
+                    self.bot.log_debug(f"[plugins] Loaded module: {name}")
+                    return True
+        except Exception as e:
+            self.bot.log_debug(f"[plugins] FAILED to load {name}: {e}\n{traceback.format_exc()}")
+        
+        return False
+
 
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
     def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
         self.config = config or {}
-        self.ROOT = ROOT # Make root path available to modules
+        self.ROOT = ROOT 
         self._setup_logging()
 
         if port == 6697:
@@ -443,7 +464,6 @@ def main():
     global state_manager
     state_manager = StateManager(STATE_PATH)
 
-    # --- Configuration Seeding Logic ---
     config_from_state = state_manager.get_module_state("config")
     if not config_from_state:
         print("[boot] No config found in state, seeding from config.yaml...", file=sys.stderr)

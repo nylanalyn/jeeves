@@ -1,99 +1,104 @@
 # modules/translate.py
-# A module for translating text using the LibreTranslate API.
-import requests
+# A module for translating text using the DeepL API.
 import re
 from typing import Optional, List, Dict, Any
+
 from .base import SimpleCommandModule, admin_required
+
+try:
+    import deepl
+except ImportError:
+    deepl = None
 
 def setup(bot, config):
     """Initializes the Translate module."""
-    return Translate(bot, config)
+    if not deepl:
+        print("[translate] deepl library not installed (pip install deepl). Module will not load.")
+        return None
+    api_key = bot.config.get("api_keys", {}).get("deepl_api_key")
+    if not api_key:
+        print("[translate] DeepL API key not found in config.yaml. Module will not load.")
+        return None
+    return Translate(bot, config, api_key)
 
 class Translate(SimpleCommandModule):
-    """A module for text translation using LibreTranslate."""
+    """A module for text translation using the DeepL API."""
     name = "translate"
-    version = "2.0.0" # Dynamic configuration refactor
-    description = "Translates text using the LibreTranslate API."
+    version = "2.0.0" # Switched to DeepL API
+    description = "Translates text using the DeepL API."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot, config, api_key):
         super().__init__(bot)
-        self.http_session = self.requests_retry_session()
-        self.supported_languages: List[Dict[str, str]] = []
+        try:
+            self.translator = deepl.Translator(api_key)
+        except Exception as e:
+            self._record_error(f"Failed to initialize DeepL translator: {e}")
+            self.translator = None
+        
         self.set_state("translations_done", 0)
         self.save_state()
-        self._fetch_supported_languages() # Initial fetch on load
 
     def _register_commands(self):
         """Registers all commands for the module."""
-        # The base cooldown is a default; it can be overridden per-channel.
-        base_cooldown = 15.0
-        self.register_command(r"^\s*!translate\s+langs\s*$", self._cmd_langs, name="translate langs")
-        self.register_command(r"^\s*!translate\s+(.+)$", self._cmd_translate, name="translate", cooldown=base_cooldown)
-        self.register_command(r"^\s*!tr\s+langs\s*$", self._cmd_langs, name="tr langs")
-        self.register_command(r"^\s*!tr\s+(.+)$", self._cmd_translate, name="tr", cooldown=base_cooldown)
+        self.register_command(
+            r"^\s*!translate\s+langs\s*$",
+            self._cmd_langs,
+            name="translate langs",
+            description="Get a link to supported language codes."
+        )
+        self.register_command(
+            r"^\s*!translate\s+(.+)$",
+            self._cmd_translate,
+            name="translate",
+            description="Translate text. Usage: !translate [target_lang] <text>"
+        )
+        # --- ALIASES ---
+        self.register_command(
+            r"^\s*!tr\s+(.+)$",
+            self._cmd_translate,
+            name="tr",
+            description="Alias for !translate."
+        )
 
-    def _fetch_supported_languages(self):
-        """Fetches and caches the list of supported languages from the API."""
-        # For this initial fetch, we use the global (non-channel-specific) URL.
-        api_url = self.get_config_value("api_url", default="https://libretranslate.com")
-        if not api_url: return
-
-        try:
-            response = self.http_session.get(f"{api_url}/languages", headers={'User-Agent': 'JeevesIRCBot/1.0'})
-            response.raise_for_status()
-            self.supported_languages = response.json()
-        except (requests.exceptions.RequestException, ValueError) as e:
-            self._record_error(f"Could not fetch supported languages from {api_url}: {e}")
-            self.supported_languages = []
-
-    def _is_valid_lang_code(self, code: str) -> bool:
-        """Checks if a given string is a valid, supported language code."""
-        if not self.supported_languages: self._fetch_supported_languages() # Retry if initial fetch failed
-        return any(lang['code'] == code for lang in self.supported_languages)
-
-    def _perform_translation(self, text: str, target_lang: str, channel: str, source_lang: str = "auto") -> Optional[str]:
-        """Performs the translation via the LibreTranslate API."""
-        api_url = self.get_config_value("api_url", channel, "https://libretranslate.com")
-        if not api_url: return None
-
-        headers = {'User-Agent': 'JeevesIRCBot/1.0', 'Content-Type': 'application/json'}
-        payload = {"q": text, "source": source_lang, "target": target_lang, "format": "text"}
-        try:
-            response = self.http_session.post(f"{api_url}/translate", json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            if "translatedText" in data:
-                self.set_state("translations_done", self.get_state("translations_done", 0) + 1)
-                self.save_state()
-                return data["translatedText"]
-        except (requests.exceptions.RequestException, ValueError) as e:
-            self._record_error(f"Translation API error using {api_url}: {e}")
-        return None
+    # --- Command Handlers ---
 
     def _cmd_langs(self, connection, event, msg, username, match):
         """Handles the !translate langs command."""
-        self.safe_reply(connection, event, "Full list of language codes: https://libretranslate.com/docs/#/translate/get_languages_languages_get")
+        self.safe_reply(connection, event, "A full list of supported language codes can be found here: https://www.deepl.com/docs-api/general/languages")
         return True
 
     def _cmd_translate(self, connection, event, msg, username, match):
         """Handles the main !translate command."""
+        if not self.translator:
+            self.safe_reply(connection, event, "My apologies, the translation service is not correctly configured.")
+            return True
+
         args_str = match.group(1).strip()
         args = args_str.split()
-        
-        default_lang = self.get_config_value("default_target_language", event.target, "en")
-        target_lang = default_lang
+
+        target_lang = self.get_config_value("default_target_language", event.target, default="EN-US")
         text_to_translate = args_str
         
-        if len(args) > 1 and self._is_valid_lang_code(args[0]):
-            target_lang = args[0]
+        # Check if the first argument is a language code (e.g., DE, FR, PT-BR)
+        # Simple check: 2-5 chars, contains only letters and possibly a hyphen.
+        if len(args) > 1 and 2 <= len(args[0]) <= 5 and re.match(r'^[A-Z-]+$', args[0], re.IGNORECASE):
+            # The DeepL library will validate the language code for us.
+            target_lang = args[0].upper()
             text_to_translate = " ".join(args[1:])
 
-        translated_text = self._perform_translation(text_to_translate, target_lang, event.target)
+        try:
+            result = self.translator.translate_text(text_to_translate, target_lang=target_lang)
+            detected_lang = result.detected_source_lang
+            translated_text = result.text
 
-        if translated_text:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the translation is: \"{translated_text}\"")
-        else:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I was unable to complete the translation.")
+            self.set_state("translations_done", self.get_state("translations_done", 0) + 1)
+            self.save_state()
+            
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, ({detected_lang} -> {target_lang}): \"{translated_text}\"")
+
+        except deepl.DeepLException as e:
+            self._record_error(f"DeepL API error: {e}")
+            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, an error occurred during translation. Please check the language code or try again later.")
         
         return True
 

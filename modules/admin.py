@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "3.1.0" # Added !admin modules and enhanced set/get
+    version = "3.2.0" # Added admin management commands
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
@@ -48,19 +48,24 @@ class Admin(SimpleCommandModule):
         args = args_str.split()
         subcommand = args[0].lower()
         
+        # --- Route to subcommand handlers ---
         if subcommand == "reload":
             return self._cmd_reload(connection, event, username)
         elif subcommand == "config" and len(args) > 1 and args[1].lower() == "reload":
             return self._cmd_config_reload(connection, event, username)
+        elif subcommand == "addadmin" and len(args) > 1:
+            return self._cmd_add_admin(connection, event, username, args[1])
+        elif subcommand == "deladmin" and len(args) > 1:
+            return self._cmd_del_admin(connection, event, username, args[1])
         elif subcommand in ("on", "off"):
             if len(args) < 2: return self._usage(connection, event, "on|off <module> [#channel]")
             module, channel = args[1], args[2] if len(args) > 2 else event.target
             return self._cmd_toggle_module(connection, event, username, module, channel, subcommand == "on")
         elif subcommand == "set":
-            if len(args) < 3: return self._usage(connection, event, "set <module.setting.path> <value> [#channel]")
+            if len(args) < 3: return self._usage(connection, event, "set <module.setting.path> <value> [#channel|global]")
             path, value_str = args[1], " ".join(args[2:])
             channel = event.target # Default to current channel
-            if value_str.rpartition(' ')[-1].startswith('#'):
+            if value_str.rpartition(' ')[-1].startswith('#') or value_str.rpartition(' ')[-1] == "global":
                  parts = value_str.rpartition(' ')
                  value_str = parts[0]
                  channel = parts[2]
@@ -110,6 +115,34 @@ class Admin(SimpleCommandModule):
             self.safe_reply(connection, event, "Error reloading configuration.")
         return True
 
+    def _cmd_add_admin(self, connection, event, username, target_user):
+        config_copy = self.bot.get_module_state("config")
+        core_cfg = config_copy.setdefault("core", {})
+        admin_list = core_cfg.setdefault("admins", [])
+        
+        if target_user not in admin_list:
+            admin_list.append(target_user)
+            self.bot.update_module_state("config", config_copy)
+            self.bot.core_reload_config()
+            self.safe_reply(connection, event, f"Very good. {target_user} has been added to the admin list.")
+        else:
+            self.safe_reply(connection, event, f"{target_user} is already an administrator.")
+        return True
+
+    def _cmd_del_admin(self, connection, event, username, target_user):
+        config_copy = self.bot.get_module_state("config")
+        core_cfg = config_copy.setdefault("core", {})
+        admin_list = core_cfg.setdefault("admins", [])
+        
+        if target_user in admin_list:
+            admin_list.remove(target_user)
+            self.bot.update_module_state("config", config_copy)
+            self.bot.core_reload_config()
+            self.safe_reply(connection, event, f"As you wish. {target_user} has been removed from the admin list.")
+        else:
+            self.safe_reply(connection, event, f"{target_user} was not on the admin list.")
+        return True
+
     def _cmd_toggle_module(self, connection, event, username, module_name, channel, new_status):
         if module_name not in self.bot.pm.plugins:
             self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
@@ -149,12 +182,10 @@ class Admin(SimpleCommandModule):
 
         config_copy = self.bot.get_module_state("config")
         
-        # Navigate to the right dictionary for either global or channel-specific setting
         if channel == "global":
             d = config_copy
         else:
             d = config_copy.setdefault(module_name, {}).setdefault("channels", {}).setdefault(channel, {})
-            # If we're setting a channel override, the path doesn't need the module name
             if keys[0] == module_name: keys.pop(0)
 
         for key in keys[:-1]:
@@ -170,22 +201,22 @@ class Admin(SimpleCommandModule):
         keys = path.split('.')
         module_name = keys[0]
         
-        module_instance = self.bot.pm.plugins.get(module_name)
-        if not module_instance:
+        if module_name not in self.bot.pm.plugins:
             self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
             return True
             
         config_copy = self.bot.get_module_state("config")
         
-        # Get channel-specific value if it exists
-        d = config_copy.get(module_name, {}).get("channels", {}).get(channel, {})
-        val = d
+        val = None
+        is_channel_override = False
         try:
-             for key in keys[1:]: val = val[key]
-             is_channel_override = True
+            d = config_copy.get(module_name, {}).get("channels", {}).get(channel, {})
+            val = d
+            for key in keys[1:]: val = val[key]
+            is_channel_override = True
         except KeyError:
              val = config_copy
-             for key in keys: val = val[key]
+             for key in keys: val = val.get(key)
              is_channel_override = False
 
         self.safe_reply(connection, event, f"Config for '{path}' in {channel} is '{val}' {'(Channel Override)' if is_channel_override else '(Global)'}")
@@ -215,13 +246,11 @@ class Admin(SimpleCommandModule):
 
     def _cmd_join(self, connection, event, username, room):
         self.bot.connection.join(room)
-        self.safe_reply(connection, event, f"Joined {room}.")
         return True
 
     def _cmd_part(self, connection, event, username, room, msg):
         if room in self.bot.joined_channels:
             self.bot.connection.part(room, msg or "Leaving per request.")
-            self.safe_reply(connection, event, f"Left {room}.")
         else:
             self.safe_reply(connection, event, f"I am not in {room}.")
         return True
@@ -249,6 +278,8 @@ class Admin(SimpleCommandModule):
             "!admin reload - Reload all modules.",
             "!admin config reload - Reload config from state.json.",
             "!admin modules - List all currently loaded modules.",
+            "!admin addadmin <user> - Add a user to the admin list.",
+            "!admin deladmin <user> - Remove a user from the admin list.",
             "!admin on|off <module> [#channel] - Enable/disable a module in a channel.",
             "!admin get <module.setting.path> [#channel] - View a config value.",
             "!admin set <module.setting.path> <value> [#channel|global] - Set a config value.",

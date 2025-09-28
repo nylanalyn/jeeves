@@ -12,7 +12,7 @@ def setup(bot, config):
 
 class Admin(SimpleCommandModule):
     name = "admin"
-    version = "3.3.0" # Added load/unload commands for better module management
+    version = "3.3.1" # Improved feedback on module load failure
     description = "Administrative bot controls."
     
     def __init__(self, bot, config):
@@ -23,7 +23,8 @@ class Admin(SimpleCommandModule):
         self.static_keys = [
             "api_keys", "admins", "module_blacklist", "name_pattern", "connection",
             "monsters", "story_beats", "world_lore", "classes", "boss_monsters",
-            "events", "locations", "animals", "item_adjectives", "item_nouns"
+            "events", "locations", "animals", "item_adjectives", "item_nouns",
+            "pending_reminders"
         ]
 
     def _register_commands(self):
@@ -118,7 +119,7 @@ class Admin(SimpleCommandModule):
         if self.bot.pm.load_module(module_name):
             self.safe_reply(connection, event, f"Module '{module_name}' loaded successfully.")
         else:
-            self.safe_reply(connection, event, f"Failed to load module '{module_name}'. It may be blacklisted, already loaded, or contain an error.")
+            self.safe_reply(connection, event, f"Failed to load module '{module_name}'. Please check the debug.log file for specific errors (e.g., a missing API key or an uninstalled library).")
         return True
 
     def _cmd_unload(self, connection, event, username, module_name):

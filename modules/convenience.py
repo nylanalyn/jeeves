@@ -29,7 +29,7 @@ def setup(bot, config):
 
 class Convenience(ModuleBase):
     name = "convenience"
-    version = "1.7.0" # Merged titles.py and fixed initialization
+    version = "1.7.1" # Restored news fallback logic
     description = "Provides convenient, common search commands and URL title fetching."
 
     YOUTUBE_URL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w\-]{11})')
@@ -227,6 +227,8 @@ class Convenience(ModuleBase):
     def _cmd_news(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         location_obj = self.bot.get_module_state("weather").get("user_locations", {}).get(user_id)
+        
+        # First attempt: Local news based on city/state
         if location_obj and location_obj.get("short_name"):
             short_name, cc = location_obj["short_name"], location_obj.get("country_code", "US").upper()
             rss_url = f"https://news.google.com/rss/search?q={quote_plus(short_name)}&hl=en-{cc}&gl={cc}&ceid={cc}:en"
@@ -234,8 +236,24 @@ class Convenience(ModuleBase):
                 self.safe_reply(connection, event, f"The top story for {short_name} is: \"{news_item['title']}\"")
                 self.safe_reply(connection, event, self._get_short_url(news_item['link']))
                 return True
-        
-        self.safe_reply(connection, event, "I'm afraid the news service is unavailable at this time.")
+            else:
+                self.safe_reply(connection, event, f"I found no specific news for {short_name}, broadening the search...")
+
+        # Second attempt: National news based on country code
+        if location_obj and location_obj.get("country_code"):
+            cc = location_obj.get("country_code", "US").upper()
+            rss_url = f"https://news.google.com/rss?hl=en-{cc}&gl={cc}&ceid={cc}:en"
+            if (news_item := self._get_news_from_rss(rss_url)):
+                self.safe_reply(connection, event, f"The top national story is: \"{news_item['title']}\"")
+                self.safe_reply(connection, event, self._get_short_url(news_item['link']))
+                return True
+
+        # Third attempt: Global (US) news as the final fallback
+        if (news_item := self._get_news_from_rss("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")):
+            self.safe_reply(connection, event, f"The top global story is: \"{news_item['title']}\"")
+            self.safe_reply(connection, event, self._get_short_url(news_item['link']))
+        else:
+            self.safe_reply(connection, event, "I'm afraid the news service is unavailable at this time.")
         return True
 
     def _cmd_yt(self, connection, event, msg, username, match):

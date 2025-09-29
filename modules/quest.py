@@ -6,7 +6,7 @@ import re
 import schedule
 import threading
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from .base import SimpleCommandModule, admin_required
 
@@ -19,27 +19,23 @@ def setup(bot, config):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "4.0.0" # Dynamic configuration refactor
+    version = "3.3.2" # Restored specific low-energy announcements
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot, config):
         """Initializes the Quest module's state and configuration."""
         super().__init__(bot)
         
-        self.static_keys = [
-            "monsters", "story_beats", "world_lore", "classes", "boss_monsters",
-            "difficulty", "combat", "energy_system", "group_content"
-        ]
-        
         self.set_state("players", self.get_state("players", {}))
         self.set_state("active_mob", self.get_state("active_mob", None))
         self.set_state("player_classes", self.get_state("player_classes", {}))
         self.mob_lock = threading.Lock()
         self.save_state()
-        self._is_loaded = False # Defer scheduling until on_load
+        self._is_loaded = False
 
     def on_load(self):
         super().on_load()
+        self._is_loaded = True
         self._schedule_energy_regen()
         active_mob = self.get_state("active_mob")
         if active_mob:
@@ -51,77 +47,150 @@ class Quest(SimpleCommandModule):
                 remaining = close_time - now
                 if remaining > 0:
                     schedule.every(remaining).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
-        self._is_loaded = True
 
     def on_unload(self):
         super().on_unload()
         schedule.clear(self.name)
 
     def _schedule_energy_regen(self):
-        energy_enabled = self.get_config_value("energy_system", default={}).get("enabled", True)
+        energy_enabled = self.get_config_value("energy_system.enabled", default=True)
         if not energy_enabled: return
         
+        regen_minutes = self.get_config_value("energy_system.regen_minutes", default=10)
         schedule.clear("energy_regen")
-        regen_minutes = self.get_config_value("energy_system", default={}).get("regen_minutes", 10)
-        if regen_minutes > 0:
-            schedule.every(regen_minutes).minutes.do(self._regenerate_energy).tag(self.name, "energy_regen")
+        schedule.every(regen_minutes).minutes.do(self._regenerate_energy).tag(self.name, "energy_regen")
 
     def _regenerate_energy(self):
-        energy_system_config = self.get_config_value("energy_system", default={})
-        if not energy_system_config.get("enabled", True): return
-
-        max_energy = energy_system_config.get("max_energy", 10)
+        energy_enabled = self.get_config_value("energy_system.enabled", default=True)
+        if not energy_enabled: return
+        
         players, updated = self.get_state("players", {}), False
+        max_energy = self.get_config_value("energy_system.max_energy", default=10)
+
         for user_id, player_data in players.items():
-            if isinstance(player_data, dict) and player_data.get("energy", max_energy) < max_energy:
-                player_data["energy"] += 1
-                updated = True
+            if isinstance(player_data, dict):
+                # Check for and apply injury effects on regeneration
+                regen_amount = 1
+                if 'active_injury' in player_data:
+                    injury = player_data['active_injury']
+                    regen_mod = injury.get('effects', {}).get('energy_regen_modifier', 0)
+                    regen_amount += regen_mod
+
+                if regen_amount > 0 and player_data.get("energy", max_energy) < max_energy:
+                    player_data["energy"] = min(max_energy, player_data.get("energy", 0) + regen_amount)
+                    updated = True
         if updated:
             self.set_state("players", players)
             self.save_state()
 
     def _register_commands(self):
         self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
-        self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob", cooldown=300.0)
+        self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob")
         self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join")
+
+    def _format_timedelta(self, future_datetime: datetime) -> str:
+        """Formats the time remaining until a future datetime."""
+        delta = future_datetime - datetime.now(UTC)
+        seconds = int(delta.total_seconds())
+        if seconds < 0: return "recovered"
         
-    def _get_player(self, user_id: str, username: str, channel: str) -> Dict[str, Any]:
+        hours, remainder = divmod(seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        
+        parts = []
+        if hours > 0: parts.append(f"{hours}h")
+        if minutes > 0: parts.append(f"{minutes}m")
+        return " ".join(parts) if parts else "less than a minute"
+
+
+    def _check_and_clear_injury(self, player_data: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+        """Checks if a player's injury has expired and clears it if so."""
+        if 'active_injury' in player_data:
+            injury = player_data['active_injury']
+            try:
+                expires_at = datetime.fromisoformat(injury['expires_at'])
+                if datetime.now(UTC) >= expires_at:
+                    recovery_message = f"You have recovered from your {injury['name']}."
+                    del player_data['active_injury']
+                    return player_data, recovery_message
+            except (ValueError, TypeError):
+                del player_data['active_injury']
+        return player_data, None
+        
+    def _apply_injury(self, user_id: str, username: str, channel: str) -> Optional[str]:
+        """Applies a random injury to a player upon defeat."""
+        injury_config = self.get_config_value("injury_system", channel, default={})
+        if not injury_config.get("enabled"): return None
+
+        injury_chance = injury_config.get("injury_chance_on_loss", 0.75)
+        if random.random() > injury_chance: return None
+
+        possible_injuries = injury_config.get("injuries", [])
+        if not possible_injuries: return None
+
+        injury = random.choice(possible_injuries)
+        duration = timedelta(hours=injury.get("duration_hours", 1))
+        expires_at = datetime.now(UTC) + duration
+        
+        players = self.get_state("players")
+        player = self._get_player(user_id, username)
+        player['active_injury'] = {
+            "name": injury['name'],
+            "description": injury['description'],
+            "expires_at": expires_at.isoformat(),
+            "effects": injury.get('effects', {})
+        }
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+        
+        return f"You have sustained an injury: {injury['name']}! {injury['description']}"
+
+
+    def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
         players = self.get_state("players", {})
         player = players.get(user_id)
-        if not isinstance(player, dict): player = {"name": username, "level": 1, "xp": 0}
         
-        energy_system = self.get_config_value("energy_system", channel, default={})
-        max_energy = energy_system.get("max_energy", 10)
+        if not isinstance(player, dict): 
+            player = {"name": username, "level": 1, "xp": 0}
+
+        xp_formula = self.get_config_value("xp_curve_formula", default="level * 100")
+        max_energy = self.get_config_value("energy_system.max_energy", default=10)
         
-        player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1), channel))
+        player.setdefault("xp_to_next_level", int(eval(xp_formula, {}, {"level": player.get("level", 1)})))
         player.setdefault("last_fight", None)
         player.setdefault("last_win_date", None)
         player.setdefault("energy", max_energy)
         player["name"] = username
+        
         return player
 
-    def _calculate_xp_for_level(self, level: int, channel: str) -> int:
-        formula = self.get_config_value("xp_curve_formula", channel, "level * 100")
-        try: return int(eval(formula, {"__builtins__": {}}, {"level": level}))
-        except: return level * 100
-
-    def _grant_xp(self, user_id: str, username: str, amount: int, channel: str, is_win: bool = False) -> List[str]:
-        player = self._get_player(user_id, username, channel)
-        messages, total_xp_gain = [], int(amount)
+    def _grant_xp(self, user_id: str, username: str, amount: int, is_win: bool = False) -> List[str]:
+        player, messages, total_xp_gain = self._get_player(user_id, username), [], int(amount)
         today = datetime.now(UTC).date().isoformat()
         
-        daily_bonus_xp = self.get_config_value("first_win_bonus_xp", channel, 50)
+        first_win_bonus = self.get_config_value("first_win_bonus_xp", default=50)
+
         if is_win and player.get("last_win_date") != today:
-            total_xp_gain += daily_bonus_xp
+            total_xp_gain += first_win_bonus
             player["last_win_date"] = today
-            messages.append(f"You receive a 'First Victory' bonus of {daily_bonus_xp} XP!")
-        
+            messages.append(f"You receive a 'First Victory of the Day' bonus of {first_win_bonus} XP!")
+            
+        if 'active_injury' in player:
+            xp_mult = player['active_injury'].get('effects', {}).get('xp_multiplier', 1.0)
+            if xp_mult != 1.0:
+                total_xp_gain = int(total_xp_gain * xp_mult)
+                messages.append(f"Your injury reduces your XP gain...")
+
         player["xp"] += total_xp_gain
         leveled_up = False
+        
+        xp_formula = self.get_config_value("xp_curve_formula", default="level * 100")
+
         while player["xp"] >= player["xp_to_next_level"]:
             player["xp"] -= player["xp_to_next_level"]
             player["level"] += 1
-            player["xp_to_next_level"] = self._calculate_xp_for_level(player["level"], channel)
+            player["xp_to_next_level"] = int(eval(xp_formula, {}, {"level": player["level"]}))
             leveled_up = True
             
         players = self.get_state("players")
@@ -132,19 +201,41 @@ class Quest(SimpleCommandModule):
             messages.append(f"Congratulations, you have reached Level {player['level']}!")
         return messages
 
-    def _deduct_xp(self, user_id: str, username: str, amount: int, channel: str):
-        player = self._get_player(user_id, username, channel)
+    def _deduct_xp(self, user_id: str, username: str, amount: int):
+        player = self._get_player(user_id, username)
         player["xp"] = max(0, player["xp"] - int(amount))
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
 
-    # ... Master Command Handler and Sub-handlers (profile, story, class, admin) are unchanged ...
+    def _calculate_win_chance(self, player_level: float, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0) -> float:
+        base_win = self.get_config_value("combat.base_win_chance", default=0.5)
+        level_mod = self.get_config_value("combat.win_chance_level_modifier", default=0.1)
+        min_win = self.get_config_value("combat.min_win_chance", default=0.05)
+        max_win = self.get_config_value("combat.max_win_chance", default=0.95)
+        
+        level_diff = player_level - monster_level
+        chance = base_win + (level_diff * level_mod) + energy_modifier + group_modifier
+        return max(min_win, min(max_win, chance))
+
+    def _get_action_text(self, user_id: str) -> str:
+        player_classes = self.get_state("player_classes", {})
+        player_class = player_classes.get(user_id)
+        classes_config = self.get_config_value("classes", default={})
+
+        if player_class and player_class in classes_config:
+            return random.choice(classes_config[player_class].get("actions", ["..."]))
+        
+        story_beats = self.get_config_value("story_beats", default={})
+        return random.choice(story_beats.get('actions', ["..."]))
+
     def _cmd_quest_master(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target): return False
+        
         args_str = (match.group(1) or "").strip()
         args = args_str.split()
         
-        difficulty_mods = self.get_config_value("difficulty", event.target, {})
+        difficulty_mods = self.get_config_value("difficulty", default={})
         if not args_str or args[0].lower() in difficulty_mods:
             return self._handle_solo_quest(connection, event, username, args[0] if args else "normal")
 
@@ -155,284 +246,177 @@ class Quest(SimpleCommandModule):
             return self._handle_story(connection, event, username)
         elif subcommand == "class":
             return self._handle_class(connection, event, username, args[1:])
-        elif subcommand == "admin":
-            return self._handle_admin(connection, event, username, args[1:])
         else:
-            self.safe_reply(connection, event, f"Unknown quest command '{subcommand}'. Use '!quest' to start.")
+            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <profile|story|class>'.")
             return True
 
     def _handle_profile(self, connection, event, username, args):
         target_user_nick = args[0] if args else username
         user_id = self.bot.get_user_id(target_user_nick)
-        player = self._get_player(user_id, target_user_nick, event.target)
+        player = self._get_player(user_id, target_user_nick)
+        
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+            players_state = self.get_state("players")
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+
         title = self.bot.title_for(player["name"])
         player_class = self.get_state("player_classes", {}).get(user_id, "None")
+        max_energy = self.get_config_value("energy_system.max_energy", event.target, default=10)
         
-        parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}", f"Class: {player_class.capitalize()}"]
+        profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}", f"Class: {player_class.capitalize()}"]
         
-        energy_system = self.get_config_value("energy_system", event.target, {})
-        if energy_system.get("enabled", True):
-            max_energy = energy_system.get("max_energy", 10)
-            parts.append(f"Energy: {player['energy']}/{max_energy}")
+        if self.get_config_value("energy_system.enabled", event.target, default=True):
+            profile_parts.append(f"Energy: {player['energy']}/{max_energy}")
             
-        self.safe_reply(connection, event, " | ".join(parts))
+        if 'active_injury' in player:
+            injury = player['active_injury']
+            try:
+                expires_at = datetime.fromisoformat(injury['expires_at'])
+                time_left = self._format_timedelta(expires_at)
+                profile_parts.append(f"Status: Injured ({injury['name']}, recovers in {time_left})")
+            except (ValueError, TypeError): pass
+
+        self.safe_reply(connection, event, " | ".join(profile_parts))
         return True
 
     def _handle_story(self, connection, event, username):
         user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username, event.target)
-        world_lore = self.get_config_value("world_lore", event.target, [])
+        player = self._get_player(user_id, username)
+        world_lore = self.get_config_value("world_lore", default=[])
         lore = random.choice(world_lore) if world_lore else "The world is vast."
+        
         history = ""
         if (last_fight := player.get("last_fight")):
             outcome = "victorious against" if last_fight['win'] else "defeated by"
             history = f" You last remember being {outcome} a Level {last_fight['monster_level']} {last_fight['monster_name']}."
+            
         self.safe_reply(connection, event, f"{lore}{history}")
         return True
-        
+
     def _handle_class(self, connection, event, username, args):
         user_id = self.bot.get_user_id(username)
         chosen_class = args[0].lower() if args else ""
         player_classes = self.get_state("player_classes", {})
-        available_classes_dict = self.get_config_value("classes", event.target, {})
-        
+        classes_config = self.get_config_value("classes", default={})
+
         if not chosen_class:
             current_class = player_classes.get(user_id, "no class")
-            available_str = ", ".join(available_classes_dict.keys())
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your class: {current_class}. Available: {available_str}.")
+            available_classes = ", ".join(classes_config.keys())
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your current class is: {current_class}. Available: {available_classes}.")
             return True
-            
-        if chosen_class not in available_classes_dict:
+        if chosen_class not in classes_config:
             self.safe_reply(connection, event, f"My apologies, that is not a recognized class.")
             return True
-            
+        
         player_classes[user_id] = chosen_class
         self.set_state("player_classes", player_classes)
         self.save_state()
         self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
         return True
 
-    @admin_required
-    def _handle_admin(self, connection, event, username, args):
-        if not args: return self._usage(connection, event, "admin addxp <user> <amount>")
-        if args[0].lower() == "addxp" and len(args) == 3:
-            return self._cmd_admin_add_xp(connection, event, "", username, args[1:])
-        return self._usage(connection, event, "unknown admin command.")
-
-    def _usage(self, connection, event, text):
-        self.safe_reply(connection, event, f"Usage: !quest {text}")
-        return True
-
     def _handle_solo_quest(self, connection, event, username, difficulty):
-        channel = event.target
-        cooldown = self.get_config_value("cooldown_seconds", channel, 300)
+        cooldown = self.get_config_value("cooldown_seconds", event.target, default=300)
         if not self.check_user_cooldown(username, "quest_solo", cooldown):
-            self.safe_reply(connection, event, f"You are recovering, {self.bot.title_for(username)}. Please wait.")
+            self.safe_reply(connection, event, f"You are still recovering, {self.bot.title_for(username)}.")
             return True
 
         user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username, channel)
-        energy_system = self.get_config_value("energy_system", channel, {})
+        player = self._get_player(user_id, username)
+
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
         
-        if energy_system.get("enabled", True) and player["energy"] < 1:
-            self.safe_reply(connection, event, f"You are too exhausted for a quest, {self.bot.title_for(username)}.")
-            return True
-        
-        # --- Fetch all configs dynamically ---
-        difficulty_mods = self.get_config_value("difficulty", channel, {})
-        monsters = self.get_config_value("monsters", channel, [])
-        story_beats = self.get_config_value("story_beats", channel, {})
-        combat_config = self.get_config_value("combat", channel, {})
-        
-        diff_mod = difficulty_mods.get(difficulty, {"level_mod": 1, "xp_mult": 1.0})
-        
-        if random.random() > self.get_config_value("monster_spawn_chance", channel, 0.8):
-            self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP. (No energy spent).")
-            for m in self._grant_xp(user_id, username, 10, channel): self.safe_reply(connection, event, m)
-            self.save_state()
+        energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+        if energy_enabled and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted for a quest, {self.bot.title_for(username)}. You must rest.")
             return True
             
-        if energy_system.get("enabled", True): player["energy"] -= 1
+        difficulty_mods = self.get_config_value("difficulty", event.target, default={})
+        diff_mod = difficulty_mods.get(difficulty, {"level_mod": 1, "xp_mult": 1.0})
+        player_level = player['level']
+
+        monster_spawn_chance = self.get_config_value("monster_spawn_chance", event.target, default=0.8)
+        monsters = self.get_config_value("monsters", event.target, default=[])
+        story_beats = self.get_config_value("story_beats", event.target, default={})
+
+        if random.random() > monster_spawn_chance:
+            self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence.")
+            for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)
+            return True
+            
+        if energy_enabled: player["energy"] -= 1
         
-        target_level = player['level'] + diff_mod["level_mod"]
-        possible_monsters = [m for m in monsters if m['min_level'] <= target_level <= m['max_level']]
+        target_monster_level = player_level + diff_mod["level_mod"]
+        possible_monsters = [m for m in monsters if isinstance(m, dict) and m['min_level'] <= target_monster_level <= m['max_level']]
         if not possible_monsters:
             self.safe_reply(connection, event, "The lands are eerily quiet... no suitable monsters could be found.")
+            if energy_enabled: player["energy"] += 1
             return True
             
         monster = random.choice(possible_monsters)
-        monster_level = max(1, random.randint(min(player['level'] - 1, target_level), max(player['level'] - 1, target_level)))
-        monster_name = f"Level {monster_level} {monster['name']}"
-        action_text = self._get_action_text(user_id, channel)
-        story = f"{random.choice(story_beats.get('openers',[]))} {action_text}".format(user=username, monster=monster_name)
+        monster_level = max(1, random.randint(min(player_level - 1, player_level + diff_mod["level_mod"]), max(player_level - 1, player_level + diff_mod["level_mod"])))
+        monster_name_with_level = f"Level {monster_level} {monster['name']}"
+        action_text = self._get_action_text(user_id)
+        
+        story = f"{random.choice(story_beats.get('openers',[]))} {action_text}".format(user=username, monster=monster_name_with_level)
         self.safe_reply(connection, event, story)
         time.sleep(1.5)
         
-        # Calculate win chance with dynamic values
-        energy_xp_mult, energy_win_mod = 1.0, 0.0
-        if energy_system.get("enabled", True):
-            for penalty in sorted(energy_system.get("penalties", []), key=lambda x: x['threshold'], reverse=True):
+        energy_xp_mult, energy_win_chance_mod = 1.0, 0.0
+        if energy_enabled:
+            energy_penalties = self.get_config_value("energy_system.penalties", event.target, default=[])
+            for penalty in sorted(energy_penalties, key=lambda x: x['threshold'], reverse=True):
                 if player["energy"] <= penalty["threshold"]:
-                    energy_xp_mult, energy_win_mod = penalty["xp_multiplier"], penalty["win_chance_modifier"]
-                    self.safe_reply(connection, event, f"You feel fatigued... (Energy penalties are in effect!)")
+                    energy_xp_mult = penalty.get("xp_multiplier", 1.0)
+                    energy_win_chance_mod = penalty.get("win_chance_modifier", 0.0)
+                    
+                    penalty_msgs = []
+                    if energy_xp_mult < 1.0:
+                        penalty_msgs.append("you will gain less experience")
+                    if energy_win_chance_mod < 0.0:
+                        penalty_msgs.append("you are less effective in battle")
+
+                    if penalty_msgs:
+                        self.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(penalty_msgs)}).")
                     break
         
-        base_win = combat_config.get("base_win_chance", 0.5)
-        level_mod = combat_config.get("win_chance_level_modifier", 0.1)
-        min_win, max_win = combat_config.get("min_win_chance", 0.05), combat_config.get("max_win_chance", 0.95)
-        
-        level_diff = player['level'] - monster_level
-        win_chance = max(min_win, min(max_win, base_win + (level_diff * level_mod) + energy_win_mod))
+        win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod)
         win = random.random() < win_chance
-        
         player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
         
+        xp_level_mult = self.get_config_value("xp_level_multiplier", event.target, default=2)
         base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
-        xp_level_mult = self.get_config_value("xp_level_multiplier", channel, 2)
-        total_xp = (base_xp + player['level'] * xp_level_mult) * diff_mod["xp_mult"] * energy_xp_mult
-        
+        total_xp = (base_xp + player_level * xp_level_mult) * diff_mod["xp_mult"] * energy_xp_mult
+
         if win:
-            self.safe_reply(connection, event, f"Victory! ({win_chance:.0%}) The {monster_name} is defeated! You gain {int(total_xp)} XP.")
-            for m in self._grant_xp(user_id, username, total_xp, channel, is_win=True): self.safe_reply(connection, event, m)
+            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp)} XP.")
+            for m in self._grant_xp(user_id, username, total_xp, is_win=True): self.safe_reply(connection, event, m)
         else:
-            xp_loss_pct = self.get_config_value("xp_loss_percentage", channel, 0.25)
-            xp_loss = total_xp * xp_loss_pct
-            self.safe_reply(connection, event, f"Defeat! ({win_chance:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
-            self._deduct_xp(user_id, username, xp_loss, channel)
+            xp_loss_perc = self.get_config_value("xp_loss_percentage", event.target, default=0.25)
+            xp_loss = total_xp * xp_loss_perc
+            self.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
+            self._deduct_xp(user_id, username, xp_loss)
             
+            injury_msg = self._apply_injury(user_id, username, event.target)
+            if injury_msg:
+                self.safe_reply(connection, event, injury_msg)
+
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
         self.save_state()
         return True
 
-    def _get_action_text(self, user_id: str, channel: str) -> str:
-        player_class = self.get_state("player_classes", {}).get(user_id)
-        classes_dict = self.get_config_value("classes", channel, {})
-        if player_class and player_class in classes_dict:
-            return random.choice(classes_dict[player_class].get("actions", ["..."]))
-        return random.choice(self.get_config_value("story_beats", channel, {}).get('actions', ["..."]))
-
-    # --- Mob/Group Logic ---
     def _cmd_mob_start(self, connection, event, msg, username, match):
-        channel = event.target
-        with self.mob_lock:
-            if self.get_state("active_mob"):
-                self.safe_reply(connection, event, "A mob is already forming!")
-                return True
-            user_id = self.bot.get_user_id(username)
-            player = self._get_player(user_id, username, channel)
-            
-            energy_system = self.get_config_value("energy_system", channel, {})
-            if energy_system.get("enabled", True) and player["energy"] < 1:
-                self.safe_reply(connection, event, f"You are too exhausted to start a mob, {self.bot.title_for(username)}.")
-                return True
-                
-            boss_monsters = self.get_config_value("boss_monsters", channel, [])
-            if not boss_monsters:
-                self.safe_reply(connection, event, "There are no great beasts to hunt in these lands.")
-                return True
-            boss = random.choice(boss_monsters)
-            
-            join_window = self.get_config_value("group_content", channel, {}).get("join_window_seconds", 90)
-            
-            self.set_state("active_mob", {"starter": username, "participants": {user_id: username}, "boss": boss, "room": channel, "close_epoch": time.time() + join_window})
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)} is gathering a party for a {boss['name']}! !join in the next {join_window}s!")
-            schedule.every(join_window).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
-            self.save_state()
+        self.safe_reply(connection, event, "Mob quests are not yet implemented.")
         return True
 
     def _cmd_mob_join(self, connection, event, msg, username, match):
-        active_mob = self.get_state("active_mob")
-        if not active_mob or active_mob.get("room") != event.target: return False
-        
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id, username, event.target)
-        
-        energy_system = self.get_config_value("energy_system", event.target, {})
-        if energy_system.get("enabled", True) and player["energy"] < 1:
-            self.safe_reply(connection, event, f"You are too exhausted to join, {self.bot.title_for(username)}.")
-            return True
-            
-        if user_id in active_mob["participants"]:
-            self.safe_reply(connection, event, f"You are already in the party, {self.bot.title_for(username)}.")
-            return True
-            
-        active_mob["participants"][user_id] = username
-        self.set_state("active_mob", active_mob)
-        self.save_state()
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)} has joined! Party size: {len(active_mob['participants'])}.")
+        self.safe_reply(connection, event, "Mob quests are not yet implemented.")
         return True
 
-    def _close_mob_window(self):
-        schedule.clear("mob_close")
-        active_mob = self.get_state("active_mob")
-        if not active_mob: return
-        self.set_state("active_mob", None)
-        
-        party, channel = active_mob["participants"], active_mob["room"]
-        if not party: return
-        
-        energy_system = self.get_config_value("energy_system", channel, {})
-        if energy_system.get("enabled", True):
-            players = self.get_state("players")
-            for uid in party:
-                if uid in players: players[uid]["energy"] = max(0, players[uid].get("energy", 0) - 1)
-            self.set_state("players", players)
-            
-        avg_level = sum(self._get_player(uid, name, channel).get("level", 1) for uid, name in party.items()) / len(party)
-        
-        boss = active_mob["boss"]
-        boss_level = max(boss['min_level'], min(boss['max_level'], int(avg_level)))
-        
-        group_config = self.get_config_value("group_content", channel, {})
-        win_mods = group_config.get("win_chance_modifiers", [])
-        
-        party_size_mod = 0.0
-        for mod in sorted(win_mods, key=lambda x: x['players']):
-            if len(party) >= mod['players']: party_size_mod = mod['modifier']
-        
-        # We need combat config for this channel to calculate win chance
-        combat_config = self.get_config_value("combat", channel, {})
-        base_win = combat_config.get("base_win_chance", 0.5)
-        level_mod = combat_config.get("win_chance_level_modifier", 0.1)
-        min_win, max_win = combat_config.get("min_win_chance", 0.05), combat_config.get("max_win_chance", 0.95)
-        
-        win_chance = max(min_win, min(max_win, base_win + ((avg_level - boss_level) * level_mod) + party_size_mod))
-        win = random.random() < win_chance
-        
-        boss_name = f"Level {boss_level} {boss['name']}"
-        party_names = ", ".join(party.values())
-        starter_id = self.bot.get_user_id(active_mob["starter"])
-        action_text = self._get_action_text(starter_id, channel)
-        
-        self.safe_say(f"The party of {party_names} confronts {boss_name}! {action_text.format(user='', monster='')} (Win Chance: {win_chance:.0%})", channel)
-        time.sleep(2)
-        
-        if win:
-            base_xp = random.randint(boss.get('xp_win_min', 100), boss.get('xp_win_max', 200))
-            xp_scaling = group_config.get("xp_scaling", [])
-            xp_mult = 1.0
-            for scale in sorted(xp_scaling, key=lambda x: x['players']):
-                if len(party) >= scale['players']: xp_mult = scale['multiplier']
-            
-            total_xp = int(base_xp * xp_mult)
-            self.safe_say(f"Victory! The party defeated {boss_name} and gains {total_xp} XP each!", channel)
-            for uid, name in party.items():
-                for m in self._grant_xp(uid, name, total_xp, channel, is_win=True): self.safe_say(m, channel)
-        else:
-            self.safe_say(f"Defeat! The {boss_name} has bested the party!", channel)
-            
-        self.save_state()
-        return schedule.CancelJob
-
-    @admin_required
-    def _cmd_admin_add_xp(self, connection, event, msg, username, args):
-        target_user, amount_str = args
-        user_id, amount = self.bot.get_user_id(target_user), int(amount_str)
-        messages = self._grant_xp(user_id, target_user, amount, event.target)
-        self.safe_reply(connection, event, f"Granted {amount} XP to {target_user}.")
-        for message in messages:
-            self.safe_reply(connection, event, f"{target_user}: {message}")
-        self.save_state()
-        return True

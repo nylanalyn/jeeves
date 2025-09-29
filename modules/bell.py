@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Bell(SimpleCommandModule):
     name = "bell"
-    version = "3.0.0" # Dynamic configuration refactor
+    version = "2.1.0" # Corrected dynamic config loading
     description = "A reaction game to answer the service bell."
 
     def __init__(self, bot, config):
@@ -59,39 +59,38 @@ class Bell(SimpleCommandModule):
                               name="bell ring", admin_only=True, description="Force the bell to ring now.")
 
     def _schedule_next_bell(self):
-        # Scheduler uses global config because it's a single, global timer
+        allowed_channels = self.get_config_value("allowed_channels", default=[])
+        if not allowed_channels:
+            return
+
         min_hours = self.get_config_value("min_hours_between_rings", default=1)
         max_hours = self.get_config_value("max_hours_between_rings", default=8)
-
         delay_hours = random.uniform(min_hours, max_hours)
         next_ring_time = datetime.now(UTC) + timedelta(hours=delay_hours)
         
         self.set_state("next_ring_time", next_ring_time.isoformat())
         self.save_state()
         
-        schedule.every(delay_hours).hours.do(self._ring_the_bell).tag(self.name, "ring")
+        schedule.every(delay_hours * 3600).seconds.do(self._ring_the_bell).tag(self.name, "ring")
 
     def _ring_the_bell(self):
         schedule.clear("ring")
         
-        # Ring only happens in channels where the module is currently enabled
-        active_channels = [
-            room for room in self.bot.joined_channels 
-            if self.is_enabled(room)
-        ]
+        allowed_channels = self.get_config_value("allowed_channels", default=[])
+        active_channels = [room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]
         
         if not active_channels:
             self._schedule_next_bell()
             return schedule.CancelJob
 
-        # The response window is global as there is only one bell
+        # Fetch the response window just-in-time
         response_window = self.get_config_value("response_window_seconds", default=15)
-        
+
         for room in active_channels:
             self.safe_say("The service bell has been rung!", target=room)
         
         end_time = time.time() + response_window
-        self.set_state("active_bell", {"end_time": end_time, "channels": active_channels})
+        self.set_state("active_bell", {"end_time": end_time})
         self.set_state("next_ring_time", None)
         self.save_state()
 
@@ -99,12 +98,12 @@ class Bell(SimpleCommandModule):
         return schedule.CancelJob
 
     def _end_bell_round(self):
-        active_bell = self.get_state("active_bell")
-        if active_bell:
+        if self.get_state("active_bell"):
             self.set_state("active_bell", None)
             self.save_state()
-            # Announce in all channels where the bell originally rang
-            for room in active_bell.get("channels", []):
+            allowed_channels = self.get_config_value("allowed_channels", default=[])
+            active_channels = [room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]
+            for room in active_channels:
                 self.safe_say("Too slow. The bell has been silenced.", target=room)
         
         self._schedule_next_bell()
@@ -166,3 +165,4 @@ class Bell(SimpleCommandModule):
         self._ring_the_bell()
         self.safe_reply(connection, event, "As you wish. The bell has been rung.")
         return True
+

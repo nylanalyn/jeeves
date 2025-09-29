@@ -149,8 +149,6 @@ hunt:
           hunt_message: "{username} scoops up the puppy. It seems to think this is a new game."
 
 quest:
-    allowed_channels:
-        - "#your-channel"
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8
@@ -176,6 +174,28 @@ quest:
         penalties:
             - { threshold: 5, xp_multiplier: 0.5, win_chance_modifier: 0.0 }
             - { threshold: 2, xp_multiplier: 0.5, win_chance_modifier: -0.15 }
+
+    # --- NEW INJURY SYSTEM ---
+    injury_system:
+        enabled: true
+        injury_chance_on_loss: 0.75 # 75% chance to get an injury on defeat
+        injuries:
+            - name: "Concussion"
+              description: "Your head is ringing, making it hard to focus."
+              duration_hours: 2
+              effects:
+                  xp_multiplier: 0.5 # Gains 50% less XP
+            - name: "Sprained Ankle"
+              description: "It is difficult to move with purpose."
+              duration_hours: 4
+              effects:
+                  energy_regen_modifier: -1 # Regenerates 0 energy instead of 1
+            - name: "Exhaustion"
+              description: "You are utterly drained from the battle."
+              duration_hours: 1
+              effects:
+                  energy_regen_modifier: -1 # Regenerates 0 energy
+                  xp_multiplier: 0.75 # Gains 25% less XP
 
     world_lore:
       - "The network is old. Older than the concrete and steel that house it. They say it dreams of dial-up tones."

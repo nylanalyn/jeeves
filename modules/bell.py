@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Bell(SimpleCommandModule):
     name = "bell"
-    version = "2.1.0" # Corrected dynamic config loading
+    version = "2.1.1" # Fixed user lookup for top scores
     description = "A reaction game to answer the service bell."
 
     def __init__(self, bot, config):
@@ -83,7 +83,6 @@ class Bell(SimpleCommandModule):
             self._schedule_next_bell()
             return schedule.CancelJob
 
-        # Fetch the response window just-in-time
         response_window = self.get_config_value("response_window_seconds", default=15)
 
         for room in active_channels:
@@ -141,8 +140,12 @@ class Bell(SimpleCommandModule):
             self.safe_reply(connection, event, "No one has yet answered the call of duty.")
             return True
 
-        user_module_state = self.bot.get_module_state("users")
-        user_map = user_module_state.get("user_map", {})
+        users_module = self.bot.pm.plugins.get("users")
+        user_map = {}
+        if users_module:
+            user_map = users_module.get_state("user_map", {})
+        else:
+            self.log_debug("Could not get 'users' module instance to resolve nicknames for top scores.")
 
         sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:5]
         

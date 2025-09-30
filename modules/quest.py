@@ -444,22 +444,24 @@ class Quest(SimpleCommandModule):
         time.sleep(1.5)
         
         energy_xp_mult, energy_win_chance_mod = 1.0, 0.0
+        applied_penalty_msgs = []
         if energy_enabled:
             energy_penalties = self.get_config_value("energy_system.penalties", event.target, default=[])
+            # Check all penalties and apply the most severe (lowest threshold) that matches
             for penalty in sorted(energy_penalties, key=lambda x: x['threshold'], reverse=True):
                 if player["energy"] <= penalty["threshold"]:
                     energy_xp_mult = penalty.get("xp_multiplier", 1.0)
                     energy_win_chance_mod = penalty.get("win_chance_modifier", 0.0)
-                    
-                    penalty_msgs = []
-                    if energy_xp_mult < 1.0:
-                        penalty_msgs.append("you will gain less experience")
-                    if energy_win_chance_mod < 0.0:
-                        penalty_msgs.append("you are less effective in battle")
+                    # Don't break - let lower thresholds override
 
-                    if penalty_msgs:
-                        self.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(penalty_msgs)}).")
-                    break
+            # Generate message after finding final penalty values
+            if energy_xp_mult < 1.0:
+                applied_penalty_msgs.append("you will gain less experience")
+            if energy_win_chance_mod < 0.0:
+                applied_penalty_msgs.append("you are less effective in battle")
+
+            if applied_penalty_msgs:
+                self.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(applied_penalty_msgs)}).")
         
         win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod)
         win = random.random() < win_chance

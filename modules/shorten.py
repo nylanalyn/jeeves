@@ -14,7 +14,7 @@ def setup(bot):
     if not shlink_url or not shlink_key:
         print("[shorten] Shlink URL or API key not found in config.yaml. Module will not load.")
         return None
-    return Shorten(bot, config, shlink_url, shlink_key)
+    return Shorten(bot, shlink_url, shlink_key)
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
@@ -23,7 +23,7 @@ class Shorten(SimpleCommandModule):
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
 
-    def __init__(self, bot, config, shlink_url, shlink_key):
+    def __init__(self, bot, shlink_url, shlink_key):
         """Initializes the module's state and configuration."""
         super().__init__(bot)
         self.SHLINK_API_URL = shlink_url

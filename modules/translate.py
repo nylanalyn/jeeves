@@ -19,7 +19,7 @@ def setup(bot):
     if not api_key:
         print("[translate] DeepL API key not found in config.yaml. Module will not load.")
         return None
-    return Translate(bot, config, api_key)
+    return Translate(bot, api_key)
 
 class Translate(SimpleCommandModule):
     """A module for text translation using the DeepL API."""
@@ -27,14 +27,14 @@ class Translate(SimpleCommandModule):
     version = "2.0.0" # Switched to DeepL API
     description = "Translates text using the DeepL API."
 
-    def __init__(self, bot, config, api_key):
+    def __init__(self, bot, api_key):
         super().__init__(bot)
         try:
             self.translator = deepl.Translator(api_key)
         except Exception as e:
             self._record_error(f"Failed to initialize DeepL translator: {e}")
             self.translator = None
-        
+
         self.set_state("translations_done", 0)
         self.save_state()
 

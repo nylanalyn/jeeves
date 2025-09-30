@@ -230,7 +230,8 @@ class Jeeves(SingleServerIRCBot):
             self.logger.handlers.clear()
             
         self.logger.addHandler(handler)
-        self.log_debug(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}.")
+        # Always write initialization message to ensure file is created
+        self.logger.info(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}.")
 
     def log_debug(self, message: str):
         if self.debug_mode:

@@ -4,6 +4,7 @@ import re
 import sys
 from collections import deque
 from pathlib import Path
+from .base import SimpleCommandModule
 
 try:
     from openai import OpenAI

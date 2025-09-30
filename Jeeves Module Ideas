@@ -30,15 +30,37 @@ Phase 1: Core Mechanics (Complete)
 
         When a player wins a quest, the XP they earn is doubled, and the bonus is drained from their pool.
 
-Phase 2: Group Content (Planned)
+Phase 2: Group Content (Complete)
 
     !mob Command:
 
-        A player starts a !mob command, opening a window for others to join.
+        A player starts a !mob command, opening a window (60s default) for others to join.
 
-        The monster's power is a random range to ensure risk.
+        Win chances scale with party size: 1 person = 5%, 2 = 25%, 3 = 75%, 4+ = 95%.
 
-        Penalty for Failure: Losing a !mob quest applies a temporary "Wounded" debuff to all party members.
+        !mob ping on/off - Opt-in notifications when mob encounters start.
+
+        Global cooldown (1 hour default) keeps mob encounters special.
+
+    Critical Hits:
+
+        15% chance (configurable) to land a critical hit for 2x XP on victory.
+
+    Win Streaks:
+
+        Consecutive victories build a streak with 10% XP bonus per streak (max 5).
+
+        Streaks reset on defeat.
+
+    Rare Spawns:
+
+        10% chance (configurable) for monsters to spawn as [RARE] with 2x XP multiplier.
+
+        Channel-wide announcements when rare spawns appear.
+
+    Leaderboard:
+
+        !quest top shows top 10 players by level and XP with win streaks.
 
 Phase 3: Items & Consequences (Planned)
 
@@ -61,6 +83,56 @@ Phase 4: World Events (Planned)
         All active users must use a command (e.g., !attack) to contribute to its defeat.
 
         Failure results in a temporary, channel-wide debuff.
+
+Phase 5: Additional Enhancement Ideas (Future Consideration)
+
+    Daily Challenges:
+
+        "Defeat 5 monsters today for bonus reward" style objectives with tracking.
+
+    Loot System (User has specific idea - revisit after testing current features):
+
+        Monsters drop items (weapons/armor) that give small stat bonuses.
+
+        Players can store 1-3 items with bonuses to win chance or XP gain.
+
+    Class Abilities:
+
+        Let each class use a special ability once per hour (!ability):
+
+            Warriors: +20% win chance boost
+
+            Mages: +50% XP boost
+
+            Rogues: no cooldown on next quest
+
+    Boss Encounters:
+
+        Weekly scheduled boss requiring large party, drops rare/unique loot.
+
+    Party Combos:
+
+        Bonus rewards if mob party has diverse classes (warrior + mage + rogue = +25% XP).
+
+    Monster Bestiary:
+
+        Track which monsters each player has defeated, get completion bonuses.
+
+    PvP Dueling:
+
+        !duel @player for friendly competition between players.
+
+    Dungeons:
+
+        Multi-stage encounters where party fights 3 monsters in sequence.
+
+    Guild System:
+
+        Groups can pool resources or compete for rankings.
+
+    Trading:
+
+        Players can trade items/XP with each other.
 
 2. Adventure Module Enhancements (Planned)
 

@@ -192,7 +192,7 @@ class Quest(SimpleCommandModule):
         # Critical hit bonus (2x XP)
         if is_crit:
             total_xp_gain *= 2
-            messages.append("💥 CRITICAL HIT! XP doubled!")
+            messages.append("CRITICAL HIT! XP doubled!")
 
         # Win streak bonus (10% per streak, max 5 streaks = 50%)
         if is_win:
@@ -202,7 +202,7 @@ class Quest(SimpleCommandModule):
                 streak_bonus_mult = 1 + (min(current_streak, max_streak_bonus) * 0.10)
                 old_xp = total_xp_gain
                 total_xp_gain = int(total_xp_gain * streak_bonus_mult)
-                messages.append(f"🔥 {current_streak}-win streak bonus! (+{total_xp_gain - old_xp} XP)")
+                messages.append(f"{current_streak}-win streak bonus! (+{total_xp_gain - old_xp} XP)")
 
             # Increment streak
             player["win_streak"] = current_streak + 1
@@ -373,13 +373,13 @@ class Quest(SimpleCommandModule):
             reverse=True
         )[:10]
 
-        self.safe_reply(connection, event, "🏆 Quest Leaderboard - Top 10 Adventurers:")
+        self.safe_reply(connection, event, "Quest Leaderboard - Top 10 Adventurers:")
         for idx, (uid, player) in enumerate(sorted_players, 1):
             name = player.get("name", "Unknown")
             level = player.get("level", 1)
             xp = player.get("xp", 0)
             streak = player.get("win_streak", 0)
-            streak_indicator = f" 🔥x{streak}" if streak > 0 else ""
+            streak_indicator = f" [Streak: {streak}]" if streak > 0 else ""
             self.safe_reply(connection, event, f"{idx}. {name} - Level {level} ({xp} XP){streak_indicator}")
 
         return True
@@ -432,7 +432,7 @@ class Quest(SimpleCommandModule):
         is_rare = random.random() < rare_spawn_chance
         rare_xp_mult = self.get_config_value("rare_spawn_xp_multiplier", event.target, default=2.0)
 
-        monster_prefix = "✨ RARE ✨ " if is_rare else ""
+        monster_prefix = "[RARE] " if is_rare else ""
         monster_name_with_level = f"{monster_prefix}Level {monster_level} {monster['name']}"
         action_text = self._get_action_text(user_id)
 
@@ -440,7 +440,7 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, story)
 
         if is_rare:
-            self.safe_say(f"⚡ A rare {monster['name']} has appeared! {username} engages in combat!", event.target)
+            self.safe_say(f"A rare {monster['name']} has appeared! {username} engages in combat!", event.target)
         time.sleep(1.5)
         
         energy_xp_mult, energy_win_chance_mod = 1.0, 0.0
@@ -594,11 +594,11 @@ class Quest(SimpleCommandModule):
             # Schedule mob window close
             schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
 
-            rare_prefix = "✨ RARE ✨ " if is_rare else ""
+            rare_prefix = "[RARE] " if is_rare else ""
             self.safe_reply(connection, event, f"{username} has summoned a {rare_prefix}Level {monster_level} {monster['name']}! Others can !join within {join_window_seconds} seconds!")
 
             if is_rare:
-                self.safe_say(f"⚡ A rare mob encounter has appeared! Use !join to participate!", event.target)
+                self.safe_say(f"A rare mob encounter has appeared! Use !join to participate!", event.target)
 
             # Ping users who opted in for mob notifications
             mob_pings = self.get_state("mob_pings", {})
@@ -676,7 +676,7 @@ class Quest(SimpleCommandModule):
             is_rare = active_mob.get("is_rare", False)
             rare_xp_mult = self.get_config_value("rare_spawn_xp_multiplier", channel, default=2.0)
 
-            rare_prefix = "✨ RARE ✨ " if is_rare else ""
+            rare_prefix = "[RARE] " if is_rare else ""
             monster_name = f"{rare_prefix}Level {monster_level} {monster['name']}"
 
             # Deduct energy from all participants

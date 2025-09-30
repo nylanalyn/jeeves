@@ -429,10 +429,162 @@ class Quest(SimpleCommandModule):
         return True
 
     def _cmd_mob_start(self, connection, event, msg, username, match):
-        self.safe_reply(connection, event, "Mob quests are not yet implemented.")
-        return True
+        """Start a mob encounter that others can join."""
+        if not self.is_enabled(event.target):
+            return False
+
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if active_mob:
+                self.safe_reply(connection, event, "A mob encounter is already active! Use !join to participate.")
+                return True
+
+            user_id = self.bot.get_user_id(username)
+            player = self._get_player(user_id, username)
+
+            # Check energy
+            energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+            if energy_enabled and player["energy"] < 1:
+                self.safe_reply(connection, event, f"You are too exhausted for a mob quest, {self.bot.title_for(username)}.")
+                return True
+
+            # Select a mob monster
+            monsters = self.get_config_value("monsters", event.target, default=[])
+            avg_level = player['level']
+            possible_monsters = [m for m in monsters if isinstance(m, dict) and m['min_level'] <= avg_level + 5]
+
+            if not possible_monsters:
+                self.safe_reply(connection, event, "No suitable mob encounter found.")
+                return True
+
+            monster = random.choice(possible_monsters)
+            monster_level = max(player['level'], avg_level + 3)
+
+            join_window_seconds = self.get_config_value("mob_join_window_seconds", event.target, default=60)
+            close_time = time.time() + join_window_seconds
+
+            mob_data = {
+                "channel": event.target,
+                "monster": monster,
+                "monster_level": monster_level,
+                "participants": [{"user_id": user_id, "username": username}],
+                "initiator": username,
+                "close_epoch": close_time
+            }
+
+            self.set_state("active_mob", mob_data)
+            self.save_state()
+
+            # Schedule mob window close
+            schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+
+            self.safe_reply(connection, event, f"{username} has summoned a Level {monster_level} {monster['name']}! Others can !join within {join_window_seconds} seconds!")
+            return True
 
     def _cmd_mob_join(self, connection, event, msg, username, match):
-        self.safe_reply(connection, event, "Mob quests are not yet implemented.")
-        return True
+        """Join an active mob encounter."""
+        if not self.is_enabled(event.target):
+            return False
+
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if not active_mob:
+                self.safe_reply(connection, event, "No active mob encounter to join.")
+                return True
+
+            if active_mob["channel"] != event.target:
+                self.safe_reply(connection, event, "The mob encounter is in another channel.")
+                return True
+
+            user_id = self.bot.get_user_id(username)
+
+            # Check if already in party
+            if any(p["user_id"] == user_id for p in active_mob["participants"]):
+                self.safe_reply(connection, event, "You are already in the party!")
+                return True
+
+            # Check energy
+            player = self._get_player(user_id, username)
+            energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+            if energy_enabled and player["energy"] < 1:
+                self.safe_reply(connection, event, f"You are too exhausted to join, {self.bot.title_for(username)}.")
+                return True
+
+            # Add to party
+            active_mob["participants"].append({"user_id": user_id, "username": username})
+            self.set_state("active_mob", active_mob)
+            self.save_state()
+
+            party_size = len(active_mob["participants"])
+            self.safe_reply(connection, event, f"{username} joins the party! ({party_size} adventurers ready)")
+            return True
+
+    def _close_mob_window(self):
+        """Execute the mob encounter after the join window closes."""
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if not active_mob:
+                schedule.clear(self.name)
+                return
+
+            channel = active_mob["channel"]
+            monster = active_mob["monster"]
+            monster_level = active_mob["monster_level"]
+            participants = active_mob["participants"]
+            party_size = len(participants)
+
+            # Clear the active mob and scheduled task
+            self.set_state("active_mob", None)
+            schedule.clear(self.name)
+
+            # Calculate win chance based on party size
+            # 1 person = 5%, 2 = 25%, 3 = 75%, 4+ = 95%
+            win_chance_map = {1: 0.05, 2: 0.25, 3: 0.75}
+            win_chance = win_chance_map.get(party_size, 0.95)  # 4+ people = 95%
+
+            win = random.random() < win_chance
+            monster_name = f"Level {monster_level} {monster['name']}"
+
+            # Deduct energy from all participants
+            energy_enabled = self.get_config_value("energy_system.enabled", channel, default=True)
+            players_state = self.get_state("players", {})
+
+            for p in participants:
+                player = self._get_player(p["user_id"], p["username"])
+                if energy_enabled and player["energy"] > 0:
+                    player["energy"] -= 1
+                players_state[p["user_id"]] = player
+
+            self.set_state("players", players_state)
+
+            # Announce outcome
+            party_names = ", ".join([p["username"] for p in participants])
+            self.safe_say(f"The party ({party_names}) engages the {monster_name}!", channel)
+            time.sleep(1.5)
+
+            xp_level_mult = self.get_config_value("xp_level_multiplier", channel, default=2)
+            base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
+
+            if win:
+                # Victory - distribute XP
+                total_xp = (base_xp + monster_level * xp_level_mult) * 1.5  # Bonus for mob
+                self.safe_say(f"Victory! (Win chance: {win_chance:.0%}) The {monster_name} falls! Each adventurer gains {int(total_xp)} XP!", channel)
+
+                for p in participants:
+                    xp_msgs = self._grant_xp(p["user_id"], p["username"], total_xp, is_win=True)
+                    for m in xp_msgs:
+                        self.safe_say(f"{p['username']}: {m}", channel)
+            else:
+                # Defeat - lose XP and potentially get injured
+                xp_loss_perc = self.get_config_value("xp_loss_percentage", channel, default=0.25)
+                xp_loss = (base_xp + monster_level * xp_level_mult) * xp_loss_perc
+                self.safe_say(f"Defeat! (Win chance: {win_chance:.0%}) The party has been overwhelmed! Each member loses {int(xp_loss)} XP.", channel)
+
+                for p in participants:
+                    self._deduct_xp(p["user_id"], p["username"], xp_loss)
+                    injury_msg = self._apply_injury(p["user_id"], p["username"], channel)
+                    if injury_msg:
+                        self.safe_say(f"{p['username']}: {injury_msg}", channel)
+
+            self.save_state()
 

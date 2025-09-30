@@ -150,4 +150,3 @@ class Memos(SimpleCommandModule):
         
         self.safe_reply(connection, event, "I have sent you the details privately.")
         return True
-

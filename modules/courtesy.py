@@ -13,7 +13,7 @@ def setup(bot, config):
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
-    version = "5.0.0" # Dynamic configuration refactor
+    version = "5.0.1" # Added missing is_enabled check
     description = "User courtesy, pronoun, and ignore list management"
 
     PRONOUN_MAP = {

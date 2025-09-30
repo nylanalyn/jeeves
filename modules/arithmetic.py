@@ -10,7 +10,7 @@ def setup(bot, config):
 
 class Arithmetic(SimpleCommandModule):
     name = "arithmetic"
-    version = "2.0.0" # Dynamic configuration refactor
+    version = "2.0.1" # Added missing is_enabled check
     description = "Performs calculations with configurable reliability."
 
     def __init__(self, bot, config):

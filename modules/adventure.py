@@ -16,7 +16,7 @@ def setup(bot, config):
 
 class Adventure(SimpleCommandModule):
     name = "adventure"
-    version = "3.0.0" # Dynamic configuration refactor
+    version = "3.0.1" # Added missing is_enabled check
     description = "A choose-your-own-adventure game for the channel."
     
     PLACES = [ "the Neon Bazaar", "the Clockwork Conservatory", "the Signal Archives", "the Subterranean Gardens", "the Rusted Funicular", "the Mirror Maze", "the Lattice Observatory", "the Stormbreak Causeway", "the Midnight Diner", "the Old Museum", "the Lighthouse", "the Planetarium", "the Rooftops", "the Antique Arcade", "the Bookshop Maze", "the Railway Depot", "the Tea Pavilion", "the Neon Alley", "the Forgotten Server Farm", "the Catacomb Switchyard", "the Endless Lobby", "the Glass Cathedral", "the Iron Menagerie", "the Holographic Forest", "the Perpetual Carnival", "the Shattered Aqueduct", "the Gilded Boiler Room", "the Abandoned Data Center", "the Fractured Causeway", "the Vaulted Terminal", "the Hall of Expired Passwords", "the Cryogenic Garden", "the Wax Cylinder Library", "the Vanishing Platform", "the Singing Substation", "the Spiral Archives", "the Candlelit Foundry", "the Flooded Crypt", "the Black Glass Bridge", "the Chimera Menagerie", "the Tarnished Observatory", "the Hollow Clocktower", "the Paper Lantern Pier", "the Last Greenhouse", "the Red Circuit Cathedral", "the Forgotten Monorail", "the Smouldering Atrium", "the Binary Bazaar", ]

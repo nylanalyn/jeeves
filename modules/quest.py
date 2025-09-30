@@ -538,6 +538,12 @@ class Quest(SimpleCommandModule):
         if not self.is_enabled(event.target):
             return False
 
+        # Check global cooldown for mob encounters (per channel)
+        mob_cooldown = self.get_config_value("mob_cooldown_seconds", event.target, default=3600)  # 1 hour default
+        if not self.check_rate_limit(f"mob_spawn_{event.target}", seconds=mob_cooldown):
+            self.safe_reply(connection, event, "A mob encounter was recently completed. Please wait before summoning another.")
+            return True
+
         with self.mob_lock:
             active_mob = self.get_state("active_mob")
             if active_mob:

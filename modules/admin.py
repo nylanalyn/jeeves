@@ -228,29 +228,77 @@ class Admin(SimpleCommandModule):
     def _cmd_get_config(self, connection, event, username, path, channel):
         keys = path.split('.')
         module_name = keys[0]
-        
+
         module_instance = self.bot.pm.plugins.get(module_name)
         if not module_instance and module_name != "core":
             self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
             return True
-            
+
         config_copy = self.bot.get_module_state("config")
-        
+
+        # Try channel-specific override first
         try:
             d_chan = config_copy.get(module_name, {}).get("channels", {}).get(channel, {})
             val_chan = d_chan
-            for key in keys[1:]: val_chan = val_chan[key]
-            self.safe_reply(connection, event, f"Config for '{path}' in {channel} is '{val_chan}' (Channel Override)")
+            for key in keys[1:]:
+                val_chan = val_chan[key]
+
+            # If we got a dict, show all its keys
+            if isinstance(val_chan, dict):
+                self._display_config_dict(connection, event, path, val_chan, f"{channel} (Channel Override)")
+            else:
+                self.safe_reply(connection, event, f"Config for '{path}' in {channel} is '{val_chan}' (Channel Override)")
             return True
         except KeyError:
-            try:
-                val_glob = config_copy
-                for key in keys: val_glob = val_glob[key]
-                self.safe_reply(connection, event, f"Config for '{path}' in {channel} is '{val_glob}' (Global)")
-                return True
-            except KeyError:
-                self.safe_reply(connection, event, f"Could not find configuration value for '{path}'.")
-                return True
+            pass
+
+        # Fall back to global config
+        try:
+            val_glob = config_copy
+            for key in keys:
+                val_glob = val_glob[key]
+
+            # If we got a dict, show all its keys
+            if isinstance(val_glob, dict):
+                self._display_config_dict(connection, event, path, val_glob, "Global")
+            else:
+                self.safe_reply(connection, event, f"Config for '{path}' is '{val_glob}' (Global)")
+            return True
+        except KeyError:
+            self.safe_reply(connection, event, f"Could not find configuration value for '{path}'.")
+            return True
+
+    def _display_config_dict(self, connection, event, path, config_dict, source):
+        """Display a config dictionary's keys and values in a readable format."""
+        if not config_dict:
+            self.safe_reply(connection, event, f"Config for '{path}' ({source}) is empty.")
+            return
+
+        # Filter out the 'channels' key as it's meta-config
+        filtered_dict = {k: v for k, v in config_dict.items() if k != 'channels'}
+
+        if not filtered_dict:
+            self.safe_reply(connection, event, f"Config for '{path}' ({source}) has no direct settings (only channel overrides).")
+            return
+
+        items = []
+        for key, value in sorted(filtered_dict.items()):
+            # Format value based on type
+            if isinstance(value, (list, dict)):
+                value_str = str(value)
+                # Truncate very long lists/dicts
+                if len(value_str) > 60:
+                    value_str = value_str[:57] + "..."
+            else:
+                value_str = str(value)
+            items.append(f"{key}: {value_str}")
+
+        # Send in batches to avoid flooding
+        self.safe_reply(connection, event, f"Config for '{path}' ({source}):")
+        batch_size = 5
+        for i in range(0, len(items), batch_size):
+            batch = items[i:i+batch_size]
+            self.safe_reply(connection, event, "  " + " | ".join(batch))
 
     def _cmd_save_config(self, connection, event, username):
         saved_path = Path(self.bot.ROOT) / "config" / "config.yaml.saved"

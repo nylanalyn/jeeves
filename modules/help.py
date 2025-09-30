@@ -5,9 +5,9 @@ import re
 import time
 from .base import SimpleCommandModule
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Help module."""
-    return Help(bot, config)
+    return Help(bot)
 
 class Help(SimpleCommandModule):
     """Provides a list of commands and help for specific commands."""
@@ -15,7 +15,7 @@ class Help(SimpleCommandModule):
     version = "4.1.1" # Corrected __init__ call
     description = "Provides a list of commands and help for specific commands."
     
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         """Initializes the module's state and registers commands."""
         super().__init__(bot)
         self.set_state("last_help_time", self.get_state("last_help_time", {}))

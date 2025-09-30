@@ -3,9 +3,9 @@
 
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Intro module."""
-    return Intro(bot, config)
+    return Intro(bot)
 
 class Intro(SimpleCommandModule):
     """Handles the one-time !intro command."""
@@ -13,7 +13,7 @@ class Intro(SimpleCommandModule):
     version = "3.0.0" # Dynamic configuration refactor
     description = "Provides a one-time introduction for new users."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         """Initializes the module's state and registers commands."""
         super().__init__(bot)
         self.set_state("users_introduced", self.get_state("users_introduced", [])) # List of user_ids

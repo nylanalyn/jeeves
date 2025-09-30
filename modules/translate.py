@@ -10,7 +10,7 @@ try:
 except ImportError:
     deepl = None
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Translate module."""
     if not deepl:
         print("[translate] deepl library not installed (pip install deepl). Module will not load.")

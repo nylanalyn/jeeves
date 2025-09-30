@@ -11,8 +11,8 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Roadtrip(bot, config)
+def setup(bot):
+    return Roadtrip(bot)
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
@@ -61,7 +61,7 @@ class Roadtrip(SimpleCommandModule):
         "Splendid idea the vehicle awaits.",
     ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         
         # Robustly initialize state to handle legacy malformed data

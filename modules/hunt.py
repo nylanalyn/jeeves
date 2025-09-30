@@ -11,8 +11,8 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Hunt(bot, config)
+def setup(bot):
+    return Hunt(bot)
 
 class Hunt(SimpleCommandModule):
     name = "hunt"
@@ -32,7 +32,7 @@ class Hunt(SimpleCommandModule):
         "Releasing the {animal_name}, {title}. I trust this chaotic cycle will not become a habit."
     ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self._is_loaded = False
         self.set_state("scores", self.get_state("scores", {}))

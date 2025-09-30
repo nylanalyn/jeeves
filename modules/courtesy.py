@@ -8,8 +8,8 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Courtesy(bot, config)
+def setup(bot):
+    return Courtesy(bot)
 
 class Courtesy(SimpleCommandModule):
     name = "courtesy"
@@ -29,7 +29,7 @@ class Courtesy(SimpleCommandModule):
         "nonbinary": "neutral", "non-binary": "neutral", "nb": "neutral", "enby": "neutral", "neutral": "neutral",
     }
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         
         self.set_state("profiles", self.get_state("profiles", {}))

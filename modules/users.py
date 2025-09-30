@@ -3,9 +3,9 @@
 import uuid
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Users module."""
-    return Users(bot, config)
+    return Users(bot)
 
 class Users(SimpleCommandModule):
     """Handles the mapping of nicknames to persistent user IDs."""
@@ -17,7 +17,7 @@ class Users(SimpleCommandModule):
     # as it has no user-facing commands or ambient triggers to be disabled.
     # It will always be active to ensure user identity is tracked correctly.
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         """Initializes the module's state."""
         super().__init__(bot)
         self.set_state("user_map", self.get_state("user_map", {})) # Maps UUID -> user object

@@ -7,15 +7,15 @@ from timezonefinder import TimezoneFinder
 from typing import Optional, Dict, Any
 from .base import SimpleCommandModule
 
-def setup(bot, config):
-    return Clock(bot, config)
+def setup(bot):
+    return Clock(bot)
 
 class Clock(SimpleCommandModule):
     name = "clock"
     version = "3.0.0" # Dynamic configuration refactor
     description = "Provides the local time for users based on their set location."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.tf = TimezoneFinder()
 

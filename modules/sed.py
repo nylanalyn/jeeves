@@ -4,8 +4,8 @@ import re
 from collections import deque
 from .base import SimpleCommandModule
 
-def setup(bot, config):
-    return Sed(bot, config)
+def setup(bot):
+    return Sed(bot)
 
 class Sed(SimpleCommandModule):
     name = "sed"
@@ -14,7 +14,7 @@ class Sed(SimpleCommandModule):
 
     SED_PATTERN = re.compile(r"^\s*s/([^/]+)/([^/]*)/?\s*$")
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.history = {} # Keyed by channel, contains deques
 

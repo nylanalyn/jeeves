@@ -6,7 +6,7 @@ import json
 from typing import Optional
 from .base import SimpleCommandModule
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Shorten module."""
     api_keys = bot.config.get("api_keys", {})
     shlink_url = api_keys.get("shlink_url")

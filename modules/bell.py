@@ -11,15 +11,15 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Bell(bot, config)
+def setup(bot):
+    return Bell(bot)
 
 class Bell(SimpleCommandModule):
     name = "bell"
     version = "2.1.1" # Fixed user lookup for top scores
     description = "A reaction game to answer the service bell."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.set_state("scores", self.get_state("scores", {})) # Keyed by user_id
         self.set_state("active_bell", self.get_state("active_bell", None))
@@ -40,7 +40,7 @@ class Bell(SimpleCommandModule):
             else:
                 remaining_seconds = (next_ring_time - now).total_seconds()
                 if remaining_seconds > 0:
-                    schedule.every(remaining_seconds).seconds.do(self._ring_the_bell).tag(self.name, "ring")
+                    schedule.every(remaining_seconds).seconds.do(self._ring_the_bell).tag(f"{self.name}-ring")
         elif not self.get_state("active_bell"):
             self._schedule_next_bell()
 
@@ -71,14 +71,14 @@ class Bell(SimpleCommandModule):
         self.set_state("next_ring_time", next_ring_time.isoformat())
         self.save_state()
         
-        schedule.every(delay_hours * 3600).seconds.do(self._ring_the_bell).tag(self.name, "ring")
+        schedule.every(delay_hours * 3600).seconds.do(self._ring_the_bell).tag(f"{self.name}-ring")
 
     def _ring_the_bell(self):
-        schedule.clear("ring")
-        
+        schedule.clear(f"{self.name}-ring")
+
         allowed_channels = self.get_config_value("allowed_channels", default=[])
         active_channels = [room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]
-        
+
         if not active_channels:
             self._schedule_next_bell()
             return schedule.CancelJob
@@ -87,13 +87,13 @@ class Bell(SimpleCommandModule):
 
         for room in active_channels:
             self.safe_say("The service bell has been rung!", target=room)
-        
+
         end_time = time.time() + response_window
         self.set_state("active_bell", {"end_time": end_time})
         self.set_state("next_ring_time", None)
         self.save_state()
 
-        schedule.every(response_window).seconds.do(self._end_bell_round).tag(self.name, "end")
+        schedule.every(response_window).seconds.do(self._end_bell_round).tag(f"{self.name}-end")
         return schedule.CancelJob
 
     def _end_bell_round(self):
@@ -110,12 +110,12 @@ class Bell(SimpleCommandModule):
 
     def _cmd_answer(self, connection, event, msg, username, match):
         active_bell = self.get_state("active_bell")
-        
+
         if not active_bell:
             self.safe_reply(connection, event, f"The bell is silent, {self.bot.title_for(username)}.")
             return True
-        
-        schedule.clear("end")
+
+        schedule.clear(f"{self.name}-end")
         self.set_state("active_bell", None)
         
         user_id = self.bot.get_user_id(username)
@@ -163,8 +163,8 @@ class Bell(SimpleCommandModule):
         if self.get_state("active_bell"):
             self.safe_reply(connection, event, "The bell is already ringing.")
             return True
-        
-        schedule.clear("ring")
+
+        schedule.clear(f"{self.name}-ring")
         self._ring_the_bell()
         self.safe_reply(connection, event, "As you wish. The bell has been rung.")
         return True

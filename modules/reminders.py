@@ -10,9 +10,9 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Reminders module."""
-    return Reminders(bot, config)
+    return Reminders(bot)
 
 class Reminders(SimpleCommandModule):
     """Handles setting, storing, and delivering timed reminders for users."""
@@ -20,7 +20,7 @@ class Reminders(SimpleCommandModule):
     version = "1.0.0"
     description = "Set a reminder for yourself or another user."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         """Initializes the module's state and schedules pending reminders."""
         super().__init__(bot)
         self.set_state("pending_reminders", self.get_state("pending_reminders", []))

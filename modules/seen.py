@@ -6,9 +6,9 @@ from .base import SimpleCommandModule
 
 UTC = timezone.utc
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Seen module."""
-    return Seen(bot, config)
+    return Seen(bot)
 
 class Seen(SimpleCommandModule):
     """Handles tracking and reporting the last time a user was seen speaking."""
@@ -16,7 +16,7 @@ class Seen(SimpleCommandModule):
     version = "1.0.0"
     description = "Tracks user activity to report when they were last seen."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         """Initializes the module's state."""
         super().__init__(bot)
         # State structure: { "#channel": { "user_id": { "when": ISO_STRING, "message": "text" } } }

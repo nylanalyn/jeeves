@@ -10,7 +10,7 @@ try:
 except ImportError:
     OpenAI = None
 
-def setup(bot, config):
+def setup(bot):
     if not OpenAI:
         print("[oracle] openai library not installed. Module will not load.", file=sys.stderr)
         return None
@@ -22,14 +22,14 @@ def setup(bot, config):
         print("[oracle] OpenAI API key or Base URL not found in config.yaml. Module will not load.", file=sys.stderr)
         return None
         
-    return Oracle(bot, config)
+    return Oracle(bot)
 
 class Oracle(SimpleCommandModule):
     name = "oracle"
     version = "1.2.0" # Added enable/disable check
     description = "Provides an AI-driven conversational mode in a specific channel."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.history = {} # Keyed by channel
         self.generation_params = {}

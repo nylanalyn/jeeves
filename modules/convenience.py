@@ -20,12 +20,12 @@ try:
 except ImportError:
     build = None
 
-def setup(bot, config):
+def setup(bot):
     if not BeautifulSoup:
         print("[convenience] beautifulsoup4 is not installed. !g and title fetching will be limited.")
     if not build:
         print("[convenience] google-api-python-client is not installed. !yt command will not load.")
-    return Convenience(bot, config)
+    return Convenience(bot)
 
 class Convenience(ModuleBase):
     name = "convenience"
@@ -36,7 +36,7 @@ class Convenience(ModuleBase):
     URL_PATTERN = re.compile(r'(https?://\S+)')
     TITLE_PATTERN = re.compile(r'<title>(.*?)</title>', re.IGNORECASE | re.DOTALL)
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self._register_commands()
         self.http_session = self.requests_retry_session()
@@ -131,8 +131,11 @@ class Convenience(ModuleBase):
                     html_head += part
                     title_match = self.TITLE_PATTERN.search(html_head)
                     if title_match:
-                        soup = BeautifulSoup(title_match.group(1), 'html.parser')
-                        return html.unescape(soup.get_text())
+                        # Extract and clean title text
+                        title_text = title_match.group(1).strip()
+                        # Remove any HTML tags that might be inside the title
+                        title_text = re.sub(r'<[^>]+>', '', title_text)
+                        return html.unescape(title_text)
                     if len(html_head) > max_bytes:
                         break
                 if html_head:

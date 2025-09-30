@@ -8,8 +8,8 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Memos(bot, config)
+def setup(bot):
+    return Memos(bot)
 
 class Memos(SimpleCommandModule):
     name = "memos"
@@ -19,7 +19,7 @@ class Memos(SimpleCommandModule):
     ACKS = [ "Indeed, {title}; I shall make a note of it.", "Very good, {title}. Your message is recorded.", "Quite so, {title}; I shall see that it is delivered." ]
     DELIVER_LINES = [ "Ah, {to}! {from_} left you a message; {says}: {text}", "{to}, a note from {from_}: {text}", "Message for {to} from {from_}: {text}" ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         
         # --- State Migration Logic ---

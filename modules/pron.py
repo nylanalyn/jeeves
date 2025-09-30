@@ -3,8 +3,8 @@
 import random
 from .base import SimpleCommandModule
 
-def setup(bot, config):
-    return Pron(bot, config)
+def setup(bot):
+    return Pron(bot)
 
 class Pron(SimpleCommandModule):
     name = "pron"
@@ -29,7 +29,7 @@ class Pron(SimpleCommandModule):
         "You find an alluring stranger in your kitchen, sharpening all of your knives to a professional, razor-sharp edge.",
     ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         # Cooldown is now handled by the command registration and dynamic config.
         super().__init__(bot)
 

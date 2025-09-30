@@ -7,15 +7,15 @@ import yaml
 from pathlib import Path
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Admin(bot, config)
+def setup(bot):
+    return Admin(bot)
 
 class Admin(SimpleCommandModule):
     name = "admin"
     version = "3.3.1" # Improved feedback on module load failure
     description = "Administrative bot controls."
     
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         if not hasattr(self.bot, "joined_channels"):
             self.bot.joined_channels = {self.bot.primary_channel}

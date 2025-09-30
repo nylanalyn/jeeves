@@ -5,15 +5,15 @@ import random
 import operator
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Arithmetic(bot, config)
+def setup(bot):
+    return Arithmetic(bot)
 
 class Arithmetic(SimpleCommandModule):
     name = "arithmetic"
     version = "2.0.1" # Added missing is_enabled check
     description = "Performs calculations with configurable reliability."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.set_state("calculations_performed", self.get_state("calculations_performed", 0))
         self.set_state("whimsical_results", self.get_state("whimsical_results", 0))

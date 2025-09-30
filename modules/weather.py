@@ -6,15 +6,15 @@ import json
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Weather(bot, config)
+def setup(bot):
+    return Weather(bot)
 
 class Weather(SimpleCommandModule):
     name = "weather"
     version = "3.0.0" # Dynamic configuration refactor
     description = "Provides weather information for saved or specified locations."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.set_state("user_locations", self.get_state("user_locations", {}))
         self.save_state()

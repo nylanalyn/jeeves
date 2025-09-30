@@ -11,8 +11,8 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Adventure(bot, config)
+def setup(bot):
+    return Adventure(bot)
 
 class Adventure(SimpleCommandModule):
     name = "adventure"
@@ -25,7 +25,7 @@ class Adventure(SimpleCommandModule):
     RE_VOTE_1 = re.compile(r"^\s*!?1[.,!\s]*\s*$")
     RE_VOTE_2 = re.compile(r"^\s*!?2[.,!\s]*\s*$")
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         # These keys contain lists/dicts and are not suitable for simple runtime changes
         self.static_keys = ["item_adjectives", "item_nouns"]

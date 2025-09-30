@@ -7,20 +7,20 @@ import sys
 from typing import Optional, Dict, Any
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Gif module."""
     api_key = bot.config.get("api_keys", {}).get("giphy")
     if not api_key:
         print("[gif] GIPHY API key not found in config.yaml. Module will not load.")
         return None
-    return Gif(bot, config, api_key)
+    return Gif(bot, api_key)
 
 class Gif(SimpleCommandModule):
     name = "gif"
     version = "2.0.0" # Dynamic configuration refactor
     description = "Searches Giphy for a GIF and posts the link."
-    
-    def __init__(self, bot, config, api_key):
+
+    def __init__(self, bot, api_key):
         """Initializes the module's state and configuration."""
         super().__init__(bot)
         self.API_KEY = api_key

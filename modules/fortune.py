@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Fortune(bot, config)
+def setup(bot):
+    return Fortune(bot)
 
 class Fortune(SimpleCommandModule):
     name = "fortune"
@@ -18,7 +18,7 @@ class Fortune(SimpleCommandModule):
     
     CATEGORIES = ["spooky", "happy", "sad", "silly"]
     
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         
         self.set_state("last_fortune_time", self.get_state("last_fortune_time", {}))

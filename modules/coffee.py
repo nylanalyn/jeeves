@@ -8,8 +8,8 @@ import pytz
 from timezonefinder import TimezoneFinder
 from .base import SimpleCommandModule
 
-def setup(bot, config):
-    return Coffee(bot, config)
+def setup(bot):
+    return Coffee(bot)
 
 class Coffee(SimpleCommandModule):
     name = "coffee"
@@ -30,7 +30,7 @@ class Coffee(SimpleCommandModule):
         "a mug of hot chocolate", "a soothing cup of peppermint tea", "a decaffeinated latte"
     ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.tf = TimezoneFinder()
         self.set_state("user_beverage_counts", self.get_state("user_beverage_counts", {}))

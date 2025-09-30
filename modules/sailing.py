@@ -7,8 +7,8 @@ import functools
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Sailing(bot, config)
+def setup(bot):
+    return Sailing(bot)
 
 class Sailing(SimpleCommandModule):
     name = "sailing"
@@ -17,7 +17,7 @@ class Sailing(SimpleCommandModule):
     
     NAUTICAL_RESPONSES = [ "Aye, {title}! The wind's fair and the tide's turning - time to splice the mainbrace!", "Steady as she goes, {title}! Mind the mizzen and watch for squalls off the starboard bow.", "Heave away, {title}! The bosun's pipe calls and the capstan awaits your shanty.", "By the beard of Neptune, {title}! The sea's singing her siren song once more.", "Fair winds and following seas, {title}! May your sheets stay taut and your compass true.", "Hoist the burgee, {title}! The ancient mariners say a red sky at night means sailor's delight.", "Batten down the hatches, {title}! Remember: one hand for the ship, one for yourself.", "The albatross circles, {title} - but we'll not be shooting any today, if Coleridge is to be believed.", "Mind the doldrums, {title}! Even the Trade Winds must pause to gather their strength.", "Sheet home the topsails, {title}! The old salts say the sea never forgives the unprepared.", ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.static_keys = ["nautical_responses"]
         self.set_state("last_response_time", self.get_state("last_response_time", 0.0))

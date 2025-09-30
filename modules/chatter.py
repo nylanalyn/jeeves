@@ -13,8 +13,8 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
-    return Chatter(bot, config)
+def setup(bot):
+    return Chatter(bot)
 
 class Chatter(SimpleCommandModule):
     name = "chatter"
@@ -34,7 +34,7 @@ class Chatter(SimpleCommandModule):
     FOOD_RESPONSES = [ "A well-timed refreshment often provides clarity that hours of debugging cannot.", "The correlation between proper nutrition and code quality is well-established, {title}.", "I've observed that the best solutions often emerge during tea breaks.", "Sustenance for both body and mind remains essential for peak performance.", ]
     GREETING_RESPONSES = [ "Good {time_of_day}, {title}. I trust you're well?", "A pleasure to see you, {title}. The day progresses admirably.", "Greetings, {title}. I hope the day finds you in good spirits.", "Welcome, {title}. How may I be of assistance today?", ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         self.set_state("last_daily", self.get_state("last_daily", None))
         self.set_state("last_weekly", self.get_state("last_weekly", None))
@@ -124,19 +124,19 @@ class Chatter(SimpleCommandModule):
         return f"{hour:02d}:{minute:02d}"
 
     def _schedule_daily_message(self):
-        schedule.clear("daily")
+        schedule.clear(f"{self.name}-daily")
         next_time = self._random_time()
-        schedule.every().day.at(next_time).do(self._say_daily).tag(self.name, "daily")
+        schedule.every().day.at(next_time).do(self._say_daily).tag(f"{self.name}-daily")
         schedule_times = self.get_state("schedule_times")
         schedule_times["next_daily"] = next_time
         self.set_state("schedule_times", schedule_times)
         self.save_state()
 
     def _schedule_weekly_message(self):
-        schedule.clear("weekly")
+        schedule.clear(f"{self.name}-weekly")
         weekday = random.choice(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
         next_time = self._random_time()
-        getattr(schedule.every(), weekday).at(next_time).do(self._say_weekly).tag(self.name, "weekly")
+        getattr(schedule.every(), weekday).at(next_time).do(self._say_weekly).tag(f"{self.name}-weekly")
         schedule_times = self.get_state("schedule_times")
         schedule_times["next_weekly"] = f"{weekday} at {next_time}"
         self.set_state("schedule_times", schedule_times)

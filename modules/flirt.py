@@ -7,15 +7,15 @@ import functools
 from typing import Optional, Dict, Any, List, Callable, Union
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Flirt(bot, config)
+def setup(bot):
+    return Flirt(bot)
 
 class Flirt(SimpleCommandModule):
     name = "flirt"
     version = "3.0.0" # Dynamic configuration refactor
     description = "Polite and professional flirt handling."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         
         self.set_state("total_flirts_received", self.get_state("total_flirts_received", 0))

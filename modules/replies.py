@@ -7,8 +7,8 @@ import time
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot, config):
-    return Replies(bot, config)
+def setup(bot):
+    return Replies(bot)
 
 class Replies(SimpleCommandModule):
     name = "replies"
@@ -21,7 +21,7 @@ class Replies(SimpleCommandModule):
     ADVICE_LINES = [ "I would recommend considering all options carefully, {title}.", "Prudence suggests a measured approach, {title}.", "In my experience, the simplest solution often proves best, {title}.", "Perhaps a spot of tea would clarify matters, {title}.", "I find that sleeping on important decisions rarely disappoints, {title}." ]
     PHILOSOPHICAL_LINES = [ "An intriguing question that has occupied minds greater than mine, {title}.", "Philosophy falls somewhat outside my usual duties, {title}.", "I defer to wiser heads on such matters, {title}.", "That ventures into territory beyond domestic management, {title}.", "Such questions are best pondered over a proper meal, {title}." ]
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         super().__init__(bot)
         
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")

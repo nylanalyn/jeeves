@@ -99,7 +99,7 @@ class StateManager:
                 tmp.replace(self.path)
                 self._dirty = False
             except Exception as e:
-                print(f"[state] save error: {e}", file=sys.stderr)
+                print(f"[state] save error: {e}\n{traceback.format_exc()}", file=sys.stderr)
 
     def force_save(self):
         if self._save_timer:
@@ -171,8 +171,8 @@ class PluginManager:
             sys.modules[f"modules.{name}"] = mod
             spec.loader.exec_module(mod)
             if hasattr(mod, "setup"):
-                # Correctly pass the module-specific config from the bot's live config
-                instance = mod.setup(self.bot, self.bot.config.get(name, {}))
+                # Setup function now only receives the bot instance
+                instance = mod.setup(self.bot)
                 if instance:
                     self.plugins[name] = instance
                     if hasattr(instance, "on_load"):

@@ -12,9 +12,9 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot, config):
+def setup(bot):
     """Initializes the Quest module."""
-    return Quest(bot, config)
+    return Quest(bot)
 
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
@@ -22,7 +22,7 @@ class Quest(SimpleCommandModule):
     version = "3.3.2" # Restored specific low-energy announcements
     description = "An RPG-style questing game where users can fight monsters and level up."
 
-    def __init__(self, bot, config):
+    def __init__(self, bot):
         """Initializes the Quest module's state and configuration."""
         super().__init__(bot)
         
@@ -55,10 +55,10 @@ class Quest(SimpleCommandModule):
     def _schedule_energy_regen(self):
         energy_enabled = self.get_config_value("energy_system.enabled", default=True)
         if not energy_enabled: return
-        
+
         regen_minutes = self.get_config_value("energy_system.regen_minutes", default=10)
-        schedule.clear("energy_regen")
-        schedule.every(regen_minutes).minutes.do(self._regenerate_energy).tag(self.name, "energy_regen")
+        schedule.clear(f"{self.name}-energy_regen")
+        schedule.every(regen_minutes).minutes.do(self._regenerate_energy).tag(f"{self.name}-energy_regen")
 
     def _regenerate_energy(self):
         energy_enabled = self.get_config_value("energy_system.enabled", default=True)
@@ -147,22 +147,40 @@ class Quest(SimpleCommandModule):
         return f"You have sustained an injury: {injury['name']}! {injury['description']}"
 
 
+    def _calculate_xp_for_level(self, level: int) -> int:
+        """Safely calculates XP required for a level using the configured formula."""
+        xp_formula = self.get_config_value("xp_curve_formula", default="level * 100")
+
+        # Safe formula parser: only allow level variable and basic arithmetic
+        # Supports: level * N, level + N, or combinations with parentheses
+        try:
+            # Replace 'level' with the actual value in a safe way
+            safe_expr = xp_formula.replace('level', str(level))
+            # Only allow numbers, operators, spaces, and parentheses
+            if not re.match(r'^[0-9\s\+\-\*/\.\(\)]+$', safe_expr):
+                self.log_debug(f"Invalid XP formula: {xp_formula}, using default")
+                return level * 100
+            # Evaluate with no builtins for safety
+            return int(eval(safe_expr, {'__builtins__': {}}, {}))
+        except Exception as e:
+            self.log_debug(f"Error calculating XP formula '{xp_formula}': {e}, using default")
+            return level * 100
+
     def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
         players = self.get_state("players", {})
         player = players.get(user_id)
-        
-        if not isinstance(player, dict): 
+
+        if not isinstance(player, dict):
             player = {"name": username, "level": 1, "xp": 0}
 
-        xp_formula = self.get_config_value("xp_curve_formula", default="level * 100")
         max_energy = self.get_config_value("energy_system.max_energy", default=10)
-        
-        player.setdefault("xp_to_next_level", int(eval(xp_formula, {}, {"level": player.get("level", 1)})))
+
+        player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
         player.setdefault("last_fight", None)
         player.setdefault("last_win_date", None)
         player.setdefault("energy", max_energy)
         player["name"] = username
-        
+
         return player
 
     def _grant_xp(self, user_id: str, username: str, amount: int, is_win: bool = False) -> List[str]:
@@ -184,13 +202,11 @@ class Quest(SimpleCommandModule):
 
         player["xp"] += total_xp_gain
         leveled_up = False
-        
-        xp_formula = self.get_config_value("xp_curve_formula", default="level * 100")
 
         while player["xp"] >= player["xp_to_next_level"]:
             player["xp"] -= player["xp_to_next_level"]
             player["level"] += 1
-            player["xp_to_next_level"] = int(eval(xp_formula, {}, {"level": player["level"]}))
+            player["xp_to_next_level"] = self._calculate_xp_for_level(player["level"])
             leveled_up = True
             
         players = self.get_state("players")

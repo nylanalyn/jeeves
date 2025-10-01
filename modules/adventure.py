@@ -21,7 +21,64 @@ class Adventure(SimpleCommandModule):
     description = "A choose-your-own-adventure game for the channel."
     
     PLACES = [ "the Neon Bazaar", "the Clockwork Conservatory", "the Signal Archives", "the Subterranean Gardens", "the Rusted Funicular", "the Mirror Maze", "the Lattice Observatory", "the Stormbreak Causeway", "the Midnight Diner", "the Old Museum", "the Lighthouse", "the Planetarium", "the Rooftops", "the Antique Arcade", "the Bookshop Maze", "the Railway Depot", "the Tea Pavilion", "the Neon Alley", "the Forgotten Server Farm", "the Catacomb Switchyard", "the Endless Lobby", "the Glass Cathedral", "the Iron Menagerie", "the Holographic Forest", "the Perpetual Carnival", "the Shattered Aqueduct", "the Gilded Boiler Room", "the Abandoned Data Center", "the Fractured Causeway", "the Vaulted Terminal", "the Hall of Expired Passwords", "the Cryogenic Garden", "the Wax Cylinder Library", "the Vanishing Platform", "the Singing Substation", "the Spiral Archives", "the Candlelit Foundry", "the Flooded Crypt", "the Black Glass Bridge", "the Chimera Menagerie", "the Tarnished Observatory", "the Hollow Clocktower", "the Paper Lantern Pier", "the Last Greenhouse", "the Red Circuit Cathedral", "the Forgotten Monorail", "the Smouldering Atrium", "the Binary Bazaar", ]
-    STORY_BITS = [ "A locked cabinet hummed like a captive beehive in {place}.", "Someone had chalked unfamiliar sigils on the floor of {place}.", "In {place}, screens woke without power and showed a room three seconds ahead.", "The air in {place} tasted like coins and old arguments.", "A brass plaque in {place} listed names none of you remembered becoming.", "Every footstep in {place} arrived before the boot that made it.", "A maintenance door in {place} opened onto an identical maintenance door.", "Even the shadows in {place} kept their own inventories.", "You found a keyring labeled 'spares' in {place}; none of the keys matched each other.", "At {place}, the public address system whispered your question back with an extra word.", "Rain pooled in {place} and reflected not the ceiling but a low gray sky.", "The map at {place} had a 'you were here' marker that moved if you looked away.", "The chandeliers in {place} flickered in binary, on and off, like a code you almost understood.", "A statue in {place} briefly turned its head to watch you pass.", "The floor of {place} was carpeted with expired access cards.", "Wind in {place} carried voices speaking passwords from decades ago.", "A grandfather clock in {place} ticked backwards; your shadow obeyed it.", "A vending machine in {place} dispensed coins older than the city.", "At {place}, mirrors refused to show anyone standing alone.", "Pigeons in {place} recited error codes instead of cooing.", "The walls of {place} wept condensation that smelled of solder.", "A fountain in {place} sprayed letters instead of water.", "Elevators in {place} opened onto hallways that should not exist.", "Every sign in {place} pointed toward exits that never appeared.", "The sky above {place} displayed old chat logs scrolling endlessly.", "In {place}, all doors locked themselves when you looked directly at them.", "A pile of shoes in {place} was still warm to the touch.", "Lanterns in {place} illuminated scenes from tomorrow’s news.", "A clockwork bird sang in {place}; the song made your teeth ache.", "Even silence in {place} had a background hum, like a server rack dreaming.", ]
+    # Story structure: Opening → Development → Climax
+    STORY_OPENINGS = [
+        "You step into {place}",
+        "You cautiously enter {place}",
+        "You find yourself in {place}",
+        "The door leads you to {place}",
+        "You cross the threshold into {place}",
+        "Your footsteps echo as you enter {place}",
+        "You push open the door to {place}",
+        "Against better judgment, you enter {place}",
+    ]
+
+    STORY_DEVELOPMENTS = [
+        "where the speakers whisper your name in a voice you almost recognize",
+        "where every shadow moves independently of its owner",
+        "where the walls are covered in photographs of people who haven't been born yet",
+        "where clocks tick in reverse and your memories feel borrowed",
+        "where the air tastes like copper and forgotten promises",
+        "where mirrors show you standing in rooms you've never entered",
+        "where the temperature drops ten degrees with each step forward",
+        "where static-filled monitors display your own thoughts scrolling past",
+        "where the floor is covered in keys that unlock nothing in this world",
+        "where paintings on the walls follow you with painted eyes",
+        "where the lights flicker in morse code spelling out your deepest secret",
+        "where every surface is wet with condensation that smells like fear",
+        "where distant music plays a song you heard in a dream last week",
+        "where the elevator buttons go to floors that don't exist",
+        "where your reflection arrives three seconds before you do",
+    ]
+
+    STORY_TRANSITIONS = [
+        "As you make your way deeper",
+        "Moving further into the space",
+        "You press onward and",
+        "Taking another step forward",
+        "Unable to turn back, you continue and",
+        "Something compels you forward, and",
+        "Fighting every instinct to flee",
+        "Your curiosity pulls you onward, and",
+    ]
+
+    STORY_CLIMAXES = [
+        "you discover your own jacket hanging on a hook, still warm, though you're wearing it.",
+        "a clock strikes thirteen and you realize you've been here before—in a dream you haven't had yet.",
+        "you find a door with your name on it. The handwriting is yours, but you don't remember writing it.",
+        "you see your own reflection smiling back at you, despite your face showing only terror.",
+        "a phone rings. When you answer, you hear your own voice say 'turn around.' No one is there.",
+        "you find a photograph of yourself standing in this exact spot, taken yesterday. You've never been here before.",
+        "all the lights go out except one, illuminating a chair. Someone was just sitting there.",
+        "you hear footsteps approaching that match your own gait perfectly. They stop when you stop.",
+        "a note on the table reads 'We've been expecting you' in handwriting identical to your own.",
+        "you notice the calendar on the wall. Today's date is circled in red, with one word: 'Finally.'",
+        "you see a mannequin wearing clothes identical to yours. It wasn't there a moment ago.",
+        "every door you passed now has your childhood bedroom number on it.",
+        "you find a guest book. Your signature is on every page, dated years into the future.",
+        "the emergency exit sign points directly at a solid wall. The wall feels warm when you touch it.",
+        "you discover a recording of your own voice giving a guided tour of this place. You've never recorded anything.",
+    ]
 
     RE_VOTE_1 = re.compile(r"^\s*!?1[.,!\s]*\s*$")
     RE_VOTE_2 = re.compile(r"^\s*!?2[.,!\s]*\s*$")
@@ -186,9 +243,13 @@ class Adventure(SimpleCommandModule):
         return tuple(random.sample(self.PLACES, 2))
 
     def _create_story(self, place: str, room: str) -> str:
-        sentences_per_round = self.get_config_value("story_sentences_per_round", room, 3)
-        bits = random.sample(self.STORY_BITS, sentences_per_round)
-        return " ".join(bit.format(place=place) for bit in bits)
+        # Create a cohesive narrative: Opening → Development → Transition → Climax
+        opening = random.choice(self.STORY_OPENINGS).format(place=place)
+        development = random.choice(self.STORY_DEVELOPMENTS)
+        transition = random.choice(self.STORY_TRANSITIONS).lower()
+        climax = random.choice(self.STORY_CLIMAXES)
+
+        return f"{opening} {development}. {transition.capitalize()} {climax}"
 
     def _schedule_adventure_close(self, room: str, delay: int) -> None:
         schedule.clear(f"{self.name}-close-{room}")

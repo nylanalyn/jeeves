@@ -24,7 +24,7 @@ Phase 1: Core Mechanics (Complete)
 
         Passive Regeneration: All players regenerate 1 energy every 10 minutes.
 
-    Rested XP System:
+    Rested XP System: (rejected)
 
         While not questing, players accrue a "Rested XP Bonus" into a separate pool, capped at a configurable amount.
 
@@ -70,7 +70,7 @@ Phase 3: Items & Consequences (Planned)
 
         Items provide simple, passive buffs (e.g., +1 level or +10% XP).
 
-    Injury System:
+    Injury System: (done)
 
         Even on a successful solo quest, there's a chance to receive a minor, temporary injury (debuff).
 
@@ -136,11 +136,11 @@ Phase 5: Additional Enhancement Ideas (Future Consideration)
 
 2. Adventure Module Enhancements (Planned)
 
-    Voting Items:
+    Voting Items: (swapped to random items for fun)
 
         Winning a vote grants a chance to receive a single-use item that affects the next vote (e.g., "Your next vote counts as two").
 
-3. Translation Module (On Hold)
+3. Translation Module (done!)
 
     !translate [lang] <text> command.
 

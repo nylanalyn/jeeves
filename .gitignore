@@ -2,9 +2,7 @@
 # Jeeves's runtime state and local configuration files.
 state.json
 config.yaml
-state.json.bak_uuid_migration
-state.json.bak_event_uuid
-state.json.bak_ducks_uuid
+state.json.backup
 debug.log
 oracle_prompt.txt
 

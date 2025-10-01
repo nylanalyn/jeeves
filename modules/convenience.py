@@ -207,8 +207,9 @@ class Convenience(ModuleBase):
             return True
             
         api_url = f"https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro=true&explaintext=true&redirects=1&titles={quote_plus(query)}"
+        headers = {'User-Agent': 'JeevesIRCBot/1.0 (IRC Bot; https://github.com/anthropics/jeeves)'}
         try:
-            response = self.http_session.get(api_url, timeout=5)
+            response = self.http_session.get(api_url, headers=headers, timeout=5)
             response.raise_for_status()
             data = response.json()
             pages = data.get("query", {}).get("pages", {})

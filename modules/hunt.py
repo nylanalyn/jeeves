@@ -75,7 +75,7 @@ class Hunt(SimpleCommandModule):
             else:
                 remaining = (next_spawn_time - now).total_seconds()
                 if remaining > 0:
-                    schedule.every(remaining).seconds.do(self._start_event_spawn).tag(self.name, "event_spawn")
+                    schedule.every(remaining).seconds.do(self._start_event_spawn).tag(f"{self.name}-event_spawn")
         else:
              self._start_event_spawn()
 
@@ -87,7 +87,7 @@ class Hunt(SimpleCommandModule):
         else:
             remaining_seconds = (next_spawn_time - now).total_seconds()
             if remaining_seconds > 0:
-                schedule.every(remaining_seconds).seconds.do(self._spawn_animal).tag(self.name, "spawn")
+                schedule.every(remaining_seconds).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
 
     def on_unload(self):
         super().on_unload()
@@ -207,7 +207,7 @@ class Hunt(SimpleCommandModule):
         
         self.set_state("next_spawn_time", next_spawn_time.isoformat())
         self.save_state()
-        schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(self.name, "spawn")
+        schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
 
     def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
         schedule.clear("spawn")

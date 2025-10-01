@@ -4,6 +4,7 @@ import random
 import re
 import time
 import schedule
+import functools
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Tuple
 from collections import deque
@@ -60,7 +61,9 @@ class Adventure(SimpleCommandModule):
                 if room:
                     remaining_seconds = int(close_time - now)
                     if remaining_seconds > 0:
-                        schedule.every(remaining_seconds).seconds.do(lambda: self._close_adventure_scheduled(room)).tag(f"{self.name}-close-{room}")
+                        schedule.every(remaining_seconds).seconds.do(
+                            functools.partial(self._close_adventure_scheduled, room)
+                        ).tag(f"{self.name}-close-{room}")
 
     def on_unload(self):
         super().on_unload()
@@ -189,7 +192,9 @@ class Adventure(SimpleCommandModule):
 
     def _schedule_adventure_close(self, room: str, delay: int) -> None:
         schedule.clear(f"{self.name}-close-{room}")
-        schedule.every(delay).seconds.do(lambda: self._close_adventure_scheduled(room)).tag(f"{self.name}-close-{room}")
+        schedule.every(delay).seconds.do(
+            functools.partial(self._close_adventure_scheduled, room)
+        ).tag(f"{self.name}-close-{room}")
 
     def _close_adventure_scheduled(self, expected_room: str):
         current = self.get_state("current")

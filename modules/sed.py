@@ -1,6 +1,7 @@
 # modules/sed.py
 # A module for handling sed-like s/find/replace syntax.
 import re
+import signal
 from collections import deque
 from .base import SimpleCommandModule
 
@@ -50,19 +51,83 @@ class Sed(SimpleCommandModule):
         channel_history = self.history.get(event.target, [])
         mode = self.get_config_value("mode", event.target, "self")
         
+        # Validate regex complexity to prevent ReDoS attacks
+        if not self._is_safe_regex(find):
+            return False
+
         # Iterate backwards through history, skipping the sed command itself
         for prev_chat in reversed(list(channel_history)[:-1]):
             if mode == "self" and prev_chat['user'].lower() != username.lower():
                 continue
 
             try:
-                new_msg, count = re.subn(find, replace, prev_chat['msg'], count=1)
+                # Perform substitution with timeout protection
+                new_msg, count = self._safe_regex_subn(find, replace, prev_chat['msg'])
                 if count > 0:
                     title = self.bot.title_for(username)
                     self.safe_reply(connection, event, f"As {title} noted, {prev_chat['user']} meant to say: {new_msg}")
                     self._add_to_history(event.target, prev_chat['user'], new_msg)
                     return True
-            except re.error:
-                return False # Invalid regex, ignore silently.
+            except (re.error, ValueError):
+                return False # Invalid or dangerous regex, ignore silently.
 
         return False
+
+    def _is_safe_regex(self, pattern: str) -> bool:
+        """Check if regex pattern is safe from ReDoS attacks."""
+        # Reject patterns that are too long
+        if len(pattern) > 100:
+            return False
+
+        # Reject patterns with excessive repetition operators
+        dangerous_patterns = [
+            r'\+.*\+',      # Multiple consecutive +
+            r'\*.*\*',      # Multiple consecutive *
+            r'\{.*\{',      # Nested quantifiers
+            r'(\(.*\+.*\))\+',  # Nested groups with repetition
+            r'(\(.*\*.*\))\*',  # Nested groups with repetition
+        ]
+
+        for dangerous in dangerous_patterns:
+            if re.search(dangerous, pattern):
+                self.bot.log_debug(f"[sed] Rejected potentially dangerous regex: {pattern}")
+                return False
+
+        return True
+
+    def _safe_regex_subn(self, pattern: str, replacement: str, text: str, timeout: int = 1) -> tuple:
+        """Perform regex substitution with timeout protection."""
+        result = [None, 0]
+        exception = [None]
+
+        def handler(signum, frame):
+            raise TimeoutError("Regex operation timed out")
+
+        def do_subn():
+            try:
+                result[0], result[1] = re.subn(pattern, replacement, text, count=1)
+            except Exception as e:
+                exception[0] = e
+
+        # On Unix-like systems, use signal-based timeout
+        try:
+            old_handler = signal.signal(signal.SIGALRM, handler)
+            signal.alarm(timeout)
+            try:
+                do_subn()
+            finally:
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+            if exception[0]:
+                raise exception[0]
+            if result[0] is None:
+                raise ValueError("Regex operation failed")
+
+            return result[0], result[1]
+        except (AttributeError, ValueError):
+            # signal.SIGALRM not available on Windows, fall back to simple execution
+            do_subn()
+            if exception[0]:
+                raise exception[0]
+            return result[0], result[1]

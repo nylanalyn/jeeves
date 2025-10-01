@@ -98,7 +98,7 @@ class Roadtrip(SimpleCommandModule):
             else:
                 remaining_seconds = (report_time - now).total_seconds()
                 if remaining_seconds > 0:
-                    schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(self.name, f"report-{report['id']}")
+                    schedule.every(remaining_seconds).seconds.do(self._report_roadtrip_events, report_id=report["id"]).tag(f"{self.name}-report-{report['id']}")
 
     def on_unload(self):
         super().on_unload()
@@ -184,7 +184,7 @@ class Roadtrip(SimpleCommandModule):
             "close_epoch": close_time
         })
         self.save_state()
-        schedule.every(join_window).seconds.do(self._close_rsvp_window).tag(self.name, f"rsvp-close")
+        schedule.every(join_window).seconds.do(self._close_rsvp_window).tag(f"{self.name}-rsvp-close")
 
     def _close_rsvp_window(self):
         current_rsvp = self.get_state("current_rsvp")
@@ -206,7 +206,7 @@ class Roadtrip(SimpleCommandModule):
                 "participants": participants, "report_at": report_at.isoformat()
             })
             self.set_state("pending_reports", pending_reports)
-            schedule.every(report_delay).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(self.name, f"report-{report_id}")
+            schedule.every(report_delay).seconds.do(self._report_roadtrip_events, report_id=report_id).tag(f"{self.name}-report-{report_id}")
         else:
             self.safe_say(f"No takers. I shall cancel the reservation for {dest}.", target=room)
         

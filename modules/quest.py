@@ -5,6 +5,7 @@ import time
 import re
 import schedule
 import threading
+import operator
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -46,7 +47,7 @@ class Quest(SimpleCommandModule):
             else:
                 remaining = close_time - now
                 if remaining > 0:
-                    schedule.every(remaining).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+                    schedule.every(remaining).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
 
     def on_unload(self):
         super().on_unload()
@@ -88,6 +89,10 @@ class Quest(SimpleCommandModule):
         self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
         self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob")
         self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join")
+        self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit",
+                              description="Use a medkit to heal yourself or another player")
+        self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
+                              description="View your medkits and active injuries")
 
     def _format_timedelta(self, future_datetime: datetime) -> str:
         """Formats the time remaining until a future datetime."""
@@ -161,11 +166,60 @@ class Quest(SimpleCommandModule):
             if not re.match(r'^[0-9\s\+\-\*/\.\(\)]+$', safe_expr):
                 self.log_debug(f"Invalid XP formula: {xp_formula}, using default")
                 return level * 100
-            # Evaluate with no builtins for safety
-            return int(eval(safe_expr, {'__builtins__': {}}, {}))
+            # Use safe calculation instead of eval
+            result = self._safe_calculate(safe_expr)
+            return int(result)
         except Exception as e:
             self.log_debug(f"Error calculating XP formula '{xp_formula}': {e}, using default")
             return level * 100
+
+    def _safe_calculate(self, expr: str) -> float:
+        """Safely evaluates a simple mathematical expression without eval()."""
+        # Remove whitespace
+        expr = expr.replace(" ", "")
+
+        # Simple recursive descent parser for basic arithmetic
+        def parse_expr(s, pos):
+            left, pos = parse_term(s, pos)
+            while pos < len(s) and s[pos] in ('+', '-'):
+                op = s[pos]
+                pos += 1
+                right, pos = parse_term(s, pos)
+                left = operator.add(left, right) if op == '+' else operator.sub(left, right)
+            return left, pos
+
+        def parse_term(s, pos):
+            left, pos = parse_factor(s, pos)
+            while pos < len(s) and s[pos] in ('*', '/'):
+                op = s[pos]
+                pos += 1
+                right, pos = parse_factor(s, pos)
+                left = operator.mul(left, right) if op == '*' else operator.truediv(left, right)
+            return left, pos
+
+        def parse_factor(s, pos):
+            if pos < len(s) and s[pos] == '(':
+                pos += 1
+                result, pos = parse_expr(s, pos)
+                if pos < len(s) and s[pos] == ')':
+                    pos += 1
+                return result, pos
+            else:
+                # Parse number
+                start = pos
+                while pos < len(s) and (s[pos].isdigit() or s[pos] == '.'):
+                    pos += 1
+                if start == pos:
+                    raise ValueError("Expected number")
+                return float(s[start:pos]), pos
+
+        try:
+            result, pos = parse_expr(expr, 0)
+            if pos != len(expr):
+                raise ValueError("Unexpected characters in expression")
+            return result
+        except Exception:
+            raise ValueError("Invalid expression")
 
     def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
         players = self.get_state("players", {})
@@ -181,6 +235,7 @@ class Quest(SimpleCommandModule):
         player.setdefault("last_win_date", None)
         player.setdefault("energy", max_energy)
         player.setdefault("win_streak", 0)
+        player.setdefault("medkits", 0)  # New: medkit inventory
         player["name"] = username
 
         return player
@@ -269,16 +324,18 @@ class Quest(SimpleCommandModule):
 
     def _cmd_quest_master(self, connection, event, msg, username, match):
         if not self.is_enabled(event.target): return False
-        
+
         args_str = (match.group(1) or "").strip()
         args = args_str.split()
-        
+
         difficulty_mods = self.get_config_value("difficulty", default={})
         if not args_str or args[0].lower() in difficulty_mods:
             return self._handle_solo_quest(connection, event, username, args[0] if args else "normal")
 
         subcommand = args[0].lower()
-        if subcommand == "profile":
+        if subcommand == "medic":
+            return self._handle_medic_quest(connection, event, username)
+        elif subcommand == "profile":
             return self._handle_profile(connection, event, username, args[1:])
         elif subcommand == "story":
             return self._handle_story(connection, event, username)
@@ -287,7 +344,7 @@ class Quest(SimpleCommandModule):
         elif subcommand in ("top", "leaderboard"):
             return self._handle_leaderboard(connection, event)
         else:
-            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <profile|story|class|top>'.")
+            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <medic|profile|story|class|top>'.")
             return True
 
     def _handle_profile(self, connection, event, username, args):
@@ -308,10 +365,15 @@ class Quest(SimpleCommandModule):
         max_energy = self.get_config_value("energy_system.max_energy", event.target, default=10)
         
         profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}", f"Class: {player_class.capitalize()}"]
-        
+
         if self.get_config_value("energy_system.enabled", event.target, default=True):
             profile_parts.append(f"Energy: {player['energy']}/{max_energy}")
-            
+
+        # Show medkit count
+        medkit_count = player.get("medkits", 0)
+        if medkit_count > 0:
+            profile_parts.append(f"Medkits: {medkit_count}")
+
         if 'active_injury' in player:
             injury = player['active_injury']
             try:
@@ -540,13 +602,12 @@ class Quest(SimpleCommandModule):
         if not self.is_enabled(event.target):
             return False
 
-        # Check global cooldown for mob encounters (per channel)
-        mob_cooldown = self.get_config_value("mob_cooldown_seconds", event.target, default=3600)  # 1 hour default
-        if not self.check_rate_limit(f"mob_spawn_{event.target}", mob_cooldown):
-            self.safe_reply(connection, event, "A mob encounter was recently completed. Please wait before summoning another.")
-            return True
-
         with self.mob_lock:
+            # Check global cooldown for mob encounters (per channel)
+            mob_cooldown = self.get_config_value("mob_cooldown_seconds", event.target, default=3600)  # 1 hour default
+            if not self.check_rate_limit(f"mob_spawn_{event.target}", mob_cooldown):
+                self.safe_reply(connection, event, "A mob encounter was recently completed. Please wait before summoning another.")
+                return True
             active_mob = self.get_state("active_mob")
             if active_mob:
                 self.safe_reply(connection, event, "A mob encounter is already active! Use !join to participate.")
@@ -594,7 +655,7 @@ class Quest(SimpleCommandModule):
             self.save_state()
 
             # Schedule mob window close
-            schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(self.name, "mob_close")
+            schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
 
             rare_prefix = "[RARE] " if is_rare else ""
             self.safe_reply(connection, event, f"{username} has summoned a {rare_prefix}Level {monster_level} {monster['name']}! Others can !join within {join_window_seconds} seconds!")
@@ -733,3 +794,240 @@ class Quest(SimpleCommandModule):
 
             self.save_state()
 
+            self.set_state("active_mob", None)
+            schedule.clear(self.name)
+
+        return schedule.CancelJob
+
+    # ===== MEDIC QUEST SYSTEM =====
+
+    def _handle_medic_quest(self, connection, event, username):
+        """Handle medic quests - fight for medkits instead of XP."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if medic quests are enabled
+        if not self.get_config_value("medic_quests.enabled", event.target, default=True):
+            self.safe_reply(connection, event, "Medic quests are not available at this time.")
+            return True
+
+        # Check energy
+        energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+        if energy_enabled and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted for a quest, {self.bot.title_for(username)}.")
+            return True
+
+        # Check and clear expired injury
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+
+        # Check if player is injured
+        if 'active_injury' in player:
+            injury = player['active_injury']
+            self.safe_reply(connection, event, f"You are still recovering from your {injury['name']}. Rest or use a !medkit to heal.")
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+            return True
+
+        # Deduct energy
+        if energy_enabled:
+            player["energy"] = max(0, player["energy"] - 1)
+
+        # Select monster
+        monsters = self.get_config_value("monsters", event.target, default=[])
+        suitable_monsters = [m for m in monsters if isinstance(m, dict) and m.get("min_level", 1) <= player["level"]]
+        if not suitable_monsters:
+            suitable_monsters = monsters
+
+        if not suitable_monsters:
+            self.safe_reply(connection, event, "No suitable monsters found for medic quest.")
+            return True
+
+        monster = random.choice(suitable_monsters)
+        monster_level = max(1, player["level"] + random.randint(-2, 2))
+
+        # Calculate combat with energy penalties
+        energy_win_chance_mod = 0.0
+        if energy_enabled:
+            energy_penalties = self.get_config_value("energy_system.penalties", event.target, default=[])
+            for penalty in sorted(energy_penalties, key=lambda x: x['threshold'], reverse=True):
+                if player["energy"] <= penalty["threshold"]:
+                    energy_win_chance_mod = penalty.get("win_chance_modifier", 0.0)
+
+        win_chance = self._calculate_win_chance(player["level"], monster_level, energy_win_chance_mod)
+        won = random.random() < win_chance
+
+        # Get action text and format it with user and monster placeholders
+        action_template = self._get_action_text(user_id)
+        monster_name_with_level = f"Level {monster_level} {monster['name']}"
+        action = action_template.format(user=username, monster=monster_name_with_level)
+
+        if won:
+            # Victory - check for medkit drop
+            drop_chance = self.get_config_value("medic_quests.medkit_drop_chance", event.target, default=0.25)
+            got_medkit = random.random() < drop_chance
+
+            if got_medkit:
+                player["medkits"] = player.get("medkits", 0) + 1
+                result_msg = f"{action}. Victory! You found a MEDKIT! (Total: {player['medkits']})"
+            else:
+                result_msg = f"{action}. Victory! No medkit found this time."
+
+        else:
+            # Defeat - chance of injury
+            result_msg = f"{action}. Defeat!"
+
+            # Apply injury (injury_chance is already handled inside _apply_injury)
+            injury_msg = self._apply_injury(user_id, username, event.target)
+            if injury_msg:
+                result_msg += f" {injury_msg}"
+
+        # Save player state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        self.safe_reply(connection, event, result_msg)
+        return True
+
+    def _cmd_medkit(self, connection, event, msg, username, match):
+        """Use a medkit to heal yourself or another player."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_arg = (match.group(1) or "").strip() if match else ""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if player has medkits
+        if player.get("medkits", 0) < 1:
+            self.safe_reply(connection, event, f"You don't have any medkits, {self.bot.title_for(username)}. Try !quest medic to earn one!")
+            return True
+
+        # Determine target
+        if not target_arg:
+            # Self-heal
+            return self._medkit_self_heal(connection, event, username, user_id, player)
+        else:
+            # Heal another player
+            return self._medkit_heal_other(connection, event, username, user_id, player, target_arg)
+
+    def _medkit_self_heal(self, connection, event, username, user_id, player):
+        """Use medkit on self."""
+        if 'active_injury' not in player:
+            self.safe_reply(connection, event, f"You're not injured, {self.bot.title_for(username)}!")
+            return True
+
+        injury = player['active_injury']
+
+        # Remove injury
+        del player['active_injury']
+
+        # Deduct medkit
+        player["medkits"] -= 1
+
+        # Grant partial XP
+        base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
+        self_heal_multiplier = self.get_config_value("medic_quests.self_heal_xp_multiplier", event.target, default=0.75)
+        xp_reward = int(base_xp * self_heal_multiplier)
+
+        xp_messages = self._grant_xp(user_id, username, xp_reward, is_win=False, is_crit=False)
+
+        # Save state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        response = f"{self.bot.title_for(username)} uses a medkit and recovers from {injury['name']}! (+{xp_reward} XP)"
+        if xp_messages:
+            response += " " + " ".join(xp_messages)
+
+        self.safe_reply(connection, event, response)
+        return True
+
+    def _medkit_heal_other(self, connection, event, username, user_id, player, target_nick):
+        """Use medkit on another player."""
+        target_id = self.bot.get_user_id(target_nick)
+        target_player = self._get_player(target_id, target_nick)
+
+        # Check if target is injured
+        if 'active_injury' not in target_player:
+            self.safe_reply(connection, event, f"{target_nick} is not injured!")
+            return True
+
+        injury = target_player['active_injury']
+
+        # Remove target's injury
+        del target_player['active_injury']
+
+        # Deduct medkit from healer
+        player["medkits"] -= 1
+
+        # Grant MASSIVE XP to healer
+        base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
+        altruistic_multiplier = self.get_config_value("medic_quests.altruistic_heal_xp_multiplier", event.target, default=3.0)
+        xp_reward = int(base_xp * altruistic_multiplier)
+
+        xp_messages = self._grant_xp(user_id, username, xp_reward, is_win=True, is_crit=False)
+
+        # Save both players
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        players_state[target_id] = target_player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        response = f"{self.bot.title_for(username)} uses a medkit to heal {target_nick}'s {injury['name']}! Such selflessness is rewarded with +{xp_reward} XP!"
+        if xp_messages:
+            response += " " + " ".join(xp_messages)
+
+        self.safe_reply(connection, event, response)
+        return True
+
+    def _cmd_inventory(self, connection, event, msg, username, match):
+        """Show player's medkits and injuries."""
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check and clear expired injury
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+
+        title = self.bot.title_for(username)
+        medkit_count = player.get("medkits", 0)
+
+        inv_parts = [f"{title}'s inventory:"]
+
+        # Medkits
+        if medkit_count > 0:
+            inv_parts.append(f"Medkits: {medkit_count}")
+        else:
+            inv_parts.append("No medkits (try !quest medic)")
+
+        # Active injury
+        if 'active_injury' in player:
+            injury = player['active_injury']
+            try:
+                expires_at = datetime.fromisoformat(injury['expires_at'])
+                time_left = self._format_timedelta(expires_at)
+                inv_parts.append(f"Injury: {injury['name']} (recovers in {time_left})")
+            except (ValueError, TypeError):
+                inv_parts.append(f"Injury: {injury['name']}")
+        else:
+            inv_parts.append("Status: Healthy")
+
+        self.safe_reply(connection, event, " | ".join(inv_parts))
+        return True

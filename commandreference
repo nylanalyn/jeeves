@@ -94,7 +94,9 @@ Quest Module (quest.py)
 
     !quest [difficulty]: Starts a solo RPG quest. Difficulty can be easy, normal, or hard.
 
-    !quest profile [user]: Displays your or another user's RPG profile (level, XP, etc.).
+    !quest medic: Go on a medic quest - fight monsters for medkit rewards instead of XP.
+
+    !quest profile [user]: Displays your or another user's RPG profile (level, XP, energy, medkits, etc.).
 
     !quest story: Retrieves a random piece of world lore.
 
@@ -103,6 +105,10 @@ Quest Module (quest.py)
     !mob: Starts a group boss fight, opening a window for others to join.
 
     !join: Joins a currently forming mob.
+
+    !medkit [target_user]: Use a medkit to heal an injury. Without a target, heals yourself for partial XP. With a target, heals another player for massive XP (3x normal)!
+
+    !inventory (or !inv): View your medkits and active injuries.
 
 Roadtrip Module (roadtrip.py)
 

@@ -5,6 +5,7 @@ import requests
 import xml.etree.ElementTree as ET
 import random
 import html
+import time
 from urllib.parse import quote_plus
 from typing import Optional, Dict, Any
 
@@ -122,12 +123,20 @@ class Convenience(ModuleBase):
     def _get_url_title(self, url: str) -> Optional[str]:
         headers = {'User-Agent': 'JeevesIRCBot/1.0 (URL Title Fetcher)'}
         max_bytes = self.get_config_value("titles_max_download_bytes", default=32768)
+        max_total_time = 10  # Maximum 10 seconds for entire download
         try:
             with self.http_session.get(url, headers=headers, stream=True, timeout=5) as response:
                 response.raise_for_status()
                 content_chunk = response.iter_content(chunk_size=1024, decode_unicode=True)
                 html_head = ""
+                start_time = time.time()
+
                 for part in content_chunk:
+                    # Check total elapsed time
+                    if time.time() - start_time > max_total_time:
+                        self.log_debug(f"URL title fetch timed out for {url}")
+                        break
+
                     html_head += part
                     title_match = self.TITLE_PATTERN.search(html_head)
                     if title_match:
@@ -138,6 +147,7 @@ class Convenience(ModuleBase):
                         return html.unescape(title_text)
                     if len(html_head) > max_bytes:
                         break
+
                 if html_head:
                     soup = BeautifulSoup(html_head, 'html.parser')
                     if soup.title and soup.title.string:

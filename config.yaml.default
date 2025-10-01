@@ -238,6 +238,13 @@ quest:
           xp_win_min: 200
           xp_win_max: 400
 
+    # --- Medic Quest System ---
+    medic_quests:
+        enabled: true
+        medkit_drop_chance: 0.25  # 25% chance to find a medkit on victory
+        self_heal_xp_multiplier: 0.75  # 75% of normal quest XP for self-heal
+        altruistic_heal_xp_multiplier: 3.0  # 3x normal quest XP for healing others
+
     # --- New Group Content Settings ---
     group_content:
         join_window_seconds: 90

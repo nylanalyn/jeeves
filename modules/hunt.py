@@ -210,7 +210,7 @@ class Hunt(SimpleCommandModule):
         schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
 
     def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
-        schedule.clear("spawn")
+        schedule.clear(f"{self.name}-spawn")
         animals = self.get_config_value("animals", default=[])
         if not animals:
             self._schedule_next_spawn()

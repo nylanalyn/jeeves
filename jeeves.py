@@ -51,15 +51,42 @@ class StateManager:
         self._load()
 
     def _load(self):
+        backup_path = self.path.with_suffix(".json.backup")
+
+        # Create backup if state exists and is valid
+        if self.path.exists():
+            try:
+                with open(self.path, "r") as f:
+                    test_load = json.load(f)
+                # Valid JSON, create backup
+                import shutil
+                shutil.copy2(self.path, backup_path)
+                print(f"[state] Created backup: {backup_path}", file=sys.stderr)
+            except Exception as e:
+                print(f"[state] Warning: Could not backup state file: {e}", file=sys.stderr)
+
+        # Try to load main state file
         try:
             if self.path.exists():
                 with open(self.path, "r") as f:
                     self._state = json.load(f)
+                print(f"[state] Loaded state from {self.path}", file=sys.stderr)
             else:
                 self._state = {}
         except Exception as e:
-            print(f"[state] load error: {e}", file=sys.stderr)
-            self._state = {}
+            print(f"[state] Load error: {e}", file=sys.stderr)
+            # Try to restore from backup
+            if backup_path.exists():
+                try:
+                    print(f"[state] Attempting to restore from backup...", file=sys.stderr)
+                    with open(backup_path, "r") as f:
+                        self._state = json.load(f)
+                    print(f"[state] Successfully restored from backup!", file=sys.stderr)
+                except Exception as backup_err:
+                    print(f"[state] Backup restore failed: {backup_err}", file=sys.stderr)
+                    self._state = {}
+            else:
+                self._state = {}
 
     def get_state(self):
         with self._lock:
@@ -86,7 +113,7 @@ class StateManager:
         self._dirty = True
         if self._save_timer:
             self._save_timer.cancel()
-        self._save_timer = threading.Timer(1.0, self._save_now)
+        self._save_timer = threading.Timer(0.5, self._save_now)
         self._save_timer.daemon = True
         self._save_timer.start()
 

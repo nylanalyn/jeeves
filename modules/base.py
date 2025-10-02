@@ -153,10 +153,12 @@ class ModuleBase(ABC):
 
     # --- Command and Message Handling ---
 
-    def register_command(self, pattern: Union[str, re.Pattern], 
+    def register_command(self, pattern: Union[str, re.Pattern],
                         handler: Callable, name: str, admin_only: bool = False,
                         cooldown: float = 0.0, description: str = "") -> None:
         if isinstance(pattern, str):
+            # Convert ! prefix to accept both ! and ,
+            pattern = pattern.replace(r'!', r'[!,]')
             pattern = re.compile(pattern, re.IGNORECASE)
         command_id = f"{self.name}_{name}"
         self._commands[command_id] = {

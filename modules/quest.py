@@ -123,10 +123,14 @@ class Quest(SimpleCommandModule):
                 del player_data['active_injury']
         return player_data, None
         
-    def _apply_injury(self, user_id: str, username: str, channel: str) -> Optional[str]:
+    def _apply_injury(self, user_id: str, username: str, channel: str, is_medic_quest: bool = False) -> Optional[str]:
         """Applies a random injury to a player upon defeat."""
         injury_config = self.get_config_value("injury_system", channel, default={})
         if not injury_config.get("enabled"): return None
+
+        # Don't apply injuries during medic quests
+        if is_medic_quest:
+            return None
 
         injury_chance = injury_config.get("injury_chance_on_loss", 0.75)
         if random.random() > injury_chance: return None
@@ -137,7 +141,7 @@ class Quest(SimpleCommandModule):
         injury = random.choice(possible_injuries)
         duration = timedelta(hours=injury.get("duration_hours", 1))
         expires_at = datetime.now(UTC) + duration
-        
+
         players = self.get_state("players")
         player = self._get_player(user_id, username)
         player['active_injury'] = {
@@ -149,7 +153,7 @@ class Quest(SimpleCommandModule):
         players[user_id] = player
         self.set_state("players", players)
         self.save_state()
-        
+
         return f"You have sustained an injury: {injury['name']}! {injury['description']}"
 
 
@@ -881,7 +885,7 @@ class Quest(SimpleCommandModule):
             result_msg = f"{action}. Defeat!"
 
             # Apply injury (injury_chance is already handled inside _apply_injury)
-            injury_msg = self._apply_injury(user_id, username, event.target)
+            injury_msg = self._apply_injury(user_id, username, event.target, is_medic_quest=True)
             if injury_msg:
                 result_msg += f" {injury_msg}"
 

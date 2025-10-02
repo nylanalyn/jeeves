@@ -20,37 +20,74 @@ class Clock(SimpleCommandModule):
         self.tf = TimezoneFinder()
 
     def _register_commands(self):
-        self.register_command(r"^\s*!time\s*$", self._cmd_time_self, 
-                              name="time", 
+        self.register_command(r"^\s*!time\s*$", self._cmd_time_self,
+                              name="time",
                               description="Get the local time for your default location.",
                               cooldown=10.0) # Base cooldown, can be overridden per-channel
-        self.register_command(r"^\s*!time\s+(.+)$", self._cmd_time_other, 
-                              name="time other", 
+        self.register_command(r"^\s*!time\s+(12|24)\s*$", self._cmd_time_format,
+                              name="time format",
+                              description="Set your preferred time format (12-hour or 24-hour).",
+                              cooldown=5.0)
+        self.register_command(r"^\s*!time\s+(.+)$", self._cmd_time_other,
+                              name="time other",
                               description="Get the time for another user, a location, or the server.",
                               cooldown=10.0)
 
-    def _get_time_for_coords(self, lat: str, lon: str, country_code: Optional[str] = None) -> Optional[str]:
+    def _get_time_for_coords(self, lat: str, lon: str, country_code: Optional[str] = None, user_id: Optional[str] = None) -> Optional[str]:
         """Gets the formatted local time string for a given latitude and longitude."""
         tz_name = self.tf.timezone_at(lng=float(lon), lat=float(lat))
         if not tz_name: return None
         try:
             timezone = pytz.timezone(tz_name)
             local_time = datetime.now(timezone)
-            # Use 24-hour format only for European countries, 12-hour for everywhere else
-            european_countries = {
-                'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
-                'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
-                'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB', 'UK', 'NO',
-                'CH', 'IS', 'LI', 'MC', 'SM', 'VA', 'AD', 'AL', 'BA', 'BY',
-                'ME', 'MK', 'MD', 'RS', 'UA'
-            }
-            if country_code and country_code in european_countries:
+
+            # Check if user has a format preference set
+            use_24hr = False
+            if user_id:
+                user_prefs = self.get_state("user_time_preferences", {})
+                if user_id in user_prefs:
+                    use_24hr = user_prefs[user_id] == 24
+                else:
+                    # Default based on location: 24-hour for European countries, 12-hour elsewhere
+                    european_countries = {
+                        'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
+                        'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+                        'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB', 'UK', 'NO',
+                        'CH', 'IS', 'LI', 'MC', 'SM', 'VA', 'AD', 'AL', 'BA', 'BY',
+                        'ME', 'MK', 'MD', 'RS', 'UA'
+                    }
+                    use_24hr = country_code and country_code in european_countries
+            else:
+                # No user context, default based on country code
+                european_countries = {
+                    'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
+                    'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+                    'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB', 'UK', 'NO',
+                    'CH', 'IS', 'LI', 'MC', 'SM', 'VA', 'AD', 'AL', 'BA', 'BY',
+                    'ME', 'MK', 'MD', 'RS', 'UA'
+                }
+                use_24hr = country_code and country_code in european_countries
+
+            if use_24hr:
                 time_format = '%A, %B %d at %H:%M %Z'
             else:
                 time_format = '%A, %B %d at %I:%M %p %Z'
             return local_time.strftime(time_format)
         except pytz.UnknownTimeZoneError:
             return None
+
+    def _cmd_time_format(self, connection, event, msg, username, match):
+        """Handle !time 12 or !time 24 to set user's time format preference."""
+        user_id = self.bot.get_user_id(username)
+        format_choice = int(match.group(1))
+
+        user_prefs = self.get_state("user_time_preferences", {})
+        user_prefs[user_id] = format_choice
+        self.set_state("user_time_preferences", user_prefs)
+        self.save_state()
+
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your time format has been set to {format_choice}-hour.")
+        return True
 
     def _cmd_time_self(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
@@ -60,7 +97,7 @@ class Clock(SimpleCommandModule):
         if user_loc:
             location_name = user_loc.get('short_name') or user_loc.get('display_name') or 'your location'
             country_code = user_loc.get('country_code')
-            time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'], country_code)
+            time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'], country_code, user_id)
 
             if time_str:
                 self.safe_reply(connection, event, f"For {self.bot.title_for(username)}, the time in {location_name} is {time_str}.")
@@ -91,7 +128,7 @@ class Clock(SimpleCommandModule):
             if target_user_loc:
                 location_name = target_user_loc.get('short_name') or target_user_loc.get('display_name') or 'their location'
                 country_code = target_user_loc.get('country_code')
-                time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'], country_code)
+                time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'], country_code, target_user_id)
                 if time_str:
                     self.safe_reply(connection, event, f"The time for {self.bot.title_for(query)} in {location_name} is {time_str}.")
                 else:
@@ -103,7 +140,9 @@ class Clock(SimpleCommandModule):
             lat, lon, geo_data = geo_data_tuple
             display_name = self._format_location_name(geo_data)
             country_code = geo_data.get('address', {}).get('country_code', '').upper()
-            time_str = self._get_time_for_coords(lat, lon, country_code)
+            # When querying arbitrary locations, use the requesting user's preference
+            requesting_user_id = self.bot.get_user_id(username)
+            time_str = self._get_time_for_coords(lat, lon, country_code, requesting_user_id)
             if time_str:
                 self.safe_reply(connection, event, f"The current time in {display_name} is {time_str}.")
             else:

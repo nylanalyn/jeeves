@@ -29,14 +29,19 @@ class Clock(SimpleCommandModule):
                               description="Get the time for another user, a location, or the server.",
                               cooldown=10.0)
 
-    def _get_time_for_coords(self, lat: str, lon: str) -> Optional[str]:
+    def _get_time_for_coords(self, lat: str, lon: str, country_code: Optional[str] = None) -> Optional[str]:
         """Gets the formatted local time string for a given latitude and longitude."""
         tz_name = self.tf.timezone_at(lng=float(lon), lat=float(lat))
         if not tz_name: return None
         try:
             timezone = pytz.timezone(tz_name)
             local_time = datetime.now(timezone)
-            return local_time.strftime('%A, %B %d at %I:%M %p %Z')
+            # Use 12-hour format for US locations, 24-hour for everywhere else
+            if country_code == 'US':
+                time_format = '%A, %B %d at %I:%M %p %Z'
+            else:
+                time_format = '%A, %B %d at %H:%M %Z'
+            return local_time.strftime(time_format)
         except pytz.UnknownTimeZoneError:
             return None
 
@@ -47,8 +52,9 @@ class Clock(SimpleCommandModule):
 
         if user_loc:
             location_name = user_loc.get('short_name') or user_loc.get('display_name') or 'your location'
-            time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'])
-            
+            country_code = user_loc.get('country_code')
+            time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'], country_code)
+
             if time_str:
                 self.safe_reply(connection, event, f"For {self.bot.title_for(username)}, the time in {location_name} is {time_str}.")
             else:
@@ -77,7 +83,8 @@ class Clock(SimpleCommandModule):
             target_user_loc = user_locations.get(target_user_id)
             if target_user_loc:
                 location_name = target_user_loc.get('short_name') or target_user_loc.get('display_name') or 'their location'
-                time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'])
+                country_code = target_user_loc.get('country_code')
+                time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'], country_code)
                 if time_str:
                     self.safe_reply(connection, event, f"The time for {self.bot.title_for(query)} in {location_name} is {time_str}.")
                 else:
@@ -88,7 +95,8 @@ class Clock(SimpleCommandModule):
         if geo_data_tuple:
             lat, lon, geo_data = geo_data_tuple
             display_name = self._format_location_name(geo_data)
-            time_str = self._get_time_for_coords(lat, lon)
+            country_code = geo_data.get('address', {}).get('country_code', '').upper()
+            time_str = self._get_time_for_coords(lat, lon, country_code)
             if time_str:
                 self.safe_reply(connection, event, f"The current time in {display_name} is {time_str}.")
             else:

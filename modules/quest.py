@@ -64,7 +64,7 @@ class Quest(SimpleCommandModule):
     def _regenerate_energy(self):
         energy_enabled = self.get_config_value("energy_system.enabled", default=True)
         if not energy_enabled: return
-        
+
         players, updated = self.get_state("players", {}), False
         max_energy = self.get_config_value("energy_system.max_energy", default=10)
 
@@ -72,10 +72,17 @@ class Quest(SimpleCommandModule):
             if isinstance(player_data, dict):
                 # Check for and apply injury effects on regeneration
                 regen_amount = 1
+
+                # Migrate old format
                 if 'active_injury' in player_data:
-                    injury = player_data['active_injury']
-                    regen_mod = injury.get('effects', {}).get('energy_regen_modifier', 0)
-                    regen_amount += regen_mod
+                    player_data['active_injuries'] = [player_data['active_injury']]
+                    del player_data['active_injury']
+
+                # Sum all injury effects
+                if 'active_injuries' in player_data:
+                    for injury in player_data['active_injuries']:
+                        regen_mod = injury.get('effects', {}).get('energy_regen_modifier', 0)
+                        regen_amount += regen_mod
 
                 if regen_amount > 0 and player_data.get("energy", max_energy) < max_energy:
                     player_data["energy"] = min(max_energy, player_data.get("energy", 0) + regen_amount)
@@ -110,21 +117,41 @@ class Quest(SimpleCommandModule):
 
 
     def _check_and_clear_injury(self, player_data: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
-        """Checks if a player's injury has expired and clears it if so."""
+        """Checks if a player's injuries have expired and clears them if so."""
+        # Migrate old single injury format to list
         if 'active_injury' in player_data:
-            injury = player_data['active_injury']
-            try:
-                expires_at = datetime.fromisoformat(injury['expires_at'])
-                if datetime.now(UTC) >= expires_at:
-                    recovery_message = f"You have recovered from your {injury['name']}."
-                    del player_data['active_injury']
-                    return player_data, recovery_message
-            except (ValueError, TypeError):
-                del player_data['active_injury']
+            old_injury = player_data['active_injury']
+            player_data['active_injuries'] = [old_injury]
+            del player_data['active_injury']
+
+        if 'active_injuries' in player_data and player_data['active_injuries']:
+            now = datetime.now(UTC)
+            expired_injuries = []
+            active_injuries = []
+
+            for injury in player_data['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    if now >= expires_at:
+                        expired_injuries.append(injury['name'])
+                    else:
+                        active_injuries.append(injury)
+                except (ValueError, TypeError):
+                    # Invalid injury, skip it
+                    pass
+
+            player_data['active_injuries'] = active_injuries
+
+            if expired_injuries:
+                if len(expired_injuries) == 1:
+                    return player_data, f"You have recovered from your {expired_injuries[0]}."
+                else:
+                    return player_data, f"You have recovered from: {', '.join(expired_injuries)}."
+
         return player_data, None
         
     def _apply_injury(self, user_id: str, username: str, channel: str, is_medic_quest: bool = False) -> Optional[str]:
-        """Applies a random injury to a player upon defeat."""
+        """Applies a random injury to a player upon defeat. Max 2 of each injury type."""
         injury_config = self.get_config_value("injury_system", channel, default={})
         if not injury_config.get("enabled"): return None
 
@@ -139,22 +166,44 @@ class Quest(SimpleCommandModule):
         if not possible_injuries: return None
 
         injury = random.choice(possible_injuries)
-        duration = timedelta(hours=injury.get("duration_hours", 1))
-        expires_at = datetime.now(UTC) + duration
 
         players = self.get_state("players")
         player = self._get_player(user_id, username)
-        player['active_injury'] = {
+
+        # Migrate old format if needed
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Initialize injuries list if not present
+        if 'active_injuries' not in player:
+            player['active_injuries'] = []
+
+        # Check if player already has 2 of this injury type
+        injury_count = sum(1 for inj in player['active_injuries'] if inj['name'] == injury['name'])
+        if injury_count >= 2:
+            return f"You narrowly avoid another {injury['name']}!"
+
+        # Apply the injury
+        duration = timedelta(hours=injury.get("duration_hours", 1))
+        expires_at = datetime.now(UTC) + duration
+
+        new_injury = {
             "name": injury['name'],
             "description": injury['description'],
             "expires_at": expires_at.isoformat(),
             "effects": injury.get('effects', {})
         }
+
+        player['active_injuries'].append(new_injury)
         players[user_id] = player
         self.set_state("players", players)
         self.save_state()
 
-        return f"You have sustained an injury: {injury['name']}! {injury['description']}"
+        if injury_count == 1:
+            return f"You have sustained another {injury['name']}! {injury['description']}"
+        else:
+            return f"You have sustained an injury: {injury['name']}! {injury['description']}"
 
 
     def _calculate_xp_for_level(self, level: int) -> int:
@@ -273,11 +322,22 @@ class Quest(SimpleCommandModule):
             player["last_win_date"] = today
             messages.append(f"You receive a 'First Victory of the Day' bonus of {first_win_bonus} XP!")
 
+        # Migrate old format
         if 'active_injury' in player:
-            xp_mult = player['active_injury'].get('effects', {}).get('xp_multiplier', 1.0)
-            if xp_mult != 1.0:
-                total_xp_gain = int(total_xp_gain * xp_mult)
-                messages.append(f"Your injury reduces your XP gain...")
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Apply all injury XP multipliers
+        if 'active_injuries' in player:
+            total_xp_mult = 1.0
+            for injury in player['active_injuries']:
+                xp_mult = injury.get('effects', {}).get('xp_multiplier', 1.0)
+                total_xp_mult *= xp_mult
+
+            if total_xp_mult != 1.0:
+                total_xp_gain = int(total_xp_gain * total_xp_mult)
+                if total_xp_mult < 1.0:
+                    messages.append(f"Your injuries reduce your XP gain...")
 
         player["xp"] += total_xp_gain
         leveled_up = False
@@ -378,13 +438,23 @@ class Quest(SimpleCommandModule):
         if medkit_count > 0:
             profile_parts.append(f"Medkits: {medkit_count}")
 
+        # Migrate old format
         if 'active_injury' in player:
-            injury = player['active_injury']
-            try:
-                expires_at = datetime.fromisoformat(injury['expires_at'])
-                time_left = self._format_timedelta(expires_at)
-                profile_parts.append(f"Status: Injured ({injury['name']}, recovers in {time_left})")
-            except (ValueError, TypeError): pass
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_strs = []
+            for injury in player['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    time_left = self._format_timedelta(expires_at)
+                    injury_strs.append(f"{injury['name']} ({time_left})")
+                except (ValueError, TypeError):
+                    injury_strs.append(injury['name'])
+
+            if injury_strs:
+                profile_parts.append(f"Status: Injured ({', '.join(injury_strs)})")
 
         self.safe_reply(connection, event, " | ".join(profile_parts))
         return True
@@ -826,10 +896,18 @@ class Quest(SimpleCommandModule):
         if recovery_msg:
             self.safe_reply(connection, event, recovery_msg)
 
-        # Check if player is injured
+        # Migrate old format
         if 'active_injury' in player:
-            injury = player['active_injury']
-            self.safe_reply(connection, event, f"You are still recovering from your {injury['name']}. Rest or use a !medkit to heal.")
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Check if player is injured
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_names = [inj['name'] for inj in player['active_injuries']]
+            if len(injury_names) == 1:
+                self.safe_reply(connection, event, f"You are still recovering from your {injury_names[0]}. Rest or use a !medkit to heal.")
+            else:
+                self.safe_reply(connection, event, f"You are still recovering from: {', '.join(injury_names)}. Rest or use a !medkit to heal.")
             players_state = self.get_state("players", {})
             players_state[user_id] = player
             self.set_state("players", players_state)
@@ -922,14 +1000,20 @@ class Quest(SimpleCommandModule):
 
     def _medkit_self_heal(self, connection, event, username, user_id, player):
         """Use medkit on self."""
-        if 'active_injury' not in player:
+        # Migrate old format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        if 'active_injuries' not in player or not player['active_injuries']:
             self.safe_reply(connection, event, f"You're not injured, {self.bot.title_for(username)}!")
             return True
 
-        injury = player['active_injury']
+        injury_names = [inj['name'] for inj in player['active_injuries']]
+        injury_count = len(injury_names)
 
-        # Remove injury
-        del player['active_injury']
+        # Remove all injuries
+        player['active_injuries'] = []
 
         # Deduct medkit
         player["medkits"] -= 1
@@ -947,7 +1031,11 @@ class Quest(SimpleCommandModule):
         self.set_state("players", players_state)
         self.save_state()
 
-        response = f"{self.bot.title_for(username)} uses a medkit and recovers from {injury['name']}! (+{xp_reward} XP)"
+        if injury_count == 1:
+            response = f"{self.bot.title_for(username)} uses a medkit and recovers from {injury_names[0]}! (+{xp_reward} XP)"
+        else:
+            response = f"{self.bot.title_for(username)} uses a medkit and recovers from all injuries ({', '.join(injury_names)})! (+{xp_reward} XP)"
+
         if xp_messages:
             response += " " + " ".join(xp_messages)
 
@@ -959,15 +1047,21 @@ class Quest(SimpleCommandModule):
         target_id = self.bot.get_user_id(target_nick)
         target_player = self._get_player(target_id, target_nick)
 
+        # Migrate old format
+        if 'active_injury' in target_player:
+            target_player['active_injuries'] = [target_player['active_injury']]
+            del target_player['active_injury']
+
         # Check if target is injured
-        if 'active_injury' not in target_player:
+        if 'active_injuries' not in target_player or not target_player['active_injuries']:
             self.safe_reply(connection, event, f"{target_nick} is not injured!")
             return True
 
-        injury = target_player['active_injury']
+        injury_names = [inj['name'] for inj in target_player['active_injuries']]
+        injury_count = len(injury_names)
 
-        # Remove target's injury
-        del target_player['active_injury']
+        # Remove all target's injuries
+        target_player['active_injuries'] = []
 
         # Deduct medkit from healer
         player["medkits"] -= 1
@@ -986,7 +1080,11 @@ class Quest(SimpleCommandModule):
         self.set_state("players", players_state)
         self.save_state()
 
-        response = f"{self.bot.title_for(username)} uses a medkit to heal {target_nick}'s {injury['name']}! Such selflessness is rewarded with +{xp_reward} XP!"
+        if injury_count == 1:
+            response = f"{self.bot.title_for(username)} uses a medkit to heal {target_nick}'s {injury_names[0]}! Such selflessness is rewarded with +{xp_reward} XP!"
+        else:
+            response = f"{self.bot.title_for(username)} uses a medkit to heal all of {target_nick}'s injuries ({', '.join(injury_names)})! Such selflessness is rewarded with +{xp_reward} XP!"
+
         if xp_messages:
             response += " " + " ".join(xp_messages)
 
@@ -1021,15 +1119,26 @@ class Quest(SimpleCommandModule):
         else:
             inv_parts.append("No medkits (try !quest medic)")
 
-        # Active injury
+        # Migrate old format
         if 'active_injury' in player:
-            injury = player['active_injury']
-            try:
-                expires_at = datetime.fromisoformat(injury['expires_at'])
-                time_left = self._format_timedelta(expires_at)
-                inv_parts.append(f"Injury: {injury['name']} (recovers in {time_left})")
-            except (ValueError, TypeError):
-                inv_parts.append(f"Injury: {injury['name']}")
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Active injuries
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_strs = []
+            for injury in player['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    time_left = self._format_timedelta(expires_at)
+                    injury_strs.append(f"{injury['name']} (recovers in {time_left})")
+                except (ValueError, TypeError):
+                    injury_strs.append(injury['name'])
+
+            if len(injury_strs) == 1:
+                inv_parts.append(f"Injury: {injury_strs[0]}")
+            else:
+                inv_parts.append(f"Injuries: {', '.join(injury_strs)}")
         else:
             inv_parts.append("Status: Healthy")
 

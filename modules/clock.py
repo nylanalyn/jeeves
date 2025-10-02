@@ -36,11 +36,18 @@ class Clock(SimpleCommandModule):
         try:
             timezone = pytz.timezone(tz_name)
             local_time = datetime.now(timezone)
-            # Use 12-hour format for US locations, 24-hour for everywhere else
-            if country_code == 'US':
-                time_format = '%A, %B %d at %I:%M %p %Z'
-            else:
+            # Use 24-hour format only for European countries, 12-hour for everywhere else
+            european_countries = {
+                'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR',
+                'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL',
+                'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB', 'UK', 'NO',
+                'CH', 'IS', 'LI', 'MC', 'SM', 'VA', 'AD', 'AL', 'BA', 'BY',
+                'ME', 'MK', 'MD', 'RS', 'UA'
+            }
+            if country_code and country_code in european_countries:
                 time_format = '%A, %B %d at %H:%M %Z'
+            else:
+                time_format = '%A, %B %d at %I:%M %p %Z'
             return local_time.strftime(time_format)
         except pytz.UnknownTimeZoneError:
             return None

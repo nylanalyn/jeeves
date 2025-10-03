@@ -49,35 +49,39 @@ class Memos(SimpleCommandModule):
         user_id = self.bot.get_user_id(username)
         channel = event.target
         pending = self.get_state("pending", {})
-        
+
         # Only look for memos in the current channel
         channel_memos = pending.get(channel, {})
         bucket = channel_memos.get(user_id, [])
-        
+
         if not bucket:
             return False
-            
+
         max_deliver = self.get_config_value("max_deliver_per_burst", channel, default=3)
         to_deliver = bucket[:max_deliver]
         remainder = bucket[max_deliver:]
-        
+
         for item in to_deliver:
             line = self._deliver_line(username, item.get("from","?"), item.get("text",""))
             self.safe_reply(connection, event, line)
-            
+
         if remainder:
-            self.safe_reply(connection, event, f"{username}, there are {len(remainder)} additional memo(s) for you in this channel; say '!memos mine' to review them.")
-        
-        if remainder:
+            # Update pending state with remaining memos
             pending[channel][user_id] = remainder
+            self.set_state("pending", pending)
+            self.save_state()
+
+            # Inform user there are more, but they'll be delivered on next message
+            self.safe_reply(connection, event, f"{username}, you have {len(remainder)} more memo(s). They will be delivered when you next speak (or use '!memos mine' to view all).")
+            return True
         else:
+            # All memos delivered, clean up
             del pending[channel][user_id]
             if not pending[channel]: # Clean up empty channel dict
                 del pending[channel]
-
-        self.set_state("pending", pending)
-        self.save_state()
-        return True # Memos were delivered, so we can consider the event handled.
+            self.set_state("pending", pending)
+            self.save_state()
+            return True
 
     def _third_person_says(self, from_user: str) -> str:
         pron = self.bot.pronouns_for(from_user).lower()

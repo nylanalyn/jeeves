@@ -6,6 +6,8 @@ import re
 import schedule
 import threading
 import operator
+import json
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 
@@ -26,13 +28,40 @@ class Quest(SimpleCommandModule):
     def __init__(self, bot):
         """Initializes the Quest module's state and configuration."""
         super().__init__(bot)
-        
+
         self.set_state("players", self.get_state("players", {}))
         self.set_state("active_mob", self.get_state("active_mob", None))
         self.set_state("player_classes", self.get_state("player_classes", {}))
         self.mob_lock = threading.Lock()
         self.save_state()
         self._is_loaded = False
+
+        # Load quest content from JSON file
+        self.content = self._load_content()
+
+    def _load_content(self) -> Dict[str, Any]:
+        """Load quest content from quest_content.json file."""
+        content_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quest_content.json")
+
+        try:
+            with open(content_file, 'r') as f:
+                content = json.load(f)
+                self.log_debug(f"Loaded quest content from {content_file}")
+                return content
+        except FileNotFoundError:
+            self.log_debug(f"Quest content file not found at {content_file}, using config fallback")
+            return {}
+        except json.JSONDecodeError as e:
+            self.log_debug(f"Error parsing quest content JSON: {e}, using config fallback")
+            return {}
+
+    def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
+        """Get content from JSON file, falling back to config if not found."""
+        # Try to get from content file first
+        if key in self.content:
+            return self.content[key]
+        # Fall back to config
+        return self.get_config_value(key, channel, default=default)
 
     def on_load(self):
         super().on_load()
@@ -92,6 +121,9 @@ class Quest(SimpleCommandModule):
             self.save_state()
 
     def _register_commands(self):
+        # Register more specific patterns first
+        self.register_command(r"^\s*!quest\s+reload\s*$", self._cmd_quest_reload, name="quest_reload",
+                              admin_only=True, description="Reload quest content from quest_content.json")
         self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
         self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
         self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob")
@@ -444,12 +476,12 @@ class Quest(SimpleCommandModule):
     def _get_action_text(self, user_id: str) -> str:
         player_classes = self.get_state("player_classes", {})
         player_class = player_classes.get(user_id)
-        classes_config = self.get_config_value("classes", default={})
+        classes_config = self._get_content("classes", default={})
 
         if player_class and player_class in classes_config:
             return random.choice(classes_config[player_class].get("actions", ["..."]))
-        
-        story_beats = self.get_config_value("story_beats", default={})
+
+        story_beats = self._get_content("story_beats", default={})
         return random.choice(story_beats.get('actions', ["..."]))
 
     def _cmd_quest_master(self, connection, event, msg, username, match):
@@ -548,7 +580,7 @@ class Quest(SimpleCommandModule):
     def _handle_story(self, connection, event, username):
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
-        world_lore = self.get_config_value("world_lore", default=[])
+        world_lore = self._get_content("world_lore", default=[])
         lore = random.choice(world_lore) if world_lore else "The world is vast."
         
         history = ""
@@ -563,7 +595,7 @@ class Quest(SimpleCommandModule):
         user_id = self.bot.get_user_id(username)
         chosen_class = args[0].lower() if args else ""
         player_classes = self.get_state("player_classes", {})
-        classes_config = self.get_config_value("classes", default={})
+        classes_config = self._get_content("classes", default={})
 
         if not chosen_class:
             current_class = player_classes.get(user_id, "no class")
@@ -693,8 +725,8 @@ class Quest(SimpleCommandModule):
         player_level = player['level']
 
         monster_spawn_chance = self.get_config_value("monster_spawn_chance", event.target, default=0.8)
-        monsters = self.get_config_value("monsters", event.target, default=[])
-        story_beats = self.get_config_value("story_beats", event.target, default={})
+        monsters = self._get_content("monsters", event.target, default=[])
+        story_beats = self._get_content("story_beats", event.target, default={})
 
         if random.random() > monster_spawn_chance:
             self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence.")
@@ -847,7 +879,7 @@ class Quest(SimpleCommandModule):
                 return True
 
             # Select a mob monster
-            monsters = self.get_config_value("monsters", event.target, default=[])
+            monsters = self._get_content("monsters", event.target, default=[])
             avg_level = player['level']
             possible_monsters = [m for m in monsters if isinstance(m, dict) and m['min_level'] <= avg_level + 5]
 
@@ -1069,7 +1101,7 @@ class Quest(SimpleCommandModule):
             player["energy"] = max(0, player["energy"] - 1)
 
         # Select monster
-        monsters = self.get_config_value("monsters", event.target, default=[])
+        monsters = self._get_content("monsters", event.target, default=[])
         suitable_monsters = [m for m in monsters if isinstance(m, dict) and m.get("min_level", 1) <= player["level"]]
         if not suitable_monsters:
             suitable_monsters = monsters
@@ -1293,4 +1325,22 @@ class Quest(SimpleCommandModule):
             inv_parts.append("Status: Healthy")
 
         self.safe_reply(connection, event, " | ".join(inv_parts))
+        return True
+
+    def _cmd_quest_reload(self, connection, event, msg, username, match):
+        """Reload quest content from quest_content.json file."""
+        if not self.is_enabled(event.target):
+            return False
+
+        old_monster_count = len(self.content.get("monsters", []))
+        old_story_count = len(self.content.get("story_beats", {}).get("openers", []))
+
+        # Reload content
+        self.content = self._load_content()
+
+        new_monster_count = len(self.content.get("monsters", []))
+        new_story_count = len(self.content.get("story_beats", {}).get("openers", []))
+
+        self.safe_reply(connection, event, f"Quest content reloaded from quest_content.json")
+        self.safe_reply(connection, event, f"Monsters: {old_monster_count} -> {new_monster_count} | Story openers: {old_story_count} -> {new_story_count}")
         return True

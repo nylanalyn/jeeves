@@ -1,0 +1,139 @@
+{
+  "world_lore": [
+    "The old manor has stood empty for decades. The locals say it watches those who pass by.",
+    "Some nights, when the fog rolls in thick, travelers report seeing figures that vanish when approached.",
+    "The graveyard keeper swears the tombstones are never in quite the same positions as he left them.",
+    "They say the woods remember every soul lost within them, and some still wander, searching for the way out.",
+    "In the basement of the abandoned hospital, there are operating rooms that smell faintly of ether... even now."
+  ],
+  "story_beats": {
+    "openers": [
+      "{user} hears a scratching sound from within the walls and investigates, finding a {monster}.",
+      "{user} notices their reflection moving independently and turns to face a {monster}.",
+      "Following a trail of bloody footprints, {user} confronts a {monster} in the shadows.",
+      "{user} feels a chill run down their spine as they realize they're being stalked by a {monster}.",
+      "The candlelight flickers and dies, leaving {user} alone in the dark with a {monster}."
+    ],
+    "actions": [
+      "{user} grabs a makeshift weapon and prepares to defend themselves against the {monster}.",
+      "{user} recites protective words they half-remember and advances on the {monster}.",
+      "With trembling hands, {user} stands their ground against the {monster}.",
+      "{user} fights down their terror and confronts the {monster} directly.",
+      "Summoning their courage, {user} engages the {monster} in a desperate struggle."
+    ]
+  },
+  "monsters": [
+    {
+      "name": "Restless Spirit",
+      "min_level": 1,
+      "max_level": 3,
+      "xp_win_min": 15,
+      "xp_win_max": 30
+    },
+    {
+      "name": "Shadow Stalker",
+      "min_level": 2,
+      "max_level": 5,
+      "xp_win_min": 20,
+      "xp_win_max": 40
+    },
+    {
+      "name": "Ghoul",
+      "min_level": 4,
+      "max_level": 8,
+      "xp_win_min": 35,
+      "xp_win_max": 70
+    },
+    {
+      "name": "Possessed Doll",
+      "min_level": 6,
+      "max_level": 10,
+      "xp_win_min": 50,
+      "xp_win_max": 100
+    },
+    {
+      "name": "Wendigo",
+      "min_level": 8,
+      "max_level": 12,
+      "xp_win_min": 70,
+      "xp_win_max": 130
+    },
+    {
+      "name": "Vengeful Revenant",
+      "min_level": 10,
+      "max_level": 15,
+      "xp_win_min": 100,
+      "xp_win_max": 180
+    },
+    {
+      "name": "Crawling Chaos",
+      "min_level": 14,
+      "max_level": 18,
+      "xp_win_min": 150,
+      "xp_win_max": 250
+    },
+    {
+      "name": "Ancient Lich",
+      "min_level": 16,
+      "max_level": 22,
+      "xp_win_min": 200,
+      "xp_win_max": 350
+    },
+    {
+      "name": "Eldritch Abomination",
+      "min_level": 20,
+      "max_level": 28,
+      "xp_win_min": 300,
+      "xp_win_max": 500
+    }
+  ],
+  "boss_monsters": [
+    {
+      "name": "The Bride in Black",
+      "min_level": 10,
+      "max_level": 20,
+      "xp_win_min": 500,
+      "xp_win_max": 1000
+    },
+    {
+      "name": "The Headless Horseman",
+      "min_level": 15,
+      "max_level": 25,
+      "xp_win_min": 800,
+      "xp_win_max": 1500
+    },
+    {
+      "name": "Dracula, Lord of the Night",
+      "min_level": 20,
+      "max_level": 30,
+      "xp_win_min": 1200,
+      "xp_win_max": 2000
+    }
+  ],
+  "classes": {
+    "hunter": {
+      "description": "A seasoned monster hunter who knows the old ways.",
+      "actions": [
+        "{user} loads silver rounds and takes aim at the {monster}.",
+        "{user} draws a blessed blade and charges the {monster}.",
+        "With practiced precision, {user} strikes at the {monster}'s weakness."
+      ]
+    },
+    "occultist": {
+      "description": "A practitioner of forbidden knowledge and dark rituals.",
+      "actions": [
+        "{user} traces eldritch symbols in the air, binding the {monster}.",
+        "{user} chants in a dead language, channeling power against the {monster}.",
+        "Drawing from ancient tomes, {user} unleashes a curse upon the {monster}."
+      ]
+    },
+    "survivor": {
+      "description": "Someone who has escaped death too many times to count.",
+      "actions": [
+        "{user} uses guerrilla tactics to outmaneuver the {monster}.",
+        "{user} exploits the environment to trap the {monster}.",
+        "Thinking quickly, {user} turns the tables on the {monster}."
+      ]
+    }
+  }
+}

@@ -84,7 +84,81 @@ Phase 4: World Events (Planned)
 
         Failure results in a temporary, channel-wide debuff.
 
-Phase 5: Additional Enhancement Ideas (Future Consideration)
+Phase 5: Prestige System (Complete!)
+
+    Level Cap at 20:
+
+        Players stop gaining XP at level 20 and are prompted to prestige.
+
+    !quest prestige Command:
+
+        Resets player to level 1 but grants permanent stacking bonuses.
+
+        Prestige bonuses rotate through three types (win chance → XP → energy):
+            - Prestige 1: +5% win chance
+            - Prestige 2: +5% win + 25% XP
+            - Prestige 3: +5% win + 25% XP + 1 energy
+            - Prestige 4-6: Bonuses increase (10% win, 50% XP, 2 energy)
+            - Prestige 7-9: Further increases (15% win, 75% XP, 3 energy)
+            - Prestige 10 (MAX): +20% win + 100% XP + 3 energy
+
+        Resets: medkits, injuries, win streak (keeps class choice).
+
+    Profile & Leaderboard Updates:
+
+        Shows prestige level prominently.
+
+        Leaderboard sorts by prestige first, then level, then XP.
+
+Phase 6: Challenge Paths (Planned - Post-Prestige Content)
+
+    Concept: Optional hard-mode prestige runs that unlock permanent abilities.
+
+    !quest prestige challenge [1-5] Command:
+
+        Replaces normal prestige with a challenge path prestige.
+
+        Each path has a unique handicap for the entire 1-20 journey.
+
+        Completing the path (reaching level 20) unlocks a daily-use ability.
+
+        Abilities are permanent and stack across multiple challenge completions.
+
+    Proposed Challenge Paths:
+
+        1. Iron Man Path:
+            - Handicap: Max energy reduced to 5 (half normal)
+            - Reward: !quest energy - Instantly restore to full energy (once per day)
+
+        2. Glass Cannon Path:
+            - Handicap: -15% win chance on all combat
+            - Reward: !quest focus - Guarantee next attack is a critical hit (once per day)
+
+        3. Pacifist Path:
+            - Handicap: Can only gain XP through medic quests
+            - Reward: !quest meditate - Instantly heal all active injuries (once per day)
+
+        4. Speedrunner Path:
+            - Handicap: Gain only 50% XP from all sources
+            - Reward: !quest haste - Remove cooldown on next 3 quests (once per day)
+
+        5. Masochist Path:
+            - Handicap: Always fight monsters +5 levels above you
+            - Reward: !quest phoenix - Auto-resurrect from next defeat, keep all XP (once per day)
+
+    Implementation Notes:
+
+        Track completed challenge paths in player state as a list (e.g., ["iron_man", "speedrunner"]).
+
+        Show completed paths in profile with badges/icons.
+
+        Track daily cooldowns for unlocked abilities separately from quest cooldowns.
+
+        Abilities should feel powerful enough to justify the grind.
+
+        Challenge paths are repeatable but only grant the reward once.
+
+Phase 7: Additional Enhancement Ideas (Future Consideration)
 
     Daily Challenges:
 

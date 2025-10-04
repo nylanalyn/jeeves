@@ -226,6 +226,43 @@ class Quest(SimpleCommandModule):
             self.log_debug(f"Error calculating XP formula '{xp_formula}': {e}, using default")
             return level * 100
 
+    def _get_prestige_win_bonus(self, prestige: int) -> float:
+        """Calculate win chance bonus from prestige level."""
+        if prestige == 0:
+            return 0.0
+        elif prestige <= 3:
+            return 0.05  # Prestige 1-3: +5%
+        elif prestige <= 6:
+            return 0.10  # Prestige 4-6: +10%
+        elif prestige <= 9:
+            return 0.15  # Prestige 7-9: +15%
+        else:  # prestige == 10
+            return 0.20  # Prestige 10: +20%
+
+    def _get_prestige_xp_bonus(self, prestige: int) -> float:
+        """Calculate XP multiplier from prestige level."""
+        if prestige < 2:
+            return 1.0  # No bonus for prestige 0-1
+        elif prestige < 5:
+            return 1.25  # Prestige 2-4: +25%
+        elif prestige < 8:
+            return 1.50  # Prestige 5-7: +50%
+        elif prestige < 10:
+            return 1.75  # Prestige 8-9: +75%
+        else:  # prestige == 10
+            return 2.0  # Prestige 10: +100% (double XP)
+
+    def _get_prestige_energy_bonus(self, prestige: int) -> int:
+        """Calculate max energy bonus from prestige level."""
+        if prestige < 3:
+            return 0  # No bonus for prestige 0-2
+        elif prestige < 6:
+            return 1  # Prestige 3-5: +1 energy
+        elif prestige < 9:
+            return 2  # Prestige 6-8: +2 energy
+        else:  # prestige >= 9
+            return 3  # Prestige 9-10: +3 energy
+
     def _safe_calculate(self, expr: str) -> float:
         """Safely evaluates a simple mathematical expression without eval()."""
         # Remove whitespace
@@ -283,12 +320,18 @@ class Quest(SimpleCommandModule):
 
         max_energy = self.get_config_value("energy_system.max_energy", default=10)
 
+        # Add prestige bonus to max energy
+        prestige_level = player.get("prestige", 0)
+        prestige_energy_bonus = self._get_prestige_energy_bonus(prestige_level)
+        max_energy += prestige_energy_bonus
+
         player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
         player.setdefault("last_fight", None)
         player.setdefault("last_win_date", None)
         player.setdefault("energy", max_energy)
         player.setdefault("win_streak", 0)
         player.setdefault("medkits", 0)  # New: medkit inventory
+        player.setdefault("prestige", 0)  # New: prestige level
         player["name"] = username
 
         return player
@@ -296,6 +339,17 @@ class Quest(SimpleCommandModule):
     def _grant_xp(self, user_id: str, username: str, amount: int, is_win: bool = False, is_crit: bool = False) -> List[str]:
         player, messages, total_xp_gain = self._get_player(user_id, username), [], int(amount)
         today = datetime.now(UTC).date().isoformat()
+
+        # Check if player is at level cap
+        level_cap = self.get_config_value("level_cap", default=20)
+        if player.get("level", 1) >= level_cap:
+            messages.append(f"You are at the level cap ({level_cap}). Use !quest prestige to reset and gain permanent bonuses!")
+            return messages
+
+        # Apply prestige XP bonus
+        prestige_xp_mult = self._get_prestige_xp_bonus(player.get("prestige", 0))
+        if prestige_xp_mult > 1.0:
+            total_xp_gain = int(total_xp_gain * prestige_xp_mult)
 
         # Critical hit bonus (2x XP)
         if is_crit:
@@ -342,18 +396,27 @@ class Quest(SimpleCommandModule):
         player["xp"] += total_xp_gain
         leveled_up = False
 
-        while player["xp"] >= player["xp_to_next_level"]:
+        while player["xp"] >= player["xp_to_next_level"] and player["level"] < level_cap:
             player["xp"] -= player["xp_to_next_level"]
             player["level"] += 1
             player["xp_to_next_level"] = self._calculate_xp_for_level(player["level"])
             leveled_up = True
+
+        # Cap XP at level cap
+        if player["level"] >= level_cap:
+            player["xp"] = 0
+            player["xp_to_next_level"] = 0
 
         players = self.get_state("players")
         players[user_id] = player
         self.set_state("players", players)
 
         if leveled_up:
-            messages.append(f"Congratulations, you have reached Level {player['level']}!")
+            if player["level"] >= level_cap:
+                messages.append(f"*** LEVEL {player['level']} ACHIEVED - MAXIMUM POWER! ***")
+                messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
+            else:
+                messages.append(f"Congratulations, you have reached Level {player['level']}!")
         return messages
 
     def _deduct_xp(self, user_id: str, username: str, amount: int):
@@ -365,14 +428,17 @@ class Quest(SimpleCommandModule):
         players[user_id] = player
         self.set_state("players", players)
 
-    def _calculate_win_chance(self, player_level: float, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0) -> float:
+    def _calculate_win_chance(self, player_level: float, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0, prestige_level: int = 0) -> float:
         base_win = self.get_config_value("combat.base_win_chance", default=0.5)
         level_mod = self.get_config_value("combat.win_chance_level_modifier", default=0.1)
         min_win = self.get_config_value("combat.min_win_chance", default=0.05)
         max_win = self.get_config_value("combat.max_win_chance", default=0.95)
-        
+
+        # Add prestige bonus
+        prestige_modifier = self._get_prestige_win_bonus(prestige_level)
+
         level_diff = player_level - monster_level
-        chance = base_win + (level_diff * level_mod) + energy_modifier + group_modifier
+        chance = base_win + (level_diff * level_mod) + energy_modifier + group_modifier + prestige_modifier
         return max(min_win, min(max_win, chance))
 
     def _get_action_text(self, user_id: str) -> str:
@@ -407,8 +473,10 @@ class Quest(SimpleCommandModule):
             return self._handle_class(connection, event, username, args[1:])
         elif subcommand in ("top", "leaderboard"):
             return self._handle_leaderboard(connection, event)
+        elif subcommand == "prestige":
+            return self._handle_prestige(connection, event, username)
         else:
-            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <medic|profile|story|class|top>'.")
+            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <medic|profile|story|class|top|prestige>'.")
             return True
 
     def _handle_profile(self, connection, event, username, args):
@@ -427,8 +495,26 @@ class Quest(SimpleCommandModule):
         title = self.bot.title_for(player["name"])
         player_class = self.get_state("player_classes", {}).get(user_id, "None")
         max_energy = self.get_config_value("energy_system.max_energy", event.target, default=10)
-        
-        profile_parts = [f"Profile for {title}: Level {player['level']}", f"XP: {player['xp']}/{player['xp_to_next_level']}", f"Class: {player_class.capitalize()}"]
+
+        # Add prestige to max energy display
+        prestige_level = player.get("prestige", 0)
+        prestige_energy_bonus = self._get_prestige_energy_bonus(prestige_level)
+        max_energy += prestige_energy_bonus
+
+        # Build profile header with prestige
+        if prestige_level > 0:
+            profile_parts = [f"Profile for {title}: Level {player['level']} (Prestige {prestige_level})"]
+        else:
+            profile_parts = [f"Profile for {title}: Level {player['level']}"]
+
+        # Add XP (unless at level cap)
+        level_cap = self.get_config_value("level_cap", event.target, default=20)
+        if player['level'] < level_cap:
+            profile_parts.append(f"XP: {player['xp']}/{player['xp_to_next_level']}")
+        else:
+            profile_parts.append(f"XP: MAX (use !quest prestige to ascend)")
+
+        profile_parts.append(f"Class: {player_class.capitalize()}")
 
         if self.get_config_value("energy_system.enabled", event.target, default=True):
             profile_parts.append(f"Energy: {player['energy']}/{max_energy}")
@@ -494,18 +580,77 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
         return True
 
+    def _handle_prestige(self, connection, event, username):
+        """Handle prestige - reset to level 1 with permanent bonuses."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if player is at level cap
+        level_cap = self.get_config_value("level_cap", default=20)
+        if player.get("level", 1) < level_cap:
+            self.safe_reply(connection, event, f"You must reach level {level_cap} before you can prestige. Current level: {player['level']}")
+            return True
+
+        # Check if already at max prestige
+        max_prestige = self.get_config_value("max_prestige", default=10)
+        current_prestige = player.get("prestige", 0)
+        if current_prestige >= max_prestige:
+            self.safe_reply(connection, event, f"You are already at maximum prestige ({max_prestige})! You are a legend!")
+            return True
+
+        # Calculate new prestige level
+        new_prestige = current_prestige + 1
+
+        # Reset player to level 1
+        player["level"] = 1
+        player["xp"] = 0
+        player["xp_to_next_level"] = self._calculate_xp_for_level(1)
+        player["prestige"] = new_prestige
+        player["win_streak"] = 0
+        player["medkits"] = 0
+        player["active_injuries"] = []
+        if "active_injury" in player:
+            del player["active_injury"]
+
+        # Save player state
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        # Build prestige announcement
+        win_bonus = self._get_prestige_win_bonus(new_prestige)
+        xp_bonus = self._get_prestige_xp_bonus(new_prestige)
+        energy_bonus = self._get_prestige_energy_bonus(new_prestige)
+
+        bonus_parts = []
+        if win_bonus > 0:
+            bonus_parts.append(f"+{int(win_bonus * 100)}% win chance")
+        if xp_bonus > 1.0:
+            bonus_parts.append(f"{int((xp_bonus - 1.0) * 100)}% bonus XP")
+        if energy_bonus > 0:
+            bonus_parts.append(f"+{energy_bonus} max energy")
+
+        bonus_text = ", ".join(bonus_parts) if bonus_parts else "preparing for future bonuses"
+
+        self.safe_reply(connection, event, f"*** {self.bot.title_for(username)} HAS ASCENDED TO PRESTIGE {new_prestige}! ***")
+        self.safe_reply(connection, event, f"Reborn at Level 1 with permanent bonuses: {bonus_text}")
+        self.safe_reply(connection, event, f"The cycle begins anew, but you are forever changed...")
+
+        return True
+
     def _handle_leaderboard(self, connection, event):
-        """Display top 10 players by level and XP."""
+        """Display top 10 players by prestige, level, and XP."""
         players = self.get_state("players", {})
 
         if not players:
             self.safe_reply(connection, event, "No players have embarked on quests yet.")
             return True
 
-        # Sort by level (desc), then XP (desc)
+        # Sort by prestige (desc), then level (desc), then XP (desc)
         sorted_players = sorted(
             [(uid, p) for uid, p in players.items() if isinstance(p, dict)],
-            key=lambda x: (x[1].get("level", 1), x[1].get("xp", 0)),
+            key=lambda x: (x[1].get("prestige", 0), x[1].get("level", 1), x[1].get("xp", 0)),
             reverse=True
         )[:10]
 
@@ -514,9 +659,14 @@ class Quest(SimpleCommandModule):
             name = player.get("name", "Unknown")
             level = player.get("level", 1)
             xp = player.get("xp", 0)
+            prestige = player.get("prestige", 0)
             streak = player.get("win_streak", 0)
+
+            # Format prestige indicator
+            prestige_str = f"P{prestige} " if prestige > 0 else ""
             streak_indicator = f" [Streak: {streak}]" if streak > 0 else ""
-            self.safe_reply(connection, event, f"{idx}. {name} - Level {level} ({xp} XP){streak_indicator}")
+
+            self.safe_reply(connection, event, f"{idx}. {name} - {prestige_str}Level {level} ({xp} XP){streak_indicator}")
 
         return True
 
@@ -598,8 +748,8 @@ class Quest(SimpleCommandModule):
 
             if applied_penalty_msgs:
                 self.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(applied_penalty_msgs)}).")
-        
-        win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod)
+
+        win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
         win = random.random() < win_chance
         player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
         
@@ -939,7 +1089,7 @@ class Quest(SimpleCommandModule):
                 if player["energy"] <= penalty["threshold"]:
                     energy_win_chance_mod = penalty.get("win_chance_modifier", 0.0)
 
-        win_chance = self._calculate_win_chance(player["level"], monster_level, energy_win_chance_mod)
+        win_chance = self._calculate_win_chance(player["level"], monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
         won = random.random() < win_chance
 
         # Get action text and format it with user and monster placeholders

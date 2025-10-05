@@ -40,98 +40,165 @@ def load_config():
         print(f"[boot] error loading config.yaml: {e}", file=sys.stderr)
         return {}
 
-# ----- State Manager & Plugin Manager -----
-class StateManager:
-    def __init__(self, path):
-        self.path = path
-        self._lock = threading.RLock()
-        self._dirty = False
-        self._state = {}
-        self._save_timer = None
-        self._load()
+# ----- Multi-File State Manager -----
+class MultiFileStateManager:
+    """
+    Manages multiple state files for different categories of data.
+    - state.json: Core config and non-critical module data
+    - games.json: Game state (quest, hunt, bell, adventure, roadtrip)
+    - users.json: User profiles, locations, memos
+    - stats.json: Statistics and tracking data (coffee, courtesy)
+    """
 
-    def _load(self):
-        backup_path = self.path.with_suffix(".json.backup")
+    STATE_FILE_MAPPING = {
+        # Game modules
+        'quest': 'games',
+        'hunt': 'games',
+        'bell': 'games',
+        'adventure': 'games',
+        'roadtrip': 'games',
+        # User data modules
+        'users': 'users',
+        'weather': 'users',
+        'memos': 'users',
+        'profiles': 'users',
+        # Stats modules
+        'coffee': 'stats',
+        'courtesy': 'stats',
+        'leveling': 'stats',
+        # Everything else uses 'state' (config storage)
+    }
 
-        # Create backup if state exists and is valid
-        if self.path.exists():
+    def __init__(self, base_dir):
+        self.base_dir = Path(base_dir)
+        self._locks = {
+            'state': threading.RLock(),
+            'games': threading.RLock(),
+            'users': threading.RLock(),
+            'stats': threading.RLock(),
+        }
+        self._states = {}
+        self._dirty = {}
+        self._save_timers = {}
+
+        for file_type in ['state', 'games', 'users', 'stats']:
+            self._states[file_type] = {}
+            self._dirty[file_type] = False
+            self._save_timers[file_type] = None
+
+        self._load_all()
+
+    def _get_path(self, file_type):
+        """Get the path for a given file type."""
+        return self.base_dir / f"{file_type}.json"
+
+    def _load_all(self):
+        """Load all state files."""
+        for file_type in ['state', 'games', 'users', 'stats']:
+            self._load_file(file_type)
+
+    def _load_file(self, file_type):
+        """Load a specific state file with backup support."""
+        path = self._get_path(file_type)
+        backup_path = path.with_suffix(".json.backup")
+
+        # Create backup if file exists and is valid
+        if path.exists():
             try:
-                with open(self.path, "r") as f:
+                with open(path, "r") as f:
                     test_load = json.load(f)
-                # Valid JSON, create backup
-                import shutil
-                shutil.copy2(self.path, backup_path)
+                shutil.copy2(path, backup_path)
                 print(f"[state] Created backup: {backup_path}", file=sys.stderr)
             except Exception as e:
-                print(f"[state] Warning: Could not backup state file: {e}", file=sys.stderr)
+                print(f"[state] Warning: Could not backup {file_type}.json: {e}", file=sys.stderr)
 
-        # Try to load main state file
+        # Try to load main file
         try:
-            if self.path.exists():
-                with open(self.path, "r") as f:
-                    self._state = json.load(f)
-                print(f"[state] Loaded state from {self.path}", file=sys.stderr)
+            if path.exists():
+                with open(path, "r") as f:
+                    self._states[file_type] = json.load(f)
+                print(f"[state] Loaded {file_type}.json", file=sys.stderr)
             else:
-                self._state = {}
+                self._states[file_type] = {}
+                print(f"[state] No existing {file_type}.json, starting fresh", file=sys.stderr)
         except Exception as e:
-            print(f"[state] Load error: {e}", file=sys.stderr)
+            print(f"[state] Load error for {file_type}.json: {e}", file=sys.stderr)
             # Try to restore from backup
             if backup_path.exists():
                 try:
-                    print(f"[state] Attempting to restore from backup...", file=sys.stderr)
+                    print(f"[state] Attempting to restore {file_type}.json from backup...", file=sys.stderr)
                     with open(backup_path, "r") as f:
-                        self._state = json.load(f)
-                    print(f"[state] Successfully restored from backup!", file=sys.stderr)
+                        self._states[file_type] = json.load(f)
+                    print(f"[state] Successfully restored {file_type}.json from backup!", file=sys.stderr)
                 except Exception as backup_err:
-                    print(f"[state] Backup restore failed: {backup_err}", file=sys.stderr)
-                    self._state = {}
+                    print(f"[state] Backup restore failed for {file_type}.json: {backup_err}", file=sys.stderr)
+                    self._states[file_type] = {}
             else:
-                self._state = {}
+                self._states[file_type] = {}
+
+    def _get_file_type_for_module(self, module_name):
+        """Determine which file type a module should use."""
+        return self.STATE_FILE_MAPPING.get(module_name, 'state')
 
     def get_state(self):
-        with self._lock:
-            return json.loads(json.dumps(self._state))
+        """Get the entire main state (for backward compatibility)."""
+        with self._locks['state']:
+            return json.loads(json.dumps(self._states['state']))
 
     def update_state(self, updates):
-        with self._lock:
-            self._state.update(updates)
-            self._mark_dirty()
+        """Update the main state file (for backward compatibility)."""
+        with self._locks['state']:
+            self._states['state'].update(updates)
+            self._mark_dirty('state')
 
     def get_module_state(self, name):
-        with self._lock:
-            mods = self._state.setdefault("modules", {})
+        """Get a module's state from the appropriate file."""
+        file_type = self._get_file_type_for_module(name)
+        with self._locks[file_type]:
+            mods = self._states[file_type].setdefault("modules", {})
             return mods.setdefault(name, {})
 
     def update_module_state(self, name, updates):
-        with self._lock:
-            mods = self._state.setdefault("modules", {})
+        """Update a module's state in the appropriate file."""
+        file_type = self._get_file_type_for_module(name)
+        with self._locks[file_type]:
+            mods = self._states[file_type].setdefault("modules", {})
             mods[name] = updates
-            self._mark_dirty()
+            self._mark_dirty(file_type)
 
+    def _mark_dirty(self, file_type):
+        """Mark a specific file as dirty and schedule save."""
+        self._dirty[file_type] = True
+        if self._save_timers[file_type]:
+            self._save_timers[file_type].cancel()
+        self._save_timers[file_type] = threading.Timer(0.5, lambda: self._save_now(file_type))
+        self._save_timers[file_type].daemon = True
+        self._save_timers[file_type].start()
 
-    def _mark_dirty(self):
-        self._dirty = True
-        if self._save_timer:
-            self._save_timer.cancel()
-        self._save_timer = threading.Timer(0.5, self._save_now)
-        self._save_timer.daemon = True
-        self._save_timer.start()
-
-    def _save_now(self):
-        with self._lock:
-            if not self._dirty: return
+    def _save_now(self, file_type):
+        """Save a specific state file."""
+        with self._locks[file_type]:
+            if not self._dirty[file_type]:
+                return
             try:
-                tmp = self.path.with_suffix(".tmp")
-                tmp.write_text(json.dumps(self._state, indent=4))
-                tmp.replace(self.path)
-                self._dirty = False
+                path = self._get_path(file_type)
+                tmp = path.with_suffix(".tmp")
+                tmp.write_text(json.dumps(self._states[file_type], indent=4))
+                tmp.replace(path)
+                self._dirty[file_type] = False
+                print(f"[state] Saved {file_type}.json", file=sys.stderr)
             except Exception as e:
-                print(f"[state] save error: {e}\n{traceback.format_exc()}", file=sys.stderr)
+                print(f"[state] Save error for {file_type}.json: {e}\n{traceback.format_exc()}", file=sys.stderr)
 
     def force_save(self):
-        if self._save_timer:
-            self._save_timer.cancel()
-        self._save_now()
+        """Force save all dirty state files."""
+        for file_type in ['state', 'games', 'users', 'stats']:
+            if self._save_timers[file_type]:
+                self._save_timers[file_type].cancel()
+            self._save_now(file_type)
+
+# Backward compatibility: StateManager is now an alias
+StateManager = MultiFileStateManager
 
 class PluginManager:
     def __init__(self, bot):
@@ -490,7 +557,7 @@ def main():
         sys.exit(0)
     
     global state_manager
-    state_manager = StateManager(STATE_PATH)
+    state_manager = StateManager(CONFIG_DIR)
 
     config_from_state = state_manager.get_module_state("config")
     if not config_from_state:

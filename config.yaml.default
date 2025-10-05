@@ -32,6 +32,9 @@ api_keys:
   # It is highly recommended to secure your Shlink instance with HTTPS.
   shlink_url: "https://s.yourdomain.com"
   shlink_key: "YourShlinkAPIKey"
+  # For the weather module, PirateWeather is used for US locations (more accurate than yr.no)
+  # Get your free API key at https://pirateweather.net/
+  pirateweather: "YourPirateWeatherAPIKey"
 
 # --- Module-Specific Configurations ---
 # Each module can have its own section for configuration.

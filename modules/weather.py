@@ -11,7 +11,7 @@ def setup(bot):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "3.0.0" # Dynamic configuration refactor
+    version = "4.0.0" # Dual API support: PirateWeather for US, yr.no for international
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot):
@@ -48,7 +48,35 @@ class Weather(SimpleCommandModule):
             return True
         return False
 
-    def _get_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
+    def _get_weather_data(self, lat: str, lon: str, country_code: str = None) -> Optional[Dict[str, Any]]:
+        """Fetch weather data using PirateWeather for US locations, yr.no for others."""
+        # Determine if location is in the US
+        use_pirate = country_code == "US"
+
+        if use_pirate:
+            return self._get_pirate_weather_data(lat, lon)
+        else:
+            return self._get_met_norway_weather_data(lat, lon)
+
+    def _get_pirate_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
+        """Fetch weather from PirateWeather API (US locations)."""
+        api_key = self.bot.config.get("api_keys", {}).get("pirateweather")
+        if not api_key:
+            self._record_error("PirateWeather API key not configured")
+            return None
+
+        # PirateWeather uses DarkSky-compatible API
+        weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
+        try:
+            response = self.http_session.get(weather_url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            self._record_error(f"PirateWeather API request failed for {lat},{lon}: {e}")
+            return None
+
+    def _get_met_norway_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
+        """Fetch weather from MET Norway API (international locations)."""
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         headers = {'User-Agent': 'JeevesIRCBot/1.0'}
         try:
@@ -59,19 +87,30 @@ class Weather(SimpleCommandModule):
             self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
 
-    def _format_weather_report(self, data: Dict[str, Any], location_name: str, requester: str, target_user: Optional[str] = None) -> str:
+    def _format_weather_report(self, data: Dict[str, Any], location_name: str, requester: str, is_pirate: bool = False, target_user: Optional[str] = None) -> str:
         try:
-            now = data['properties']['timeseries'][0]['data']['instant']['details']
-            temp_c = now.get('air_temperature')
-            wind_speed_ms = float(now.get('wind_speed', 0.0))
-            wind_mph = round(wind_speed_ms * 2.237)
-            wind_kph = round(wind_speed_ms * 3.6)
-            summary_code = data['properties']['timeseries'][0]['data'].get('next_1_hours', {}).get('summary', {}).get('symbol_code', 'N/A')
-            summary = summary_code.replace('_', ' ').capitalize()
-            temp_str = f"{int((temp_c * 9 / 5) + 32)}°F/{temp_c}°C" if temp_c is not None else "N/A"
-            
+            if is_pirate:
+                # PirateWeather format (DarkSky-compatible)
+                current = data.get('currently', {})
+                temp_f = current.get('temperature')
+                temp_c = round((temp_f - 32) * 5 / 9, 1) if temp_f is not None else None
+                wind_mph = round(current.get('windSpeed', 0.0))
+                wind_kph = round(wind_mph * 1.60934)
+                summary = current.get('summary', 'N/A')
+                temp_str = f"{int(temp_f)}°F/{temp_c}°C" if temp_f is not None else "N/A"
+            else:
+                # MET Norway format
+                now = data['properties']['timeseries'][0]['data']['instant']['details']
+                temp_c = now.get('air_temperature')
+                wind_speed_ms = float(now.get('wind_speed', 0.0))
+                wind_mph = round(wind_speed_ms * 2.237)
+                wind_kph = round(wind_speed_ms * 3.6)
+                summary_code = data['properties']['timeseries'][0]['data'].get('next_1_hours', {}).get('summary', {}).get('symbol_code', 'N/A')
+                summary = summary_code.replace('_', ' ').capitalize()
+                temp_str = f"{int((temp_c * 9 / 5) + 32)}°F/{temp_c}°C" if temp_c is not None else "N/A"
+
             report = f"{summary}. Temp: {temp_str}. Wind: {wind_mph} mph / {wind_kph} kph."
-            
+
             requester_title = self.bot.title_for(requester)
             if target_user:
                 return f"As you wish, {requester_title}. The weather for {self.bot.title_for(target_user)} in {location_name} is: {report}"
@@ -82,10 +121,12 @@ class Weather(SimpleCommandModule):
 
     def _reply_with_weather(self, connection, event, location_obj, requester, target_user=None):
         location_name = location_obj.get('short_name') or location_obj.get('display_name') or 'their location'
-        
-        weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"])
+        country_code = location_obj.get('country_code', 'US').upper()
+
+        weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"], country_code)
         if weather_data:
-            report = self._format_weather_report(weather_data, location_name, requester, target_user)
+            is_pirate = country_code == "US"
+            report = self._format_weather_report(weather_data, location_name, requester, is_pirate, target_user)
             self.safe_reply(connection, event, report)
         else:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(requester)}, I could not fetch the weather.")

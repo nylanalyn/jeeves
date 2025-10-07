@@ -248,6 +248,19 @@ quest:
         self_heal_xp_multiplier: 0.75  # 75% of normal quest XP for self-heal
         altruistic_heal_xp_multiplier: 3.0  # 3x normal quest XP for healing others
 
+    # --- Search System (Item Finding) ---
+    search_system:
+        enabled: true
+        energy_cost: 1  # Energy cost per search
+        # Drop probabilities (remaining % is "nothing found")
+        medkit_chance: 0.25           # 25%
+        energy_potion_chance: 0.15    # 15%
+        lucky_charm_chance: 0.15      # 15%
+        armor_shard_chance: 0.10      # 10%
+        xp_scroll_chance: 0.10        # 10%
+        injury_chance: 0.05           # 5% (bad outcome)
+        # 20% chance to find nothing
+
     # --- New Group Content Settings ---
     group_content:
         join_window_seconds: 90

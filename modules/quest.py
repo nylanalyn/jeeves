@@ -22,7 +22,7 @@ def setup(bot):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "3.3.2" # Restored specific low-energy announcements
+    version = "4.0.0" # Added search system with items (energy potions, lucky charms, armor shards, XP scrolls)
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot):
@@ -182,7 +182,7 @@ class Quest(SimpleCommandModule):
 
         return player_data, None
         
-    def _apply_injury(self, user_id: str, username: str, channel: str, is_medic_quest: bool = False) -> Optional[str]:
+    def _apply_injury(self, user_id: str, username: str, channel: str, is_medic_quest: bool = False, injury_reduction: float = 0.0) -> Optional[str]:
         """Applies a random injury to a player upon defeat. Max 2 of each injury type."""
         injury_config = self.get_config_value("injury_system", channel, default={})
         if not injury_config.get("enabled"): return None
@@ -192,6 +192,8 @@ class Quest(SimpleCommandModule):
             return None
 
         injury_chance = injury_config.get("injury_chance_on_loss", 0.75)
+        # Apply injury reduction from armor
+        injury_chance = max(0.0, injury_chance * (1.0 - injury_reduction))
         if random.random() > injury_chance: return None
 
         possible_injuries = injury_config.get("injuries", [])
@@ -362,8 +364,25 @@ class Quest(SimpleCommandModule):
         player.setdefault("last_win_date", None)
         player.setdefault("energy", max_energy)
         player.setdefault("win_streak", 0)
-        player.setdefault("medkits", 0)  # New: medkit inventory
-        player.setdefault("prestige", 0)  # New: prestige level
+        player.setdefault("prestige", 0)  # Prestige level
+
+        # Inventory system
+        player.setdefault("inventory", {
+            "medkits": 0,
+            "energy_potions": 0,
+            "lucky_charms": 0,
+            "armor_shards": 0,
+            "xp_scrolls": 0
+        })
+
+        # Migrate old medkits format
+        if "medkits" in player and isinstance(player["medkits"], int):
+            player["inventory"]["medkits"] = player["medkits"]
+            del player["medkits"]
+
+        # Active effects (buffs/debuffs with expiry)
+        player.setdefault("active_effects", [])
+
         player["name"] = username
 
         return player
@@ -495,7 +514,9 @@ class Quest(SimpleCommandModule):
             return self._handle_solo_quest(connection, event, username, args[0] if args else "normal")
 
         subcommand = args[0].lower()
-        if subcommand == "medic":
+        if subcommand == "search":
+            return self._handle_search(connection, event, username, args[1:])
+        elif subcommand == "medic":
             return self._handle_medic_quest(connection, event, username)
         elif subcommand == "profile":
             return self._handle_profile(connection, event, username, args[1:])
@@ -507,8 +528,10 @@ class Quest(SimpleCommandModule):
             return self._handle_leaderboard(connection, event)
         elif subcommand == "prestige":
             return self._handle_prestige(connection, event, username)
+        elif subcommand == "use":
+            return self._handle_use_item(connection, event, username, args[1:])
         else:
-            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <medic|profile|story|class|top|prestige>'.")
+            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <search|use|medic|profile|story|class|top|prestige>'.")
             return True
 
     def _handle_profile(self, connection, event, username, args):
@@ -633,13 +656,13 @@ class Quest(SimpleCommandModule):
         # Calculate new prestige level
         new_prestige = current_prestige + 1
 
-        # Reset player to level 1
+        # Reset player to level 1 (but keep medkits!)
         player["level"] = 1
         player["xp"] = 0
         player["xp_to_next_level"] = self._calculate_xp_for_level(1)
         player["prestige"] = new_prestige
         player["win_streak"] = 0
-        player["medkits"] = 0
+        # medkits are preserved through prestige
         player["active_injuries"] = []
         if "active_injury" in player:
             del player["active_injury"]
@@ -781,10 +804,9 @@ class Quest(SimpleCommandModule):
             if applied_penalty_msgs:
                 self.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(applied_penalty_msgs)}).")
 
-        win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
-        win = random.random() < win_chance
-        player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
-        
+        base_win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
+
+        # Calculate base XP
         xp_level_mult = self.get_config_value("xp_level_multiplier", event.target, default=2)
         base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
         total_xp = (base_xp + player_level * xp_level_mult) * diff_mod["xp_mult"] * energy_xp_mult
@@ -793,22 +815,46 @@ class Quest(SimpleCommandModule):
         if is_rare:
             total_xp *= rare_xp_mult
 
+        # Apply active effects (lucky charm, xp scroll) - pass placeholder for is_win
+        win_chance_modified, xp_modified, effect_msgs = self._apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=False)
+
+        # Show effect messages before combat
+        for msg in effect_msgs:
+            if "lucky charm" in msg.lower():  # Only show lucky charm pre-combat
+                self.safe_reply(connection, event, msg)
+
+        # Determine combat result
+        win = random.random() < win_chance_modified
+        player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
+
+        # Re-apply effects now that we know the outcome (for XP scroll)
+        _, total_xp, xp_effect_msgs = self._apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=win)
+
         # Check for critical hit
         crit_chance = self.get_config_value("crit_chance", event.target, default=0.15)
         is_crit = win and random.random() < crit_chance
 
         if win:
-            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp)} XP.")
+            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance_modified:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp)} XP.")
+            # Show XP scroll message if it activated
+            for msg in xp_effect_msgs:
+                if "scroll" in msg.lower():
+                    self.safe_reply(connection, event, msg)
             for m in self._grant_xp(user_id, username, total_xp, is_win=True, is_crit=is_crit): self.safe_reply(connection, event, m)
         else:
             xp_loss_perc = self.get_config_value("xp_loss_percentage", event.target, default=0.25)
             xp_loss = total_xp * xp_loss_perc
-            self.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
+            self.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance_modified:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
             self._deduct_xp(user_id, username, xp_loss)
-            
-            injury_msg = self._apply_injury(user_id, username, event.target)
+
+            # Apply injury with armor reduction
+            injury_reduction = self._get_injury_reduction(player)
+            injury_msg = self._apply_injury(user_id, username, event.target, injury_reduction=injury_reduction)
             if injury_msg:
                 self.safe_reply(connection, event, injury_msg)
+
+        # Consume active effects after combat
+        self._consume_combat_effects(player, is_win=win)
 
         players = self.get_state("players")
         players[user_id] = player
@@ -1055,6 +1101,389 @@ class Quest(SimpleCommandModule):
 
         return schedule.CancelJob
 
+    # ===== ACTIVE EFFECTS SYSTEM =====
+
+    def _apply_active_effects_to_combat(self, player: Dict[str, Any], base_win_chance: float, base_xp: int, is_win: bool) -> Tuple[float, int, List[str]]:
+        """
+        Apply active effects to combat, return (modified_win_chance, modified_xp, messages).
+        """
+        messages = []
+        win_chance = base_win_chance
+        xp = base_xp
+
+        # Lucky charm - boost win chance
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "lucky_charm" and effect.get("expires") == "next_fight":
+                win_bonus = effect.get("win_bonus", 0) / 100.0
+                win_chance += win_bonus
+                messages.append(f"Your lucky charm glows! (+{effect.get('win_bonus', 0)}% win chance)")
+
+        # XP scroll - boost XP on wins
+        if is_win:
+            for effect in player.get("active_effects", []):
+                if effect["type"] == "xp_scroll" and effect.get("expires") == "next_win":
+                    xp_mult = effect.get("xp_multiplier", 1.0)
+                    xp = int(xp * xp_mult)
+                    messages.append(f"The XP scroll activates! ({xp_mult}x XP)")
+
+        return (win_chance, xp, messages)
+
+    def _consume_combat_effects(self, player: Dict[str, Any], is_win: bool):
+        """Remove expired combat effects after a fight."""
+        effects_to_remove = []
+
+        for i, effect in enumerate(player.get("active_effects", [])):
+            # Remove effects that expire on any fight
+            if effect.get("expires") == "next_fight":
+                effects_to_remove.append(i)
+            # Remove effects that expire on win
+            elif is_win and effect.get("expires") == "next_win":
+                effects_to_remove.append(i)
+            # Decrement fight-based effects
+            elif effect["type"] == "armor_shard" and "remaining_fights" in effect:
+                effect["remaining_fights"] -= 1
+                if effect["remaining_fights"] <= 0:
+                    effects_to_remove.append(i)
+
+        # Remove in reverse order to avoid index issues
+        for i in sorted(effects_to_remove, reverse=True):
+            player["active_effects"].pop(i)
+
+    def _get_injury_reduction(self, player: Dict[str, Any]) -> float:
+        """Get total injury chance reduction from active effects."""
+        reduction = 0.0
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "armor_shard":
+                reduction += effect.get("injury_reduction", 0.0)
+        return min(reduction, 0.90)  # Cap at 90% reduction
+
+    # ===== SEARCH SYSTEM =====
+
+    def _perform_single_search(self, player: Dict[str, Any], event) -> Dict[str, Any]:
+        """
+        Perform a single search and return the result.
+        Returns: {"type": str, "item": str, "message": str, "xp_change": int}
+        """
+        roll = random.random()
+        result = {"type": "nothing", "item": None, "message": "", "xp_change": 0}
+
+        # Get search probabilities from config
+        medkit_chance = self.get_config_value("search_system.medkit_chance", event.target, default=0.25)
+        energy_potion_chance = self.get_config_value("search_system.energy_potion_chance", event.target, default=0.15)
+        lucky_charm_chance = self.get_config_value("search_system.lucky_charm_chance", event.target, default=0.15)
+        armor_shard_chance = self.get_config_value("search_system.armor_shard_chance", event.target, default=0.10)
+        xp_scroll_chance = self.get_config_value("search_system.xp_scroll_chance", event.target, default=0.10)
+        injury_chance = self.get_config_value("search_system.injury_chance", event.target, default=0.05)
+        # Remaining probability is "nothing"
+
+        cumulative = 0.0
+
+        # Medkit
+        cumulative += medkit_chance
+        if roll < cumulative:
+            player["inventory"]["medkits"] += 1
+            result = {"type": "item", "item": "medkit", "message": "a MEDKIT", "xp_change": 0}
+            return result
+
+        # Energy Potion
+        cumulative += energy_potion_chance
+        if roll < cumulative:
+            player["inventory"]["energy_potions"] += 1
+            result = {"type": "item", "item": "energy_potion", "message": "an ENERGY POTION", "xp_change": 0}
+            return result
+
+        # Lucky Charm
+        cumulative += lucky_charm_chance
+        if roll < cumulative:
+            player["inventory"]["lucky_charms"] += 1
+            result = {"type": "item", "item": "lucky_charm", "message": "a LUCKY CHARM", "xp_change": 0}
+            return result
+
+        # Armor Shard
+        cumulative += armor_shard_chance
+        if roll < cumulative:
+            player["inventory"]["armor_shards"] += 1
+            result = {"type": "item", "item": "armor_shard", "message": "an ARMOR SHARD", "xp_change": 0}
+            return result
+
+        # XP Scroll
+        cumulative += xp_scroll_chance
+        if roll < cumulative:
+            player["inventory"]["xp_scrolls"] += 1
+            result = {"type": "item", "item": "xp_scroll", "message": "an XP SCROLL", "xp_change": 0}
+            return result
+
+        # Minor Injury
+        cumulative += injury_chance
+        if roll < cumulative:
+            # Lose 1 energy and small XP
+            player["energy"] = max(0, player["energy"] - 1)
+            xp_loss = random.randint(5, 15)
+            result = {"type": "injury", "item": None, "message": "INJURED! Lost 1 energy", "xp_change": -xp_loss}
+            return result
+
+        # Nothing found (default)
+        result = {"type": "nothing", "item": None, "message": "nothing of value", "xp_change": 0}
+        return result
+
+    def _handle_search(self, connection, event, username, args):
+        """Handle search command - search for items using energy."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if search is enabled
+        if not self.get_config_value("search_system.enabled", event.target, default=True):
+            self.safe_reply(connection, event, "Searching is not available at this time.")
+            return True
+
+        # Parse number of searches
+        num_searches = 1
+        if args:
+            try:
+                num_searches = int(args[0])
+                if num_searches < 1:
+                    self.safe_reply(connection, event, "You must search at least once!")
+                    return True
+                if num_searches > 20:
+                    self.safe_reply(connection, event, "You can search at most 20 times at once!")
+                    return True
+            except ValueError:
+                self.safe_reply(connection, event, "Please provide a valid number of searches (e.g., !quest search 5)")
+                return True
+
+        # Check energy
+        energy_cost_per_search = self.get_config_value("search_system.energy_cost", event.target, default=1)
+        total_energy_cost = energy_cost_per_search * num_searches
+
+        if player["energy"] < total_energy_cost:
+            self.safe_reply(connection, event, f"You need {total_energy_cost} energy to search {num_searches} time(s). You have {player['energy']}.")
+            return True
+
+        # Check and clear expired injury
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+
+        # Migrate old injury format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Check if player is injured
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_names = [inj['name'] for inj in player['active_injuries']]
+            if len(injury_names) == 1:
+                self.safe_reply(connection, event, f"You are still recovering from your {injury_names[0]}. Rest or use a medkit to heal.")
+            else:
+                self.safe_reply(connection, event, f"You are still recovering from: {', '.join(injury_names)}. Rest or use a medkit to heal.")
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+            return True
+
+        # Deduct energy upfront
+        player["energy"] -= total_energy_cost
+
+        # Perform searches
+        results = []
+        total_xp_change = 0
+        for _ in range(num_searches):
+            search_result = self._perform_single_search(player, event)
+            results.append(search_result)
+            total_xp_change += search_result["xp_change"]
+
+        # Apply XP change if any
+        if total_xp_change < 0:
+            self._deduct_xp(user_id, username, abs(total_xp_change))
+
+        # Save player state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        # Build result message
+        if num_searches == 1:
+            result = results[0]
+            msg = f"You search the area and find {result['message']}!"
+            if result["xp_change"] < 0:
+                msg += f" (Lost {abs(result['xp_change'])} XP)"
+            self.safe_reply(connection, event, msg)
+        else:
+            # Summarize multiple searches
+            item_counts = {
+                "medkit": 0,
+                "energy_potion": 0,
+                "lucky_charm": 0,
+                "armor_shard": 0,
+                "xp_scroll": 0,
+                "nothing": 0,
+                "injury": 0
+            }
+
+            for result in results:
+                if result["type"] == "item":
+                    item_counts[result["item"]] += 1
+                elif result["type"] == "nothing":
+                    item_counts["nothing"] += 1
+                elif result["type"] == "injury":
+                    item_counts["injury"] += 1
+
+            # Build summary
+            found_items = []
+            if item_counts["medkit"] > 0:
+                found_items.append(f"{item_counts['medkit']} medkit(s)")
+            if item_counts["energy_potion"] > 0:
+                found_items.append(f"{item_counts['energy_potion']} energy potion(s)")
+            if item_counts["lucky_charm"] > 0:
+                found_items.append(f"{item_counts['lucky_charm']} lucky charm(s)")
+            if item_counts["armor_shard"] > 0:
+                found_items.append(f"{item_counts['armor_shard']} armor shard(s)")
+            if item_counts["xp_scroll"] > 0:
+                found_items.append(f"{item_counts['xp_scroll']} XP scroll(s)")
+
+            msg = f"After {num_searches} searches, you found: "
+            if found_items:
+                msg += ", ".join(found_items)
+            else:
+                msg += "nothing of value"
+
+            if item_counts["nothing"] > 0:
+                msg += f" ({item_counts['nothing']} empty search(es))"
+            if item_counts["injury"] > 0:
+                msg += f" (Injured {item_counts['injury']} time(s), lost {abs(total_xp_change)} XP)"
+
+            self.safe_reply(connection, event, msg)
+
+        return True
+
+    def _handle_use_item(self, connection, event, username, args):
+        """Handle using items from inventory."""
+        if not args:
+            self.safe_reply(connection, event, "Usage: !quest use <item> - Available items: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll")
+            return True
+
+        item_name = args[0].lower()
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Map user-friendly names to inventory keys
+        item_map = {
+            "medkit": "medkits",
+            "energy_potion": "energy_potions",
+            "potion": "energy_potions",
+            "lucky_charm": "lucky_charms",
+            "charm": "lucky_charms",
+            "armor_shard": "armor_shards",
+            "armor": "armor_shards",
+            "xp_scroll": "xp_scrolls",
+            "scroll": "xp_scrolls"
+        }
+
+        if item_name not in item_map:
+            self.safe_reply(connection, event, f"Unknown item: {item_name}. Available: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll")
+            return True
+
+        inventory_key = item_map[item_name]
+
+        # Check if player has the item
+        if player["inventory"][inventory_key] < 1:
+            self.safe_reply(connection, event, f"You don't have any {item_name.replace('_', ' ')}s!")
+            return True
+
+        # Use the item
+        if inventory_key == "medkits":
+            # Medkit - heal injuries
+            # Migrate old format
+            if 'active_injury' in player:
+                player['active_injuries'] = [player['active_injury']]
+                del player['active_injury']
+
+            if not player.get('active_injuries') or len(player['active_injuries']) == 0:
+                self.safe_reply(connection, event, "You are not injured! Save your medkit for when you need it.")
+                return True
+
+            player["inventory"]["medkits"] -= 1
+            injury_healed = player['active_injuries'].pop(0)
+            self.safe_reply(connection, event, f"You use a medkit to heal your {injury_healed['name']}. You feel much better! ({player['inventory']['medkits']} medkits remaining)")
+
+        elif inventory_key == "energy_potions":
+            # Energy potion - restore 2-4 energy
+            max_energy = self.get_config_value("energy_system.max_energy", event.target, default=10)
+            prestige_level = player.get("prestige", 0)
+            prestige_energy_bonus = self._get_prestige_energy_bonus(prestige_level)
+            max_energy += prestige_energy_bonus
+
+            if player["energy"] >= max_energy:
+                self.safe_reply(connection, event, "Your energy is already full! Save the potion for later.")
+                return True
+
+            energy_restore = random.randint(2, 4)
+            player["inventory"]["energy_potions"] -= 1
+            old_energy = player["energy"]
+            player["energy"] = min(max_energy, player["energy"] + energy_restore)
+            actual_restore = player["energy"] - old_energy
+            self.safe_reply(connection, event, f"You drink the energy potion and feel refreshed! +{actual_restore} energy ({player['energy']}/{max_energy}). ({player['inventory']['energy_potions']} potions remaining)")
+
+        elif inventory_key == "lucky_charms":
+            # Lucky charm - add active effect for next fight
+            player["inventory"]["lucky_charms"] -= 1
+            # Check if already has lucky charm effect
+            has_charm = any(eff["type"] == "lucky_charm" for eff in player["active_effects"])
+            if has_charm:
+                self.safe_reply(connection, event, "You already have a lucky charm active! The effects don't stack.")
+                player["inventory"]["lucky_charms"] += 1  # Refund
+                return True
+
+            win_bonus = random.randint(10, 20)
+            player["active_effects"].append({
+                "type": "lucky_charm",
+                "win_bonus": win_bonus,
+                "expires": "next_fight"
+            })
+            self.safe_reply(connection, event, f"You activate the lucky charm! Your next fight will have +{win_bonus}% win chance. ({player['inventory']['lucky_charms']} charms remaining)")
+
+        elif inventory_key == "armor_shards":
+            # Armor shard - reduce injury chance for 3 fights
+            player["inventory"]["armor_shards"] -= 1
+            has_armor = any(eff["type"] == "armor_shard" for eff in player["active_effects"])
+            if has_armor:
+                self.safe_reply(connection, event, "You already have armor protection active! The effects don't stack.")
+                player["inventory"]["armor_shards"] += 1  # Refund
+                return True
+
+            player["active_effects"].append({
+                "type": "armor_shard",
+                "injury_reduction": 0.30,
+                "remaining_fights": 3
+            })
+            self.safe_reply(connection, event, f"You equip the armor shard! Injury chance reduced by 30% for the next 3 fights. ({player['inventory']['armor_shards']} shards remaining)")
+
+        elif inventory_key == "xp_scrolls":
+            # XP scroll - 1.5x XP on next win
+            player["inventory"]["xp_scrolls"] -= 1
+            has_scroll = any(eff["type"] == "xp_scroll" for eff in player["active_effects"])
+            if has_scroll:
+                self.safe_reply(connection, event, "You already have an XP scroll active! The effects don't stack.")
+                player["inventory"]["xp_scrolls"] += 1  # Refund
+                return True
+
+            player["active_effects"].append({
+                "type": "xp_scroll",
+                "xp_multiplier": 1.5,
+                "expires": "next_win"
+            })
+            self.safe_reply(connection, event, f"You read the XP scroll! Your next victory will grant 1.5x XP. ({player['inventory']['xp_scrolls']} scrolls remaining)")
+
+        # Save player state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        return True
+
     # ===== MEDIC QUEST SYSTEM =====
 
     def _handle_medic_quest(self, connection, event, username):
@@ -1167,9 +1596,10 @@ class Quest(SimpleCommandModule):
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
 
-        # Check if player has medkits
-        if player.get("medkits", 0) < 1:
-            self.safe_reply(connection, event, f"You don't have any medkits, {self.bot.title_for(username)}. Try !quest medic to earn one!")
+        # Check if player has medkits (check both old and new format)
+        medkit_count = player.get("inventory", {}).get("medkits", 0) or player.get("medkits", 0)
+        if medkit_count < 1:
+            self.safe_reply(connection, event, f"You don't have any medkits, {self.bot.title_for(username)}. Try !quest search to find one!")
             return True
 
         # Determine target
@@ -1197,8 +1627,8 @@ class Quest(SimpleCommandModule):
         # Remove all injuries
         player['active_injuries'] = []
 
-        # Deduct medkit
-        player["medkits"] -= 1
+        # Deduct medkit (use new inventory system)
+        player["inventory"]["medkits"] -= 1
 
         # Grant partial XP
         base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
@@ -1245,8 +1675,8 @@ class Quest(SimpleCommandModule):
         # Remove all target's injuries
         target_player['active_injuries'] = []
 
-        # Deduct medkit from healer
-        player["medkits"] -= 1
+        # Deduct medkit from healer (use new inventory system)
+        player["inventory"]["medkits"] -= 1
 
         # Grant MASSIVE XP to healer
         base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
@@ -1291,15 +1721,35 @@ class Quest(SimpleCommandModule):
             self.save_state()
 
         title = self.bot.title_for(username)
-        medkit_count = player.get("medkits", 0)
+        inventory = player.get("inventory", {})
 
-        inv_parts = [f"{title}'s inventory:"]
+        # Build inventory display
+        items = []
+        if inventory.get("medkits", 0) > 0:
+            items.append(f"Medkits: {inventory['medkits']}")
+        if inventory.get("energy_potions", 0) > 0:
+            items.append(f"Energy Potions: {inventory['energy_potions']}")
+        if inventory.get("lucky_charms", 0) > 0:
+            items.append(f"Lucky Charms: {inventory['lucky_charms']}")
+        if inventory.get("armor_shards", 0) > 0:
+            items.append(f"Armor Shards: {inventory['armor_shards']}")
+        if inventory.get("xp_scrolls", 0) > 0:
+            items.append(f"XP Scrolls: {inventory['xp_scrolls']}")
 
-        # Medkits
-        if medkit_count > 0:
-            inv_parts.append(f"Medkits: {medkit_count}")
+        if not items:
+            items_msg = "No items (try !quest search)"
         else:
-            inv_parts.append("No medkits (try !quest medic)")
+            items_msg = ", ".join(items)
+
+        # Active effects
+        effects = []
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "lucky_charm":
+                effects.append(f"Lucky Charm (+{effect.get('win_bonus', 0)}% win)")
+            elif effect["type"] == "armor_shard":
+                effects.append(f"Armor ({effect.get('remaining_fights', 0)} fights)")
+            elif effect["type"] == "xp_scroll":
+                effects.append("XP Scroll (next win)")
 
         # Migrate old format
         if 'active_injury' in player:
@@ -1307,24 +1757,25 @@ class Quest(SimpleCommandModule):
             del player['active_injury']
 
         # Active injuries
+        injuries = []
         if 'active_injuries' in player and player['active_injuries']:
-            injury_strs = []
             for injury in player['active_injuries']:
                 try:
                     expires_at = datetime.fromisoformat(injury['expires_at'])
                     time_left = self._format_timedelta(expires_at)
-                    injury_strs.append(f"{injury['name']} (recovers in {time_left})")
+                    injuries.append(f"{injury['name']} ({time_left})")
                 except (ValueError, TypeError):
-                    injury_strs.append(injury['name'])
+                    injuries.append(injury['name'])
 
-            if len(injury_strs) == 1:
-                inv_parts.append(f"Injury: {injury_strs[0]}")
-            else:
-                inv_parts.append(f"Injuries: {', '.join(injury_strs)}")
-        else:
-            inv_parts.append("Status: Healthy")
+        # Build final message
+        self.safe_reply(connection, event, f"{title}'s Inventory: {items_msg}")
+        if effects:
+            self.safe_reply(connection, event, f"Active Effects: {', '.join(effects)}")
+        if injuries:
+            self.safe_reply(connection, event, f"Injuries: {', '.join(injuries)}")
+        elif not effects:
+            self.safe_reply(connection, event, "Status: Healthy")
 
-        self.safe_reply(connection, event, " | ".join(inv_parts))
         return True
 
     def _cmd_quest_reload(self, connection, event, msg, username, match):

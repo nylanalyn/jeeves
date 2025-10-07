@@ -10,6 +10,7 @@ config/*.json.pre-migration-backup
 config/config.yaml
 debug.log
 oracle_prompt.txt
+.claude
 
 # Local environment variable files.
 .env

@@ -1,0 +1,17 @@
+# ~/.config/systemd/user/jeeves.service
+[Unit]
+Description=Jeeves IRC Butler
+
+[Service]
+WorkingDirectory=%h/CODE/jeeves
+ExecStart=/bin/sh -c 'cd %h/CODE/jeeves && source .venv/bin/activate && python jeeves.py'
+Restart=on-failure
+RestartSec=2
+
+# make stdout/stderr visible immediately
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

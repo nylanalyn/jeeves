@@ -35,14 +35,22 @@ api_keys:
   # For the weather module, PirateWeather is used for US locations (more accurate than yr.no)
   # Get your free API key at https://pirateweather.net/
   pirateweather: "YourPirateWeatherAPIKey"
+  # DeepL API key for translate module
+  deepl_api_key: "YourDeepLAPIKey"
 
 # --- Module-Specific Configurations ---
 # Each module can have its own section for configuration.
 # If a module's section is missing, it will use its default values.
 
+# Channel filtering can be done with:
+#   allowed_channels: [] - If empty, module works in all channels (default)
+#   blocked_channels: [] - Channels to block module from (only applies if allowed_channels is empty)
+# If allowed_channels is not empty, module ONLY works in those channels
+
 adventure:
     vote_window_seconds: 75
     story_sentences_per_round: 3
+    cooldown_seconds: 10
     # Cosmetic Item Discovery System
     item_find_chance: 0.25 # Chance (0.0 to 1.0) to find an item on a winning vote.
     max_inventory_size: 3   # Max number of recent items to show with !items.
@@ -65,9 +73,14 @@ adventure:
       - "dataslate"
       - "teacup"
 
+ambient:
+    response_rate: 0.15 # Probability of responding to dog whistle patterns
+    cooldown_seconds: 30
+
 arithmetic:
     reliability_percent: 85
     max_fudge_factor: 2
+    cooldown_seconds: 5
 
 bell:
     min_hours_between_rings: 1
@@ -84,12 +97,8 @@ chatter:
         food: 1200
         greeting: 300
 
-oracle:
-    ai_channel: "#your-ai-channel" # The only channel where the AI will respond.
-    openai_base_url: "https://api.arliai.com/v1" # The base URL for your provider.
-    model: "claude-3-haiku-20240307" # The ArliAI model to use.
-    system_prompt: "You are Jeeves, a helpful, witty, and impeccably formal robotic butler. You serve the members of this IRC channel. Maintain your persona at all times."
-    history_length: 10 # Number of past messages to remember for context.
+clock:
+    cooldown_seconds: 10
 
 coffee:
     cooldown_seconds: 10
@@ -114,8 +123,12 @@ convenience:
       - "slacker"
       - "work-shy"
     titles_enabled: true
-  titles_cooldown_seconds: 5
-  titles_max_download_bytes: 32768
+    titles_cooldown_seconds: 5
+    titles_max_download_bytes: 32768
+
+flirt:
+    global_cooldown: 30.0
+    per_user_cooldown: 60.0
 
 fortune:
     cooldown_seconds: 10
@@ -125,6 +138,7 @@ gif:
 
 help:
     cooldown_seconds: 10
+    reference_url: "" # Optional URL to public command reference
 
 hunt:
     min_hours_between_spawns: 2
@@ -151,14 +165,40 @@ hunt:
           hug_message: "{username} is immediately covered in happy puppy licks."
           hunt_message: "{username} scoops up the puppy. It seems to think this is a new game."
 
+memos:
+    cooldown_seconds: 5
+    max_deliver_per_burst: 3
+    max_pending_per_user: 3
+
+oracle:
+    ai_channel: "#your-ai-channel" # The only channel where the AI will respond.
+    openai_base_url: "https://api.arliai.com/v1" # The base URL for your provider.
+    model: "claude-3-haiku-20240307" # The ArliAI model to use.
+    system_prompt: "You are Jeeves, a helpful, witty, and impeccably formal robotic butler. You serve the members of this IRC channel. Maintain your persona at all times."
+    system_prompt_file: "" # Optional: filename in config/ directory for system prompt (overrides system_prompt if set)
+    history_length: 10 # Number of past messages to remember for context.
+    max_irc_line_bytes: 450
+
+pron:
+    cooldown_seconds: 30
+
 quest:
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8
+    rare_spawn_chance: 0.10
+    rare_spawn_xp_multiplier: 2.0
     first_win_bonus_xp: 50
     xp_level_multiplier: 2
     xp_loss_percentage: 0.25
-    
+    max_streak_bonus: 5
+    crit_chance: 0.15
+    level_cap: 20
+    max_prestige: 10
+    mob_cooldown_seconds: 3600
+    mob_join_window_seconds: 60
+    base_xp_reward: 50
+
     difficulty:
         easy: { level_mod: -2, xp_mult: 0.7 }
         normal: { level_mod: 1, xp_mult: 1.0 }
@@ -178,7 +218,7 @@ quest:
             - { threshold: 5, xp_multiplier: 0.5, win_chance_modifier: 0.0 }
             - { threshold: 2, xp_multiplier: 0.5, win_chance_modifier: -0.15 }
 
-    # --- NEW INJURY SYSTEM ---
+    # --- Injury System ---
     injury_system:
         enabled: true
         injury_chance_on_loss: 0.75 # 75% chance to get an injury on defeat
@@ -213,7 +253,7 @@ quest:
           - "{user} initiates a debug sequence to try and quarantine the {monster}."
           - "{user} deploys a counter-exploit against the {monster}."
           - "With a burst of static, {user} confronts the {monster} in the digital ether."
-    
+
     monsters:
         - name: "Glitched Packet"
           min_level: 1
@@ -261,7 +301,7 @@ quest:
         injury_chance: 0.05           # 5% (bad outcome)
         # 20% chance to find nothing
 
-    # --- New Group Content Settings ---
+    # --- Group Content Settings ---
     group_content:
         join_window_seconds: 90
         # Monster level is avg_party_level + level_modifier.
@@ -277,7 +317,7 @@ quest:
           - { players: 5, multiplier: 0.8 }
           - { players: 6, multiplier: 0.6 }
           - { players: 7, multiplier: 0.5 } # etc.
-    
+
     boss_monsters:
         - name: "The Tyrant Lizard"
           min_level: 10
@@ -295,6 +335,9 @@ quest:
           xp_win_min: 1200
           xp_win_max: 2000
 
+reminders:
+    cooldown_seconds: 5
+
 roadtrip:
     hours_between_trips:
         min: 3
@@ -308,10 +351,10 @@ roadtrip:
 
 sailing:
     target_user: "witeshark2"
-    cooldown: 5.0
+    cooldown_seconds: 5.0
 
 sed:
-    mode: "self"
+    mode: "self"  # "self" or "all" - whether to apply sed to own messages only or all
     history_size: 20
 
 shorten:
@@ -320,7 +363,8 @@ shorten:
     min_length_for_auto_shorten: 70
 
 translate:
-    api_url: "https://libretranslate.com"
     cooldown_seconds: 15
-    default_target_language: "en"
+    default_target_language: "EN-US"
 
+weather:
+    cooldown_seconds: 10

@@ -147,8 +147,24 @@ class ModuleBase(ABC):
         return default
 
     def is_enabled(self, channel: str) -> bool:
-        """Checks if the module is enabled for a given channel."""
-        return self.get_config_value("enabled", channel, default=True)
+        """
+        Checks if the module is enabled for a given channel using allow/block lists.
+
+        Logic:
+        - If allowed_channels is defined and not empty, module ONLY works in those channels
+        - If allowed_channels is empty/not defined, module works in all channels except blocked_channels
+        - blocked_channels only applies when allowed_channels is empty
+        """
+        module_config = self.bot.config.get(self.name, {})
+
+        # Check allowed_channels first (whitelist mode)
+        allowed_channels = module_config.get("allowed_channels", [])
+        if allowed_channels:
+            return channel in allowed_channels
+
+        # If no whitelist, check blocked_channels (blacklist mode)
+        blocked_channels = module_config.get("blocked_channels", [])
+        return channel not in blocked_channels
 
 
     # --- Command and Message Handling ---

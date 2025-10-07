@@ -339,9 +339,12 @@ class Jeeves(SingleServerIRCBot):
         return self.pm.load_all()
 
     def core_reload_config(self):
-        self.log_debug("[core] Reloading configuration from state...")
+        self.log_debug("[core] Reloading configuration from config.yaml...")
         try:
-            self.config = state_manager.get_module_state("config")
+            self.config = load_config()
+            if not self.config:
+                self.log_debug("[core] ERROR: Failed to reload config.yaml")
+                return False
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
                     instance.on_config_reload(self.config.get(name, {}))
@@ -351,24 +354,18 @@ class Jeeves(SingleServerIRCBot):
             return False
 
     def core_reset_and_reload_config(self):
-        """Core function to reset the config from the yaml file and reload everything."""
-        self.log_debug("[core] Resetting configuration from config.yaml...")
+        """Core function to reload config from config.yaml and reload plugins."""
+        self.log_debug("[core] Reloading configuration from config.yaml...")
         try:
-            fresh_yaml_config = load_config()
-            if not fresh_yaml_config:
-                self.log_debug("[core] RESET FAILED: Could not read config.yaml")
+            if not self.core_reload_config():
                 return False
 
-            self.update_module_state("config", fresh_yaml_config)
-            state_manager.force_save()
-            
-            self.core_reload_config()
             self.core_reload_plugins()
-            
-            self.log_debug("[core] Configuration has been reset from config.yaml.")
+
+            self.log_debug("[core] Configuration has been reloaded from config.yaml.")
             return True
         except Exception as e:
-            self.log_debug(f"[core] FAILED to reset configuration: {e}")
+            self.log_debug(f"[core] FAILED to reload configuration: {e}")
             return False
 
     def get_user_id(self, nick: str) -> str:
@@ -559,20 +556,12 @@ def main():
     global state_manager
     state_manager = StateManager(CONFIG_DIR)
 
-    config_from_state = state_manager.get_module_state("config")
-    if not config_from_state:
-        print("[boot] No config found in state, seeding from config.yaml...", file=sys.stderr)
-        yaml_config = load_config()
-        if yaml_config:
-            state_manager.update_module_state("config", yaml_config)
-            state_manager.force_save()
-            config = yaml_config
-        else:
-            print("[boot] CRITICAL: config.yaml is empty or could not be read.", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print("[boot] Loading configuration from state.json.", file=sys.stderr)
-        config = config_from_state
+    # Load config directly from config.yaml (not from state)
+    print("[boot] Loading configuration from config.yaml...", file=sys.stderr)
+    config = load_config()
+    if not config:
+        print("[boot] CRITICAL: config.yaml is empty or could not be read.", file=sys.stderr)
+        sys.exit(1)
         
     irc_config = config.get("connection", {})
     server = irc_config.get("server", "irc.libera.chat")

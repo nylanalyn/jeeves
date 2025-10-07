@@ -22,11 +22,11 @@ python3 jeeves.py
 ```
 
 The bot will:
-1. Load configuration from `config/state.json` (or seed from `config.yaml` if state is empty)
+1. Load configuration from `config/config.yaml`
 2. Connect to IRC server using settings from `connection` section
 3. Identify with NickServ if `nickserv_pass` is configured
 4. Load all modules from `modules/` directory (except those in `module_blacklist`)
-5. Join all channels in `joined_channels` state
+5. Join all channels in `joined_channels` state (stored in state.json)
 
 ## Architecture
 
@@ -35,7 +35,7 @@ The bot will:
 **jeeves.py** - Main bot implementation
 - `Jeeves` class extends `SingleServerIRCBot` from the `irc` library
 - `PluginManager` handles dynamic module loading/unloading
-- `StateManager` provides thread-safe persistent JSON storage
+- `MultiFileStateManager` provides thread-safe persistent JSON storage across multiple files (state.json, games.json, users.json, stats.json)
 - IRC event handlers (`on_pubmsg`, `on_privmsg`, `on_join`, etc.) dispatch to modules
 
 **modules/base.py** - Base classes for all modules
@@ -80,24 +80,24 @@ class MyModule(SimpleCommandModule):
 
 ### Configuration System
 
-Configuration flows through two layers:
+Configuration is loaded from `config/config.yaml` and is read-only at runtime. The bot reads this file on startup and when `!admin config reload` is called.
 
-1. **config.yaml** - Human-editable YAML (git-ignored after first run)
-2. **config/state.json** - Runtime state including live config (git-ignored)
-
-The bot stores config in state.json under `modules.config`. This allows runtime modifications via admin commands (`!admin set`) to persist across restarts.
-
-**Per-Channel Configuration**: Modules can have channel-specific overrides:
+**Channel Filtering**: Modules can be restricted to specific channels using:
 ```yaml
 mymodule:
-  enabled: true
-  cooldown_seconds: 10
-  channels:
-    "#special-channel":
-      cooldown_seconds: 5  # Override for this channel
+  some_setting: value
+  allowed_channels: []  # Empty = module works in all channels (default)
+  blocked_channels: ["#private"]  # Blocked from these channels
 ```
 
-Access via `self.get_config_value(key, channel, default)` in module code.
+**Channel filtering logic:**
+- If `allowed_channels` is not empty, module ONLY works in those channels
+- If `allowed_channels` is empty, module works in all channels except `blocked_channels`
+- `blocked_channels` only applies when `allowed_channels` is empty
+
+**Configuration access** in module code:
+- `self.get_config_value(key, channel, default)` - Get config value (no channel overrides anymore)
+- `self.is_enabled(channel)` - Check if module is allowed in channel (uses allowed/blocked lists)
 
 ### State Management
 
@@ -212,17 +212,17 @@ debug.log              # Debug output (when debug mode enabled)
 Admins are defined in `config.yaml` under `core.admins`. The bot verifies both nickname and hostname.
 
 - `!admin reload` or `!reload` - Reload all modules from disk
-- `!admin config reload` - Reload config from state.json
-- `!admin reset` - (DANGEROUS) Reset config to config.yaml defaults
-- `!admin on <module> [#channel]` - Enable module for channel
-- `!admin off <module> [#channel]` - Disable module for channel
-- `!admin get <module.key> [#channel]` - Get config value
-- `!admin set <module.key> <value> [#channel]` - Set config value (runtime, persists to state)
+- `!admin load <module>` - Load a specific module
+- `!admin unload <module>` - Unload a specific module
+- `!admin modules` - List all loaded modules
+- `!admin config reload` - Reload config.yaml (without reloading modules)
 - `!admin join <#channel>` - Join channel
 - `!admin part <#channel> [msg]` - Leave channel
 - `!say [#channel] <msg>` - Send message as bot
 - `!admin debug <on|off>` - Toggle debug logging
 - `!emergency quit [msg]` - Shutdown bot
+
+**Note:** Configuration is now read-only at runtime. To change settings, edit `config/config.yaml` and use `!admin config reload`.
 
 ## Important Implementation Notes
 
@@ -233,10 +233,10 @@ Admins are defined in `config.yaml` under `core.admins`. The bot verifies both n
 - Call `state_manager.force_save()` or `self.save_state(force=True)` for critical writes
 
 ### Configuration vs State
-- **Configuration** lives in `state.json` under `modules.config` after first run
-- **Module state** lives in `state.json` under `modules.<module_name>`
-- Config is meant for settings; state is for runtime data (scores, profiles, etc.)
-- Admin commands can modify config at runtime, but some keys are protected (API keys, monster lists, etc. - see `admin.py` `static_keys`)
+- **Configuration** lives in `config/config.yaml` and is read-only at runtime
+- **Module state** lives in state files (state.json, games.json, users.json, stats.json) under `modules.<module_name>`
+- Config is for settings; state is for runtime data (scores, profiles, game state, etc.)
+- To modify config, edit `config.yaml` and reload with `!admin config reload`
 
 ### IRC Event Handling
 - Use `event.source` for full hostmask (`nick!user@host`)

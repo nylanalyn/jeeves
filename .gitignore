@@ -16,6 +16,13 @@ oracle_prompt.txt
 jeeves.env
 
 
+# --- Nix / NixOS ---
+.direnv/
+.envrc
+flake.lock
+flake.nix
+
+
 # --- Python General ---
 # Byte-compiled / optimized / C-extensions
 __pycache__/

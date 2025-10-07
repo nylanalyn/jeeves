@@ -31,6 +31,14 @@ class Hunt(SimpleCommandModule):
         "If you insist, {title}. The {animal_name} is now free to roam the premises. Again.",
         "Releasing the {animal_name}, {title}. I trust this chaotic cycle will not become a habit."
     ]
+    MURDER_MESSAGES = [
+        "YOU KILLED IT!",
+        "DEAD! Stone cold dead!",
+        "You shot it to death! Good heavens!",
+        "MURDERED IN COLD BLOOD!",
+        "The {animal_name} didn't stand a chance. Absolutely obliterated!",
+        "FATALITY! The {animal_name} has been slain!"
+    ]
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -255,25 +263,35 @@ class Hunt(SimpleCommandModule):
 
         animal_name = active_animal.get("name", "animal").lower()
         user_id = self.bot.get_user_id(username)
-        
+
+        # Special handling for user "dead" - they MURDER animals
+        is_dead = username.lower() == "dead"
+        if is_dead and action == "hunted":
+            action = "murdered"
+
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
         score_key = f"{animal_name}_{action}"
         user_scores[score_key] = user_scores.get(score_key, 0) + 1
         scores[user_id] = user_scores
-        
+
         self.set_state("scores", scores)
         self.set_state("active_animal", None)
         self.save_state()
-        
-        msg_key = "hug_message" if action == "hugged" else "hunt_message"
-        custom_msg = active_animal.get(msg_key)
-        
-        if custom_msg:
-            self.safe_reply(connection, event, custom_msg.format(username=self.bot.title_for(username)) + time_to_catch_str + ".")
+
+        # Special murder messages for user "dead"
+        if is_dead and action == "murdered":
+            murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=animal_name)
+            self.safe_reply(connection, event, murder_msg + time_to_catch_str + ".")
         else:
-            self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {animal_name}{time_to_catch_str}.")
-            
+            msg_key = "hug_message" if action == "hugged" else "hunt_message"
+            custom_msg = active_animal.get(msg_key)
+
+            if custom_msg:
+                self.safe_reply(connection, event, custom_msg.format(username=self.bot.title_for(username)) + time_to_catch_str + ".")
+            else:
+                self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {animal_name}{time_to_catch_str}.")
+
         self._schedule_next_spawn()
         return True
 
@@ -342,19 +360,25 @@ class Hunt(SimpleCommandModule):
         if not all_scores:
             self.safe_reply(connection, event, "No scores have been recorded yet.")
             return True
-            
+
         user_map = self.bot.get_module_state("users").get("user_map", {})
         leaderboard = {uid: sum(s.values()) for uid, s in all_scores.items()}
         sorted_top = sorted(leaderboard.items(), key=lambda item: item[1], reverse=True)[:5]
-        
+
         top_list = []
         for i, (uid, total) in enumerate(sorted_top):
              user_scores = all_scores.get(uid, {})
              display_nick = user_map.get(uid, {}).get("canonical_nick", "Unknown User")
              hugs = sum(v for k, v in user_scores.items() if k.endswith("_hugged"))
              hunts = sum(v for k, v in user_scores.items() if k.endswith("_hunted"))
-             top_list.append(f"#{i+1} {display_nick} ({total}: {hugs} hugs, {hunts} hunts)")
-             
+             murders = sum(v for k, v in user_scores.items() if k.endswith("_murdered"))
+
+             # Build stats string
+             if murders > 0:
+                 top_list.append(f"#{i+1} {display_nick} ({total}: {hugs} hugs, {hunts} hunts, {murders} murders)")
+             else:
+                 top_list.append(f"#{i+1} {display_nick} ({total}: {hugs} hugs, {hunts} hunts)")
+
         self.safe_reply(connection, event, f"Top 5 most active members: {'; '.join(top_list)}")
         return True
 

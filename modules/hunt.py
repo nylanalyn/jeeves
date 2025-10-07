@@ -202,7 +202,7 @@ class Hunt(SimpleCommandModule):
         return True
 
     def _schedule_next_spawn(self):
-        schedule.clear(self.name)
+        schedule.clear(f"{self.name}-spawn")
         allowed_channels = self.get_config_value("allowed_channels", default=[])
         animals = self.get_config_value("animals", default=[])
         if not allowed_channels or not animals:

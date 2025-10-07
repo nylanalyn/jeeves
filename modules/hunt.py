@@ -225,7 +225,8 @@ class Hunt(SimpleCommandModule):
             return False
 
         allowed_channels = self.get_config_value("allowed_channels", default=[])
-        spawn_locations = [room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]
+        # Deduplicate channels in case of config duplicates
+        spawn_locations = list(set([room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]))
         if target_channel and target_channel in spawn_locations:
             spawn_locations = [target_channel]
 

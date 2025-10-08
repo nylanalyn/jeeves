@@ -288,24 +288,12 @@
                             <h4>Configuration</h4>
                             <div class="command">
                                 <div class="command-syntax">!admin config reload</div>
-                                <div class="command-desc">Reload config.yaml without restarting</div>
+                                <div class="command-desc">Reload config.yaml without restarting bot</div>
                             </div>
-                            <div class="command">
-                                <div class="command-syntax">!admin on &lt;module&gt; [#channel]</div>
-                                <div class="command-desc">Enable a module for a channel</div>
-                            </div>
-                            <div class="command">
-                                <div class="command-syntax">!admin off &lt;module&gt; [#channel]</div>
-                                <div class="command-desc">Disable a module for a channel</div>
-                            </div>
-                            <div class="command">
-                                <div class="command-syntax">!admin get &lt;module.setting.path&gt; [#channel]</div>
-                                <div class="command-desc">Retrieve a configuration value</div>
-                            </div>
-                            <div class="command">
-                                <div class="command-syntax">!admin set &lt;module.setting.path&gt; &lt;value&gt; [#channel]</div>
-                                <div class="command-desc">Change a configuration setting (some settings are read-only)</div>
-                            </div>
+                        </div>
+
+                        <div class="ambient-note" style="margin-top: 15px;">
+                            <strong>Note:</strong> Configuration is now read-only at runtime. To change settings, edit config/config.yaml and use !admin config reload.
                         </div>
 
                         <div class="command-group">
@@ -710,6 +698,14 @@
                                 <div class="command-syntax">!memos mine</div>
                                 <div class="command-desc">View your pending memos</div>
                             </div>
+                            <div class="command">
+                                <div class="command-syntax">!remind &lt;me|user&gt; &lt;timeframe&gt; &lt;message&gt;</div>
+                                <div class="command-desc">Set a timed reminder (e.g., "!remind me in 10 minutes to check the oven")</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!seen &lt;user&gt;</div>
+                                <div class="command-desc">Check when a user was last seen speaking in the channel</div>
+                            </div>
                         </div>
 
                         <div class="command-group">
@@ -746,6 +742,35 @@
                             <div class="command">
                                 <div class="command-syntax">!pron</div>
                                 <div class="command-desc">Get a wholesome, humorously suggestive scenario</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Oracle Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔮 Oracle (AI Conversation)</h3>
+                        <span class="module-badge">oracle.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="ambient-note">
+                            <strong>AI-Powered:</strong> Oracle provides fully AI-driven conversational responses when enabled in specific channels. Mention Jeeves by name to engage.
+                        </div>
+                        <div class="command-group">
+                            <h4>Admin Commands</h4>
+                            <div class="command">
+                                <div class="command-syntax">!oracle reset</div>
+                                <div class="command-desc">[Admin] Reset conversation history in the current channel</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!oracle reload</div>
+                                <div class="command-desc">[Admin] Reload system prompt from config file</div>
                             </div>
                         </div>
                     </div>

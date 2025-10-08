@@ -11,7 +11,7 @@ def setup(bot):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "4.0.0" # Dual API support: PirateWeather for US, yr.no for international
+    version = "4.1.0" # Added flavor text preference support
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot):
@@ -41,9 +41,12 @@ class Weather(SimpleCommandModule):
             user_id = self.bot.get_user_id(username)
             location_obj = self.get_state("user_locations", {}).get(user_id)
             if not location_obj:
-                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a default location.")
+                if self.has_flavor_enabled(username):
+                    self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a default location.")
+                else:
+                    self.safe_reply(connection, event, "No default location set.")
                 return True
-            
+
             self._reply_with_weather(connection, event, location_obj, username)
             return True
         return False
@@ -111,13 +114,19 @@ class Weather(SimpleCommandModule):
 
             report = f"{summary}. Temp: {temp_str}. Wind: {wind_mph} mph / {wind_kph} kph."
 
-            requester_title = self.bot.title_for(requester)
-            if target_user:
-                return f"As you wish, {requester_title}. The weather for {self.bot.title_for(target_user)} in {location_name} is: {report}"
+            if self.has_flavor_enabled(requester):
+                requester_title = self.bot.title_for(requester)
+                if target_user:
+                    return f"As you wish, {requester_title}. The weather for {self.bot.title_for(target_user)} in {location_name} is: {report}"
+                else:
+                    return f"{requester_title}, the weather in {location_name} is: {report}"
             else:
-                return f"{requester_title}, the weather in {location_name} is: {report}"
+                return f"{location_name}: {report}"
         except (KeyError, IndexError, ValueError):
-            return f"My apologies, {self.bot.title_for(requester)}, I could not format the weather report."
+            if self.has_flavor_enabled(requester):
+                return f"My apologies, {self.bot.title_for(requester)}, I could not format the weather report."
+            else:
+                return "Could not format weather report."
 
     def _reply_with_weather(self, connection, event, location_obj, requester, target_user=None):
         location_name = location_obj.get('short_name') or location_obj.get('display_name') or 'their location'
@@ -129,33 +138,45 @@ class Weather(SimpleCommandModule):
             report = self._format_weather_report(weather_data, location_name, requester, is_pirate, target_user)
             self.safe_reply(connection, event, report)
         else:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(requester)}, I could not fetch the weather.")
+            if self.has_flavor_enabled(requester):
+                self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(requester)}, I could not fetch the weather.")
+            else:
+                self.safe_reply(connection, event, "Could not fetch weather.")
 
     def _cmd_set_location(self, connection, event, msg, username, match):
         location_input = match.group(1).strip()
         geo_data_tuple = self._get_geocode_data(location_input)
         if not geo_data_tuple:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I could not find coordinates for '{location_input}'.")
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I could not find coordinates for '{location_input}'.")
+            else:
+                self.safe_reply(connection, event, f"Location '{location_input}' not found.")
             return True
-        
+
         lat, lon, geo_data = geo_data_tuple
         short_name = self._format_location_name(geo_data)
         country_code = geo_data.get("address", {}).get("country_code", "us").upper()
         user_id = self.bot.get_user_id(username)
-        
+
         locations = self.get_state("user_locations")
         locations[user_id] = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name"), "country_code": country_code}
         self.set_state("user_locations", locations)
         self.save_state()
-        
-        self.safe_reply(connection, event, f"Noted, {self.bot.title_for(username)}. Your location is set to '{short_name}'.")
+
+        if self.has_flavor_enabled(username):
+            self.safe_reply(connection, event, f"Noted, {self.bot.title_for(username)}. Your location is set to '{short_name}'.")
+        else:
+            self.safe_reply(connection, event, f"Location set to '{short_name}'.")
         return True
 
     def _cmd_weather_self(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         location_obj = self.get_state("user_locations", {}).get(user_id)
         if not location_obj:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location.")
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location.")
+            else:
+                self.safe_reply(connection, event, "No location set.")
             return True
         self._reply_with_weather(connection, event, location_obj, username)
         return True
@@ -172,12 +193,15 @@ class Weather(SimpleCommandModule):
 
         geo_data_tuple = self._get_geocode_data(query)
         if not geo_data_tuple:
-            self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
+            else:
+                self.safe_reply(connection, event, f"User or location '{query}' not found.")
             return True
-        
+
         lat, lon, geo_data = geo_data_tuple
         location_obj = {
-            "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data), 
+            "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data),
             "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
         }
         self._reply_with_weather(connection, event, location_obj, username)

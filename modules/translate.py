@@ -24,7 +24,7 @@ def setup(bot):
 class Translate(SimpleCommandModule):
     """A module for text translation using the DeepL API."""
     name = "translate"
-    version = "2.0.0" # Switched to DeepL API
+    version = "2.1.0" # Added flavor text preference support
     description = "Translates text using the DeepL API."
 
     def __init__(self, bot, api_key):
@@ -69,8 +69,12 @@ class Translate(SimpleCommandModule):
 
     def _cmd_translate(self, connection, event, msg, username, match):
         """Handles the main !translate command."""
+        has_flavor = self.has_flavor_enabled(username)
         if not self.translator:
-            self.safe_reply(connection, event, "My apologies, the translation service is not correctly configured.")
+            if has_flavor:
+                self.safe_reply(connection, event, "My apologies, the translation service is not correctly configured.")
+            else:
+                self.safe_reply(connection, event, "Translation service not configured.")
             return True
 
         args_str = match.group(1).strip()
@@ -78,7 +82,7 @@ class Translate(SimpleCommandModule):
 
         target_lang = self.get_config_value("default_target_language", event.target, default="EN-US")
         text_to_translate = args_str
-        
+
         # Check if the first argument is a language code (e.g., DE, FR, PT-BR)
         # Simple check: 2-5 chars, contains only letters and possibly a hyphen.
         if len(args) > 1 and 2 <= len(args[0]) <= 5 and re.match(r'^[A-Z-]+$', args[0], re.IGNORECASE):
@@ -93,12 +97,18 @@ class Translate(SimpleCommandModule):
 
             self.set_state("translations_done", self.get_state("translations_done", 0) + 1)
             self.save_state()
-            
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, ({detected_lang} -> {target_lang}): \"{translated_text}\"")
+
+            if has_flavor:
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, ({detected_lang} -> {target_lang}): \"{translated_text}\"")
+            else:
+                self.safe_reply(connection, event, f"({detected_lang} -> {target_lang}): \"{translated_text}\"")
 
         except deepl.DeepLException as e:
             self._record_error(f"DeepL API error: {e}")
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, an error occurred during translation. Please check the language code or try again later.")
-        
+            if has_flavor:
+                self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, an error occurred during translation. Please check the language code or try again later.")
+            else:
+                self.safe_reply(connection, event, "Translation error. Check language code or try again.")
+
         return True
 

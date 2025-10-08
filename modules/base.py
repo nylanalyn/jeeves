@@ -204,6 +204,13 @@ class ModuleBase(ABC):
         pattern = re.compile(self.bot.JEEVES_NAME_RE, re.IGNORECASE)
         return bool(pattern.search(msg))
 
+    def has_flavor_enabled(self, username: str) -> bool:
+        """Check if a user has flavor text enabled. Defaults to True if users module unavailable."""
+        users_module = self.bot.pm.plugins.get("users")
+        if users_module and hasattr(users_module, "has_flavor_enabled"):
+            return users_module.has_flavor_enabled(username)
+        return True  # Default to flavor enabled if users module not available
+
     def safe_reply(self, connection, event, text: str) -> bool:
         try:
             connection.privmsg(event.target, text)

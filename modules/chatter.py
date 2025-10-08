@@ -18,7 +18,7 @@ def setup(bot):
 
 class Chatter(SimpleCommandModule):
     name = "chatter"
-    version = "3.0.0" # Dynamic configuration refactor
+    version = "3.1.0" # Added flavor text preference support
     description = "Provides scheduled messages and conversational responses."
 
     ANIMAL_WORDS = re.compile(r"\b(?:duck|ducks|cat|cats|kitten|kittens|puppy|puppies|dog|dogs|rabbit|rabbits|bird|birds|fish|hamster|guinea\s+pig)\b", re.IGNORECASE)
@@ -53,7 +53,11 @@ class Chatter(SimpleCommandModule):
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
             return False
-            
+
+        # Don't respond if user has flavor disabled
+        if not self.has_flavor_enabled(username):
+            return False
+
         response_handlers = [
             (self.ANIMAL_WORDS, "animal", 0.25),
             (self.WEATHER_WORDS, "weather", 0.3),
@@ -61,7 +65,7 @@ class Chatter(SimpleCommandModule):
             (self.FOOD_WORDS, "food", 0.3),
             (self.GREETING_WORDS, "greeting", 0.6),
         ]
-        
+
         for pattern, response_type, probability in response_handlers:
             if pattern.search(msg) and random.random() <= probability:
                 response = self._handle_contextual_response(event.target, response_type, msg, username)

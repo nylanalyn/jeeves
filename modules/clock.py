@@ -12,7 +12,7 @@ def setup(bot):
 
 class Clock(SimpleCommandModule):
     name = "clock"
-    version = "3.0.0" # Dynamic configuration refactor
+    version = "3.1.0" # Added flavor text preference support
     description = "Provides the local time for users based on their set location."
 
     def __init__(self, bot):
@@ -86,7 +86,10 @@ class Clock(SimpleCommandModule):
         self.set_state("user_time_preferences", user_prefs)
         self.save_state()
 
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your time format has been set to {format_choice}-hour.")
+        if self.has_flavor_enabled(username):
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your time format has been set to {format_choice}-hour.")
+        else:
+            self.safe_reply(connection, event, f"Time format set to {format_choice}-hour.")
         return True
 
     def _cmd_time_self(self, connection, event, msg, username, match):
@@ -100,20 +103,33 @@ class Clock(SimpleCommandModule):
             time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'], country_code, user_id)
 
             if time_str:
-                self.safe_reply(connection, event, f"For {self.bot.title_for(username)}, the time in {location_name} is {time_str}.")
+                if self.has_flavor_enabled(username):
+                    self.safe_reply(connection, event, f"For {self.bot.title_for(username)}, the time in {location_name} is {time_str}.")
+                else:
+                    self.safe_reply(connection, event, f"{location_name}: {time_str}")
             else:
-                self.safe_reply(connection, event, f"My apologies, I could not determine the timezone for your location.")
+                if self.has_flavor_enabled(username):
+                    self.safe_reply(connection, event, f"My apologies, I could not determine the timezone for your location.")
+                else:
+                    self.safe_reply(connection, event, "Could not determine timezone.")
         else:
             server_time = datetime.now(pytz.utc).strftime('%I:%M %p %Z')
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location. The server time is {server_time}.")
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location. The server time is {server_time}.")
+            else:
+                self.safe_reply(connection, event, f"No location set. Server time: {server_time}")
         return True
 
     def _cmd_time_other(self, connection, event, msg, username, match):
         query = match.group(1).strip()
+        has_flavor = self.has_flavor_enabled(username)
 
         if query.lower() == 'server':
             server_time = datetime.now(pytz.utc).strftime('%A, %B %d at %I:%M %p %Z')
-            self.safe_reply(connection, event, f"The server's current time is {server_time}.")
+            if has_flavor:
+                self.safe_reply(connection, event, f"The server's current time is {server_time}.")
+            else:
+                self.safe_reply(connection, event, f"Server: {server_time}")
             return True
 
         users_module = self.bot.pm.plugins.get("users")
@@ -130,9 +146,15 @@ class Clock(SimpleCommandModule):
                 country_code = target_user_loc.get('country_code')
                 time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'], country_code, target_user_id)
                 if time_str:
-                    self.safe_reply(connection, event, f"The time for {self.bot.title_for(query)} in {location_name} is {time_str}.")
+                    if has_flavor:
+                        self.safe_reply(connection, event, f"The time for {self.bot.title_for(query)} in {location_name} is {time_str}.")
+                    else:
+                        self.safe_reply(connection, event, f"{location_name}: {time_str}")
                 else:
-                    self.safe_reply(connection, event, f"I'm afraid I could not determine the timezone for {self.bot.title_for(query)}'s location.")
+                    if has_flavor:
+                        self.safe_reply(connection, event, f"I'm afraid I could not determine the timezone for {self.bot.title_for(query)}'s location.")
+                    else:
+                        self.safe_reply(connection, event, f"Could not determine timezone for {query}.")
                 return True
 
         geo_data_tuple = self._get_geocode_data(query)
@@ -144,9 +166,18 @@ class Clock(SimpleCommandModule):
             requesting_user_id = self.bot.get_user_id(username)
             time_str = self._get_time_for_coords(lat, lon, country_code, requesting_user_id)
             if time_str:
-                self.safe_reply(connection, event, f"The current time in {display_name} is {time_str}.")
+                if has_flavor:
+                    self.safe_reply(connection, event, f"The current time in {display_name} is {time_str}.")
+                else:
+                    self.safe_reply(connection, event, f"{display_name}: {time_str}")
             else:
-                self.safe_reply(connection, event, f"My apologies, I could not find a timezone for {display_name}.")
+                if has_flavor:
+                    self.safe_reply(connection, event, f"My apologies, I could not find a timezone for {display_name}.")
+                else:
+                    self.safe_reply(connection, event, f"No timezone found for {display_name}.")
         else:
-            self.safe_reply(connection, event, f"I could not find a user or location named '{query}'.")
+            if has_flavor:
+                self.safe_reply(connection, event, f"I could not find a user or location named '{query}'.")
+            else:
+                self.safe_reply(connection, event, f"User or location '{query}' not found.")
         return True

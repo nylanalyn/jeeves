@@ -10,7 +10,7 @@ def setup(bot):
 class Users(SimpleCommandModule):
     """Handles the mapping of nicknames to persistent user IDs."""
     name = "users"
-    version = "2.0.0" # Dynamic configuration refactor
+    version = "2.1.0" # Added flavor text preference
     description = "Provides persistent user identity across nickname changes."
 
     # This module is a core service and does not require changes for the refactor,
@@ -25,8 +25,8 @@ class Users(SimpleCommandModule):
         self.save_state()
 
     def _register_commands(self):
-        """This module has no user-facing commands."""
-        pass
+        """Register user preference commands."""
+        self.register_command(r"^\s*!flavor\s+(on|off)$", self._cmd_flavor, name="flavor", description="Toggle flavor text on/off")
 
     def get_user_id(self, nick: str) -> str:
         """
@@ -84,3 +84,29 @@ class Users(SimpleCommandModule):
 
         self.set_state("nick_map", nick_map)
         self.save_state()
+
+    def _cmd_flavor(self, connection, event, msg, username, match):
+        """Toggle flavor text preference for a user."""
+        setting = match.group(1).lower()
+        user_id = self.get_user_id(username)
+
+        user_map = self.get_state("user_map", {})
+        user_profile = user_map.get(user_id, {})
+
+        user_profile["flavor_enabled"] = (setting == "on")
+        user_map[user_id] = user_profile
+        self.set_state("user_map", user_map)
+        self.save_state()
+
+        if setting == "on":
+            self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. Flavor text has been re-enabled.")
+        else:
+            self.safe_reply(connection, event, "Flavor text disabled. Responses will be concise.")
+        return True
+
+    def has_flavor_enabled(self, username: str) -> bool:
+        """Check if a user has flavor text enabled (default: True)."""
+        user_id = self.get_user_id(username)
+        user_map = self.get_state("user_map", {})
+        user_profile = user_map.get(user_id, {})
+        return user_profile.get("flavor_enabled", True)

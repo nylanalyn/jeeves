@@ -30,7 +30,7 @@ def setup(bot):
 
 class Convenience(ModuleBase):
     name = "convenience"
-    version = "1.7.1" # Restored news fallback logic
+    version = "1.8.0" # Added flavor text preference support
     description = "Provides convenient, common search commands and URL title fetching."
 
     YOUTUBE_URL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w\-]{11})')
@@ -80,12 +80,16 @@ class Convenience(ModuleBase):
         video_info = self._get_youtube_video_info_by_id(video_id)
 
         if video_info:
-            title = self.bot.title_for(username)
-            view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "an unknown number of"
-            response = (
-                f"Ah, {title}, I see you've found \"{video_info['title']}\". "
-                f"It runs for {video_info['duration']} and has garnered {view_str} views."
-            )
+            if self.has_flavor_enabled(username):
+                title = self.bot.title_for(username)
+                view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "an unknown number of"
+                response = (
+                    f"Ah, {title}, I see you've found \"{video_info['title']}\". "
+                    f"It runs for {video_info['duration']} and has garnered {view_str} views."
+                )
+            else:
+                view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "N/A"
+                response = f"\"{video_info['title']}\" - {video_info['duration']} - {view_str} views"
             self.safe_reply(connection, event, response)
             return True
         return False
@@ -114,7 +118,10 @@ class Convenience(ModuleBase):
 
         if title:
             title_cleaned = " ".join(title.strip().split())
-            response = f"Allow me to present the title of that link for you, {self.bot.title_for(username)}: \"{title_cleaned}\""
+            if self.has_flavor_enabled(username):
+                response = f"Allow me to present the title of that link for you, {self.bot.title_for(username)}: \"{title_cleaned}\""
+            else:
+                response = f"\"{title_cleaned}\""
             self.safe_reply(connection, event, response)
             return True
 
@@ -161,32 +168,46 @@ class Convenience(ModuleBase):
         query = match.group(1).strip()
         encoded_query = quote_plus(query)
         sassy_chance = self.get_config_value("sassy_google_chance", event.target, default=0.1)
+        search_url = f"https://www.google.com/search?q={encoded_query}"
 
         if random.random() < sassy_chance:
-            self.safe_reply(connection, event, f"Allow me to demonstrate, {self.bot.title_for(username)}: https://letmegooglethat.com/?q={encoded_query}")
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"Allow me to demonstrate, {self.bot.title_for(username)}: https://letmegooglethat.com/?q={encoded_query}")
+            else:
+                self.safe_reply(connection, event, f"https://letmegooglethat.com/?q={encoded_query}")
             return True
-        search_url = f"https://www.google.com/search?q={encoded_query}"
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Google search for '{query}': {self._get_short_url(search_url)}")
+
+        if self.has_flavor_enabled(username):
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Google search for '{query}': {self._get_short_url(search_url)}")
+        else:
+            self.safe_reply(connection, event, self._get_short_url(search_url))
         return True
 
     def _cmd_ud(self, connection, event, msg, username, match):
         term = match.group(1).strip()
         sassy_chance = self.get_config_value("sassy_ud_chance", event.target, default=0.05)
         sassy_terms = self.get_config_value("sassy_ud_terms", event.target, default=[])
-        
+        has_flavor = self.has_flavor_enabled(username)
+
         if sassy_terms and random.random() < sassy_chance:
             original_term, term = term, random.choice(sassy_terms)
-            intro_message = f"While searching for '{original_term}', I was reminded of a more relevant term, {self.bot.title_for(username)}. For '{term}':"
+            if has_flavor:
+                intro_message = f"While searching for '{original_term}', I was reminded of a more relevant term, {self.bot.title_for(username)}. For '{term}':"
+            else:
+                intro_message = f"'{term}':"
         else:
-            intro_message = f"For '{term}':"
-        
+            intro_message = f"For '{term}':" if has_flavor else f"'{term}':"
+
         api_url = f"http://api.urbandictionary.com/v0/define?term={quote_plus(term)}"
         try:
             response = self.http_session.get(api_url, timeout=5)
             response.raise_for_status()
             data = response.json()
             if not data or not data.get("list"):
-                self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{term}'.")
+                if has_flavor:
+                    self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{term}'.")
+                else:
+                    self.safe_reply(connection, event, f"No definition found for '{term}'.")
                 return True
             top_result = data["list"][0]
             definition = top_result.get("definition", "No definition provided.")
@@ -195,17 +216,25 @@ class Convenience(ModuleBase):
             self.safe_reply(connection, event, cleaned_def)
         except requests.exceptions.RequestException as e:
             self._record_error(f"Urban Dictionary API request failed: {e}")
-            self.safe_reply(connection, event, "I'm afraid the Urban Dictionary service is unavailable at the moment.")
+            if has_flavor:
+                self.safe_reply(connection, event, "I'm afraid the Urban Dictionary service is unavailable at the moment.")
+            else:
+                self.safe_reply(connection, event, "Urban Dictionary service unavailable.")
         return True
 
     def _cmd_wiki(self, connection, event, msg, username, match):
         query = match.group(1).strip()
         sassy_chance = self.get_config_value("sassy_wiki_chance", event.target, default=0.1)
-        
+        has_flavor = self.has_flavor_enabled(username)
+        search_url = self._get_short_url(f'https://en.wikipedia.org/w/index.php?search={quote_plus(query)}')
+
         if random.random() < sassy_chance:
-            self.safe_reply(connection, event, f"A moment, {self.bot.title_for(username)}, while I consult the grand library... Ah, here is the relevant section: {self._get_short_url(f'https://en.wikipedia.org/w/index.php?search={quote_plus(query)}')}")
+            if has_flavor:
+                self.safe_reply(connection, event, f"A moment, {self.bot.title_for(username)}, while I consult the grand library... Ah, here is the relevant section: {search_url}")
+            else:
+                self.safe_reply(connection, event, search_url)
             return True
-            
+
         api_url = f"https://en.wikipedia.org/w/api.php?action=query&format=json&prop=extracts&exintro=true&explaintext=true&redirects=1&titles={quote_plus(query)}"
         headers = {'User-Agent': 'JeevesIRCBot/1.0 (IRC Bot; https://github.com/anthropics/jeeves)'}
         try:
@@ -223,7 +252,11 @@ class Convenience(ModuleBase):
                     return True
         except requests.exceptions.RequestException as e:
             self._record_error(f"Wikipedia API request failed: {e}")
-        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Wikipedia search for '{query}': {self._get_short_url(f'https://en.wikipedia.org/w/index.php?search={quote_plus(query)}')}")
+
+        if has_flavor:
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Wikipedia search for '{query}': {search_url}")
+        else:
+            self.safe_reply(connection, event, search_url)
         return True
 
     def _get_news_from_rss(self, rss_url: str) -> Optional[Dict[str, str]]:
@@ -241,47 +274,72 @@ class Convenience(ModuleBase):
     def _cmd_news(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         location_obj = self.bot.get_module_state("weather").get("user_locations", {}).get(user_id)
-        
+        has_flavor = self.has_flavor_enabled(username)
+
         # First attempt: Local news based on city/state
         if location_obj and location_obj.get("short_name"):
             short_name, cc = location_obj["short_name"], location_obj.get("country_code", "US").upper()
             rss_url = f"https://news.google.com/rss/search?q={quote_plus(short_name)}&hl=en-{cc}&gl={cc}&ceid={cc}:en"
             if (news_item := self._get_news_from_rss(rss_url)):
-                self.safe_reply(connection, event, f"The top story for {short_name} is: \"{news_item['title']}\"")
+                if has_flavor:
+                    self.safe_reply(connection, event, f"The top story for {short_name} is: \"{news_item['title']}\"")
+                else:
+                    self.safe_reply(connection, event, f"\"{news_item['title']}\"")
                 self.safe_reply(connection, event, self._get_short_url(news_item['link']))
                 return True
             else:
-                self.safe_reply(connection, event, f"I found no specific news for {short_name}, broadening the search...")
+                if has_flavor:
+                    self.safe_reply(connection, event, f"I found no specific news for {short_name}, broadening the search...")
 
         # Second attempt: National news based on country code
         if location_obj and location_obj.get("country_code"):
             cc = location_obj.get("country_code", "US").upper()
             rss_url = f"https://news.google.com/rss?hl=en-{cc}&gl={cc}&ceid={cc}:en"
             if (news_item := self._get_news_from_rss(rss_url)):
-                self.safe_reply(connection, event, f"The top national story is: \"{news_item['title']}\"")
+                if has_flavor:
+                    self.safe_reply(connection, event, f"The top national story is: \"{news_item['title']}\"")
+                else:
+                    self.safe_reply(connection, event, f"\"{news_item['title']}\"")
                 self.safe_reply(connection, event, self._get_short_url(news_item['link']))
                 return True
 
         # Third attempt: Global (US) news as the final fallback
         if (news_item := self._get_news_from_rss("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")):
-            self.safe_reply(connection, event, f"The top global story is: \"{news_item['title']}\"")
+            if has_flavor:
+                self.safe_reply(connection, event, f"The top global story is: \"{news_item['title']}\"")
+            else:
+                self.safe_reply(connection, event, f"\"{news_item['title']}\"")
             self.safe_reply(connection, event, self._get_short_url(news_item['link']))
         else:
-            self.safe_reply(connection, event, "I'm afraid the news service is unavailable at this time.")
+            if has_flavor:
+                self.safe_reply(connection, event, "I'm afraid the news service is unavailable at this time.")
+            else:
+                self.safe_reply(connection, event, "News service unavailable.")
         return True
 
     def _cmd_yt(self, connection, event, msg, username, match):
+        has_flavor = self.has_flavor_enabled(username)
         if not self.youtube_service:
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the YouTube service is not configured correctly.")
+            if has_flavor:
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, the YouTube service is not configured correctly.")
+            else:
+                self.safe_reply(connection, event, "YouTube service not configured.")
             return True
         query = match.group(1).strip()
         video_info = self._get_youtube_video_info_by_query(query)
         if video_info:
             view_str = f"{video_info['views']:,}" if video_info.get('views') is not None else "N/A"
-            self.safe_reply(connection, event, f"For '{query}', I present: \"{video_info['title']}\".")
-            self.safe_reply(connection, event, f"Duration: {video_info['duration']}. Views: {view_str}. {self._get_short_url(video_info['url'])}")
+            if has_flavor:
+                self.safe_reply(connection, event, f"For '{query}', I present: \"{video_info['title']}\".")
+                self.safe_reply(connection, event, f"Duration: {video_info['duration']}. Views: {view_str}. {self._get_short_url(video_info['url'])}")
+            else:
+                self.safe_reply(connection, event, f"\"{video_info['title']}\" - {video_info['duration']} - {view_str} views")
+                self.safe_reply(connection, event, self._get_short_url(video_info['url']))
         else:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not find a suitable video for '{query}'.")
+            if has_flavor:
+                self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not find a suitable video for '{query}'.")
+            else:
+                self.safe_reply(connection, event, f"No video found for '{query}'.")
         return True
     
     # --- Helper Methods ---

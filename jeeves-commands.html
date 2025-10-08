@@ -332,7 +332,7 @@
                 <div class="module-header" onclick="toggleModule(this)">
                     <div class="module-title">
                         <h3>👤 User Profiles & Courtesy</h3>
-                        <span class="module-badge">courtesy.py</span>
+                        <span class="module-badge">courtesy.py, users.py</span>
                     </div>
                     <span class="expand-icon">▶</span>
                 </div>
@@ -347,6 +347,10 @@
                             <div class="command">
                                 <div class="command-syntax">!pronouns &lt;pronouns&gt;</div>
                                 <div class="command-desc">Set your pronouns (he/him, she/her, they/them, etc.)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!flavor &lt;on|off&gt;</div>
+                                <div class="command-desc">Toggle butler-style flavor text on/off (default: on). When off, responses are data-only with no elaborate preamble.</div>
                             </div>
                             <div class="command">
                                 <div class="command-syntax">!whoami</div>
@@ -718,6 +722,14 @@
                                 <div class="command-syntax">!translate [lang] &lt;text&gt;</div>
                                 <div class="command-syntax">!tr [lang] &lt;text&gt;</div>
                                 <div class="command-desc">Translate text to specified language (e.g., es for Spanish)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!tr</div>
+                                <div class="command-desc">Translate the last non-command message in the channel</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!translate langs</div>
+                                <div class="command-desc">Get a link to supported language codes</div>
                             </div>
                             <div class="command">
                                 <div class="command-syntax">!shorten &lt;url&gt;</div>

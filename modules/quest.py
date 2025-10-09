@@ -124,14 +124,21 @@ class Quest(SimpleCommandModule):
         # Register more specific patterns first
         self.register_command(r"^\s*!quest\s+reload\s*$", self._cmd_quest_reload, name="quest_reload",
                               admin_only=True, description="Reload quest content from quest_content.json")
-        self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
-        self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
-        self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob")
-        self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join")
-        self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit",
+        self.register_command(r"^\s*!quest\s+mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
+        self.register_command(r"^\s*!quest\s+mob\s*$", self._cmd_mob_start, name="mob")
+        self.register_command(r"^\s*!quest\s+join\s*$", self._cmd_mob_join, name="join")
+        self.register_command(r"^\s*!quest\s+medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit",
                               description="Use a medkit to heal yourself or another player")
-        self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
+        self.register_command(r"^\s*!quest\s+inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
                               description="View your medkits and active injuries")
+        self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
+
+        # Legacy aliases for backwards compatibility
+        self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping_legacy")
+        self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob_legacy")
+        self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join_legacy")
+        self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit_legacy")
+        self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory_legacy")
 
     def _format_timedelta(self, future_datetime: datetime) -> str:
         """Formats the time remaining until a future datetime."""
@@ -912,7 +919,7 @@ class Quest(SimpleCommandModule):
                 return True
             active_mob = self.get_state("active_mob")
             if active_mob:
-                self.safe_reply(connection, event, "A mob encounter is already active! Use !join to participate.")
+                self.safe_reply(connection, event, "A mob encounter is already active! Use !quest join (or !join) to participate.")
                 return True
 
             user_id = self.bot.get_user_id(username)
@@ -960,10 +967,10 @@ class Quest(SimpleCommandModule):
             schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
 
             rare_prefix = "[RARE] " if is_rare else ""
-            self.safe_reply(connection, event, f"{username} has summoned a {rare_prefix}Level {monster_level} {monster['name']}! Others can !join within {join_window_seconds} seconds!")
+            self.safe_reply(connection, event, f"{username} has summoned a {rare_prefix}Level {monster_level} {monster['name']}! Others can !quest join (or !join) within {join_window_seconds} seconds!")
 
             if is_rare:
-                self.safe_say(f"A rare mob encounter has appeared! Use !join to participate!", event.target)
+                self.safe_say(f"A rare mob encounter has appeared! Use !quest join (or !join) to participate!", event.target)
 
             # Ping users who opted in for mob notifications
             mob_pings = self.get_state("mob_pings", {})
@@ -1516,9 +1523,9 @@ class Quest(SimpleCommandModule):
         if 'active_injuries' in player and player['active_injuries']:
             injury_names = [inj['name'] for inj in player['active_injuries']]
             if len(injury_names) == 1:
-                self.safe_reply(connection, event, f"You are still recovering from your {injury_names[0]}. Rest or use a !medkit to heal.")
+                self.safe_reply(connection, event, f"You are still recovering from your {injury_names[0]}. Rest or use !quest medkit (or !medkit) to heal.")
             else:
-                self.safe_reply(connection, event, f"You are still recovering from: {', '.join(injury_names)}. Rest or use a !medkit to heal.")
+                self.safe_reply(connection, event, f"You are still recovering from: {', '.join(injury_names)}. Rest or use !quest medkit (or !medkit) to heal.")
             players_state = self.get_state("players", {})
             players_state[user_id] = player
             self.set_state("players", players_state)

@@ -34,6 +34,21 @@ class Sed(SimpleCommandModule):
 
         self.history[channel].append({'user': username, 'msg': message})
 
+    def _highlight_replacement(self, pattern: str, replacement: str, original: str, new_text: str) -> str:
+        """Return the new text with the replaced segment wrapped in *...* markers."""
+        try:
+            match_obj = re.search(pattern, original)
+            if not match_obj:
+                return new_text
+
+            replaced_value = match_obj.expand(replacement)
+            if not replaced_value:
+                return new_text
+
+            return f"{original[:match_obj.start()]}*{replaced_value}*{original[match_obj.end():]}"
+        except re.error:
+            return new_text
+
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
             return False
@@ -65,7 +80,8 @@ class Sed(SimpleCommandModule):
                 new_msg, count = self._safe_regex_subn(find, replace, prev_chat['msg'])
                 if count > 0:
                     title = self.bot.title_for(username)
-                    self.safe_reply(connection, event, f"As {title} noted, {prev_chat['user']} meant to say: {new_msg}")
+                    display_msg = self._highlight_replacement(find, replace, prev_chat['msg'], new_msg)
+                    self.safe_reply(connection, event, f"As {title} noted, {prev_chat['user']} meant to say: {display_msg}")
                     self._add_to_history(event.target, prev_chat['user'], new_msg)
                     return True
             except (re.error, ValueError):

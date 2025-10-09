@@ -184,6 +184,32 @@ session = self.requests_retry_session()
 response = session.get(url, timeout=10)
 ```
 
+**Debug logging**:
+```python
+# Simple debug message
+self.log_debug("Spawning animal in channel")
+
+# Log multiple variables at once
+self.log_debug_vars("spawn_check",
+                    active_animal=self.get_state("active_animal"),
+                    spawn_locations=spawn_locations,
+                    target_channel=target_channel)
+
+# Using decorator for automatic logging
+from .base import debug_log
+
+@debug_log("Processing action={action} for user={username}")
+def _process_action(self, username, action):
+    # Function parameters automatically logged when called
+    pass
+```
+
+**Debug modes:**
+- Global debug: `!admin debug on` - Logs all modules to debug.log
+- Module-specific debug: `!admin debug hunt on` - Logs only the hunt module
+- Module debug works even when global debug is off
+- All log messages automatically include `[modulename]` prefix
+
 ### Module Lifecycle Hooks
 
 - `on_load()` - Called after module loads (setup complete)
@@ -219,7 +245,8 @@ Admins are defined in `config.yaml` under `core.admins`. The bot verifies both n
 - `!admin join <#channel>` - Join channel
 - `!admin part <#channel> [msg]` - Leave channel
 - `!say [#channel] <msg>` - Send message as bot
-- `!admin debug <on|off>` - Toggle debug logging
+- `!admin debug <on|off>` - Toggle global debug logging
+- `!admin debug <module> <on|off>` - Toggle debug for specific module
 - `!emergency quit [msg]` - Shutdown bot
 
 **Note:** Configuration is now read-only at runtime. To change settings, edit `config/config.yaml` and use `!admin config reload`.

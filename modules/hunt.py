@@ -229,12 +229,13 @@ class Hunt(SimpleCommandModule):
             return False
 
         allowed_channels = self.get_config_value("allowed_channels", default=[])
-        self.log_debug(f"allowed_channels from config: {allowed_channels}")
-        self.log_debug(f"bot.joined_channels: {self.bot.joined_channels}")
 
         # Deduplicate channels in case of config duplicates
         spawn_locations = list(set([room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]))
-        self.log_debug(f"spawn_locations after deduplication: {spawn_locations}")
+        self.log_debug_vars("channel_resolution",
+                           allowed_channels=allowed_channels,
+                           joined_channels=self.bot.joined_channels,
+                           spawn_locations=spawn_locations)
 
         if target_channel and target_channel in spawn_locations:
             spawn_locations = [target_channel]

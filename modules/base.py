@@ -23,6 +23,38 @@ def admin_required(func):
         return func(self, connection, event, msg, username, *args, **kwargs)
     return wrapper
 
+def debug_log(message_template: str):
+    """
+    Decorator to add automatic debug logging to any method.
+
+    Usage:
+        @debug_log("Spawning animal: target_channel={target_channel}")
+        def _spawn_animal(self, target_channel=None):
+            ...
+
+    The decorator will log the message with parameter values when the method is called.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            # Build a dict of all arguments
+            import inspect
+            sig = inspect.signature(func)
+            bound_args = sig.bind(self, *args, **kwargs)
+            bound_args.apply_defaults()
+
+            # Format the message with actual parameter values
+            try:
+                formatted_msg = message_template.format(**bound_args.arguments)
+                self.log_debug(f"{func.__name__}: {formatted_msg}")
+            except (KeyError, AttributeError):
+                # Fallback if formatting fails
+                self.log_debug(f"{func.__name__} called with args={args}, kwargs={kwargs}")
+
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
 class ModuleBase(ABC):
     name = "base"
     version = "2.0.1" # Fixed SimpleCommandModule constructor
@@ -271,6 +303,19 @@ class ModuleBase(ABC):
         
     def log_debug(self, message: str):
         self.bot.log_debug(f"[{self.name}] {message}")
+
+    def log_debug_vars(self, context: str, **variables):
+        """
+        Log multiple variables at once for debugging.
+
+        Usage:
+            self.log_debug_vars("spawn_check",
+                                active_animal=self.get_state("active_animal"),
+                                spawn_locations=spawn_locations,
+                                target_channel=target_channel)
+        """
+        var_strs = [f"{k}={v}" for k, v in variables.items()]
+        self.log_debug(f"{context}: {', '.join(var_strs)}")
 
 class SimpleCommandModule(ModuleBase):
     def __init__(self, bot): # CORRECTED: Removed 'config' parameter

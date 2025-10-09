@@ -28,7 +28,8 @@ class Bell(SimpleCommandModule):
 
     def on_load(self):
         super().on_load()
-        schedule.clear(self.name)
+        schedule.clear(f"{self.name}-ring")
+        schedule.clear(f"{self.name}-end")
         
         next_ring_str = self.get_state("next_ring_time")
         if next_ring_str:
@@ -46,7 +47,8 @@ class Bell(SimpleCommandModule):
 
     def on_unload(self):
         super().on_unload()
-        schedule.clear(self.name)
+        schedule.clear(f"{self.name}-ring")
+        schedule.clear(f"{self.name}-end")
 
     def _register_commands(self):
         self.register_command(r"^\s*!answer\s*$", self._cmd_answer,

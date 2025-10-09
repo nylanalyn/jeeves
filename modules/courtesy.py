@@ -230,3 +230,11 @@ class Courtesy(SimpleCommandModule):
         profiles[user_id] = profile
         self.set_state("profiles", profiles)
         self.save_state()
+
+    def register_admin_hostname(self, user_id: str, host: str) -> None:
+        admin_hostnames = self.get_state("admin_hostnames", {})
+        if admin_hostnames.get(user_id) == host:
+            return
+        admin_hostnames[user_id] = host
+        self.set_state("admin_hostnames", admin_hostnames)
+        self.save_state()

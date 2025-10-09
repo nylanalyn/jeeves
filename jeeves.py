@@ -306,6 +306,7 @@ class Jeeves(SingleServerIRCBot):
         persisted_channels = set(core_state.get("joined_channels", []))
         persisted_channels.add(self.primary_channel)
         self.joined_channels = persisted_channels
+        self.state_manager = state_manager
 
     # --- Core Bot Functions ---
 
@@ -417,8 +418,15 @@ class Jeeves(SingleServerIRCBot):
 
         if not stored_host or stored_host.lower() != host.lower():
             self.log_debug(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}")
-            admin_hostnames[user_id] = host
-            self.update_module_state("courtesy", {"admin_hostnames": admin_hostnames})
+            courtesy_module = self.pm.plugins.get("courtesy")
+            if courtesy_module and hasattr(courtesy_module, "register_admin_hostname"):
+                courtesy_module.register_admin_hostname(user_id, host)
+            else:
+                updated_courtesy_state = dict(courtesy_state)
+                updated_hosts = dict(admin_hostnames)
+                updated_hosts[user_id] = host
+                updated_courtesy_state["admin_hostnames"] = updated_hosts
+                self.update_module_state("courtesy", updated_courtesy_state)
             self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
         
         return True
@@ -607,4 +615,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

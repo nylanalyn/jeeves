@@ -60,8 +60,13 @@ class Admin(SimpleCommandModule):
             target = args[1] if args[1].startswith('#') else event.target
             message = " ".join(args[2:]) if args[1].startswith('#') else " ".join(args[1:])
             return self._cmd_say(connection, event, username, target, message)
-        elif subcommand == "debug" and len(args) > 1:
-            return self._cmd_debug_toggle(connection, event, username, args[1])
+        elif subcommand == "debug":
+            if len(args) == 2:
+                return self._cmd_debug_toggle(connection, event, username, args[1])
+            elif len(args) == 3:
+                return self._cmd_module_debug_toggle(connection, event, username, args[1], args[2])
+            else:
+                return self._usage(connection, event, "debug <on|off> [module_name]")
         elif subcommand == "help":
             return self._cmd_help(connection, event, username)
         else:
@@ -131,6 +136,17 @@ class Admin(SimpleCommandModule):
         self.bot.set_debug_mode(state_bool)
         self.safe_reply(connection, event, f"Debug mode is now {'ON' if state_bool else 'OFF'}.")
         return True
+
+    def _cmd_module_debug_toggle(self, connection, event, username, module_name: str, state: str):
+        state_bool = state.lower() in ['on', 'true', '1', 'enable']
+
+        if module_name not in self.bot.pm.plugins:
+            self.safe_reply(connection, event, f"Module '{module_name}' is not loaded.")
+            return True
+
+        self.bot.set_module_debug(module_name, state_bool)
+        self.safe_reply(connection, event, f"Debug mode for '{module_name}' is now {'ON' if state_bool else 'OFF'}.")
+        return True
         
     def _cmd_emergency_quit(self, connection, event, msg, username, match):
         self.bot.connection.quit(match.group(1) or "Emergency quit.")
@@ -147,6 +163,7 @@ class Admin(SimpleCommandModule):
             "!admin part <#channel> [message] - Leave a channel.",
             "!say [#channel] <message> - Make the bot speak.",
             "!admin debug <on|off> - Toggle verbose file logging.",
+            "!admin debug <module_name> <on|off> - Toggle debug for specific module.",
             "!emergency quit [message] - Emergency shutdown.",
             "",
             "NOTE: Configuration is now read from config.yaml only.",

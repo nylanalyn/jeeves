@@ -212,45 +212,68 @@ class Hunt(SimpleCommandModule):
         max_h = self.get_config_value("max_hours_between_spawns", default=10)
         delay_hours = random.uniform(min_h, max_h)
         next_spawn_time = datetime.now(UTC) + timedelta(hours=delay_hours)
-        
+        self.log_debug(f"_schedule_next_spawn: scheduling spawn in {delay_hours:.2f} hours (at {next_spawn_time.isoformat()})")
+
         self.set_state("next_spawn_time", next_spawn_time.isoformat())
         self.save_state()
         schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
 
     def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
         schedule.clear(f"{self.name}-spawn")
+        self.log_debug(f"_spawn_animal called (target_channel={target_channel})")
+
         animals = self.get_config_value("animals", default=[])
         if not animals:
+            self.log_debug("No animals configured, scheduling next spawn")
             self._schedule_next_spawn()
             return False
 
         allowed_channels = self.get_config_value("allowed_channels", default=[])
+        self.log_debug(f"allowed_channels from config: {allowed_channels}")
+        self.log_debug(f"bot.joined_channels: {self.bot.joined_channels}")
+
         # Deduplicate channels in case of config duplicates
         spawn_locations = list(set([room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]))
+        self.log_debug(f"spawn_locations after deduplication: {spawn_locations}")
+
         if target_channel and target_channel in spawn_locations:
             spawn_locations = [target_channel]
+            self.log_debug(f"target_channel specified, using only: {spawn_locations}")
 
         if not spawn_locations:
+            self.log_debug("No valid spawn locations, scheduling next spawn")
             self._schedule_next_spawn()
             return False
-            
+
+        # Check if there's already an active animal
+        existing_animal = self.get_state("active_animal")
+        if existing_animal:
+            self.log_debug(f"WARNING: active_animal already exists: {existing_animal}")
+
         animal = random.choice(animals).copy()
         animal['spawned_at'] = datetime.now(UTC).isoformat()
-        
+        self.log_debug(f"Selected animal: {animal.get('name', 'unknown')}")
+
         self.set_state("active_animal", animal)
         self.save_state()
-        
+        self.log_debug(f"Saved active_animal to state")
+
+        self.log_debug(f"Announcing to {len(spawn_locations)} rooms: {spawn_locations}")
         for room in spawn_locations:
+            self.log_debug(f"Sending announcement to {room}")
             self.safe_say(random.choice(self.SPAWN_ANNOUNCEMENTS), target=room)
             self.safe_say(animal.get("ascii_art", "An animal appears."), target=room)
-            
+
         return True
 
     def _end_hunt(self, connection, event, username, action):
+        self.log_debug(f"_end_hunt called by {username}, action={action}")
         active_animal = self.get_state("active_animal")
         if not active_animal:
+            self.log_debug("_end_hunt: no active_animal found")
             return True
 
+        self.log_debug(f"_end_hunt: processing animal '{active_animal.get('name', 'unknown')}'")
         # Calculate time to catch
         time_to_catch_str = ""
         if 'spawned_at' in active_animal:
@@ -278,6 +301,7 @@ class Hunt(SimpleCommandModule):
 
         self.set_state("scores", scores)
         self.set_state("active_animal", None)
+        self.log_debug(f"_end_hunt: cleared active_animal, saved scores")
         self.save_state()
 
         # Special murder messages for user "dead"
@@ -293,6 +317,7 @@ class Hunt(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {animal_name}{time_to_catch_str}.")
 
+        self.log_debug(f"_end_hunt: complete, scheduling next spawn")
         self._schedule_next_spawn()
         return True
 
@@ -336,7 +361,8 @@ class Hunt(SimpleCommandModule):
         
         self.set_state("scores", scores)
         self.save_state()
-        
+
+        self.log_debug(f"_cmd_release: {username} released a {animal_name}, spawning replacement in {event.target}")
         self.safe_reply(connection, event, random.choice(self.RELEASE_MESSAGES).format(title=self.bot.title_for(username), animal_name=animal_name.capitalize()))
         self._spawn_animal(target_channel=event.target)
         return True

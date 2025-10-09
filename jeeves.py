@@ -311,29 +311,42 @@ class Jeeves(SingleServerIRCBot):
 
     def _setup_logging(self):
         self.debug_mode = self.config.get("core", {}).get("debug_mode_on_startup", False)
+        self.module_debug = {}  # Track per-module debug status
         log_file = self.config.get("core", {}).get("debug_log_file", "debug.log")
-        
+
         self.logger = logging.getLogger('jeeves_debug')
         self.logger.setLevel(logging.INFO)
-        
+
         handler = logging.FileHandler(ROOT / log_file, encoding='utf-8')
         formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         handler.setFormatter(formatter)
-        
+
         if (self.logger.hasHandlers()):
             self.logger.handlers.clear()
-            
+
         self.logger.addHandler(handler)
         # Always write initialization message to ensure file is created
         self.logger.info(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}.")
 
     def log_debug(self, message: str):
-        if self.debug_mode:
+        # Extract module name from message like "[modulename] ..."
+        module_match = re.match(r'^\[(\w+)\]', message)
+        if module_match:
+            module_name = module_match.group(1)
+            # Log if global debug is on OR module-specific debug is on
+            if self.debug_mode or self.module_debug.get(module_name, False):
+                self.logger.info(message)
+        elif self.debug_mode:
+            # No module prefix, log if global debug is on
             self.logger.info(message)
-    
+
     def set_debug_mode(self, status: bool):
         self.debug_mode = status
         self.log_debug(f"[core] Debug mode has been turned {'ON' if status else 'OFF'}.")
+
+    def set_module_debug(self, module_name: str, status: bool):
+        self.module_debug[module_name] = status
+        self.log_debug(f"[core] Module debug for '{module_name}' has been turned {'ON' if status else 'OFF'}.")
 
     def core_reload_plugins(self):
         return self.pm.load_all()

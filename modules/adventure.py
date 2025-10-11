@@ -138,10 +138,10 @@ class Adventure(SimpleCommandModule):
                 self._close_adventure_round()
                 return True
             if self.RE_VOTE_1.match(msg):
-                self._add_vote(username, 1)
+                self._add_vote(connection, event, username, 1)
                 return True
             if self.RE_VOTE_2.match(msg):
-                self._add_vote(username, 2)
+                self._add_vote(connection, event, username, 2)
                 return True
         return False
 
@@ -331,17 +331,33 @@ class Adventure(SimpleCommandModule):
             inventories[winner_id] = list(user_inventory)
             self.set_state("inventories", inventories)
 
-    def _add_vote(self, username: str, vote_option: int) -> bool:
+    def _add_vote(self, connection, event, username: str, vote_option: int) -> bool:
         current = self.get_state("current")
         if not current: return False
         if time.time() > float(current.get("close_epoch", 0)):
             self._close_adventure_round()
             return True
         votes_1, votes_2 = current.get("votes_1", []), current.get("votes_2", [])
-        if username in votes_1: votes_1.remove(username)
-        if username in votes_2: votes_2.remove(username)
-        (votes_1 if vote_option == 1 else votes_2).append(username)
+        previous_vote = None
+        if username in votes_1:
+            votes_1.remove(username)
+            previous_vote = 1
+        if username in votes_2:
+            votes_2.remove(username)
+            previous_vote = 2 if previous_vote is None else previous_vote
+
+        target_votes = votes_1 if vote_option == 1 else votes_2
+        target_votes.append(username)
+
         current["votes_1"], current["votes_2"] = votes_1, votes_2
         self.set_state("current", current)
         self.save_state()
+
+        if previous_vote == vote_option:
+            self.safe_reply(connection, event, f"{username}, your vote for option {vote_option} is already counted.")
+        elif previous_vote is None:
+            self.safe_reply(connection, event, f"{username}, vote recorded for option {vote_option}.")
+        else:
+            self.safe_reply(connection, event, f"{username}, vote updated to option {vote_option}.")
+
         return True

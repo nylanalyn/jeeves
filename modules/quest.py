@@ -133,6 +133,18 @@ class Quest(SimpleCommandModule):
                               description="View your medkits and active injuries")
         self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
 
+        # Short aliases for frequently-used quest commands
+        self.register_command(r"^\s*!q(?:\s+(.*))?$", self._cmd_quest_master, name="quest_alias")
+        self.register_command(r"^\s*!qe\s*$", self._cmd_quest_easy, name="quest_easy_alias")
+        self.register_command(r"^\s*!qh\s*$", self._cmd_quest_hard, name="quest_hard_alias")
+        self.register_command(r"^\s*!qp(?:\s+(.*))?\s*$", self._cmd_quest_profile_alias, name="quest_profile_alias")
+        self.register_command(r"^\s*!qi\s*$", self._cmd_inventory, name="quest_inventory_alias")
+        self.register_command(r"^\s*!qs(?:\s+(.*))?\s*$", self._cmd_quest_search_alias, name="quest_search_alias")
+        self.register_command(r"^\s*!qm\s*$", self._cmd_quest_medic_alias, name="quest_medic_alias")
+        self.register_command(r"^\s*!qu(?:\s+(.*))?\s*$", self._cmd_quest_use_alias, name="quest_use_alias")
+        self.register_command(r"^\s*!qt\s*$", self._cmd_quest_leaderboard_alias, name="quest_leaderboard_alias")
+        self.register_command(r"^\s*!qc(?:\s+(.*))?\s*$", self._cmd_quest_class_alias, name="quest_class_alias")
+
         # Legacy aliases for backwards compatibility
         self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping_legacy")
         self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob_legacy")
@@ -540,6 +552,54 @@ class Quest(SimpleCommandModule):
         else:
             self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <search|use|medic|profile|story|class|top|prestige>'.")
             return True
+
+    def _cmd_quest_easy(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_solo_quest(connection, event, username, "easy")
+
+    def _cmd_quest_hard(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_solo_quest(connection, event, username, "hard")
+
+    def _cmd_quest_profile_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_profile(connection, event, username, args)
+
+    def _cmd_quest_search_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_search(connection, event, username, args)
+
+    def _cmd_quest_medic_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_medic_quest(connection, event, username)
+
+    def _cmd_quest_use_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_use_item(connection, event, username, args)
+
+    def _cmd_quest_leaderboard_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_leaderboard(connection, event)
+
+    def _cmd_quest_class_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_class(connection, event, username, args)
 
     def _handle_profile(self, connection, event, username, args):
         target_user_nick = args[0] if args else username

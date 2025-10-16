@@ -1,13 +1,6 @@
 # --- Project-specific ignores ---
 # Jeeves's runtime state and local configuration files.
-config/state.json
-config/games.json
-config/users.json
-config/stats.json
-config/*.json.backup
-config/*.json.tmp
-config/*.json.pre-migration-backup
-config/config.yaml
+config/
 debug.log
 oracle_prompt.txt
 .claude

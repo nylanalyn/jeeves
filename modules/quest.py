@@ -95,10 +95,10 @@ class Quest(SimpleCommandModule):
         if not energy_enabled: return
 
         players, updated = self.get_state("players", {}), False
-        max_energy = self.get_config_value("energy_system.max_energy", default=10)
 
         for user_id, player_data in players.items():
             if isinstance(player_data, dict):
+                max_energy = self._get_player_max_energy(player_data)
                 # Check for and apply injury effects on regeneration
                 regen_amount = 1
 
@@ -316,6 +316,12 @@ class Quest(SimpleCommandModule):
         else:  # prestige >= 9
             return 3  # Prestige 9-10: +3 energy
 
+    def _get_player_max_energy(self, player_data: Dict[str, Any], channel: Optional[str] = None) -> int:
+        """Return the max energy for a player, including prestige bonuses."""
+        base_max = self.get_config_value("energy_system.max_energy", channel, default=10)
+        prestige_level = player_data.get("prestige", 0) if isinstance(player_data, dict) else 0
+        return base_max + self._get_prestige_energy_bonus(prestige_level)
+
     def _safe_calculate(self, expr: str) -> float:
         """Safely evaluates a simple mathematical expression without eval()."""
         # Remove whitespace
@@ -371,12 +377,7 @@ class Quest(SimpleCommandModule):
         if not isinstance(player, dict):
             player = {"name": username, "level": 1, "xp": 0}
 
-        max_energy = self.get_config_value("energy_system.max_energy", default=10)
-
-        # Add prestige bonus to max energy
-        prestige_level = player.get("prestige", 0)
-        prestige_energy_bonus = self._get_prestige_energy_bonus(prestige_level)
-        max_energy += prestige_energy_bonus
+        max_energy = self._get_player_max_energy(player)
 
         player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
         player.setdefault("last_fight", None)
@@ -616,12 +617,8 @@ class Quest(SimpleCommandModule):
 
         title = self.bot.title_for(player["name"])
         player_class = self.get_state("player_classes", {}).get(user_id, "None")
-        max_energy = self.get_config_value("energy_system.max_energy", event.target, default=10)
-
-        # Add prestige to max energy display
         prestige_level = player.get("prestige", 0)
-        prestige_energy_bonus = self._get_prestige_energy_bonus(prestige_level)
-        max_energy += prestige_energy_bonus
+        max_energy = self._get_player_max_energy(player, event.target)
 
         # Build profile header with prestige
         if prestige_level > 0:
@@ -1477,10 +1474,7 @@ class Quest(SimpleCommandModule):
 
         elif inventory_key == "energy_potions":
             # Energy potion - restore 2-4 energy
-            max_energy = self.get_config_value("energy_system.max_energy", event.target, default=10)
-            prestige_level = player.get("prestige", 0)
-            prestige_energy_bonus = self._get_prestige_energy_bonus(prestige_level)
-            max_energy += prestige_energy_bonus
+            max_energy = self._get_player_max_energy(player, event.target)
 
             if player["energy"] >= max_energy:
                 self.safe_reply(connection, event, "Your energy is already full! Save the potion for later.")

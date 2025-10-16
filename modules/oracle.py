@@ -137,7 +137,10 @@ class Oracle(SimpleCommandModule):
                 self._split_and_send(connection, event, ai_response)
 
         except Exception as e:
-            self._record_error(f"OpenAI API call failed: {e}")
+            import traceback
+            error_msg = f"OpenAI API call failed: {e}\n{traceback.format_exc()}"
+            self._record_error(error_msg)
+            self.log_debug(error_msg)
             self.safe_reply(connection, event, "My apologies, I seem to be having trouble with my higher cognitive functions at the moment.")
         
         return True

@@ -11,13 +11,31 @@
     "table_stripe": "#13192a",
     "link": "#fb923c",
     "link_hover": "#fbbf24",
-    "prestige_colors": [
-      "#fb923c",
-      "#facc15",
-      "#38bdf8",
-      "#a855f7",
-      "#f43f5e",
-      "#f472b6"
+    "prestige_tiers": [
+      {
+        "max": 3,
+        "icon": "\u2605",
+        "class": "tier-star",
+        "color": "#fb923c",
+        "repeat": 3,
+        "banner": null
+      },
+      {
+        "max": 6,
+        "icon": "\u2620",
+        "class": "tier-skull",
+        "color": "#facc15",
+        "repeat": 3,
+        "banner": "shroud"
+      },
+      {
+        "max": null,
+        "icon": "\ud83c\udfc5",
+        "class": "tier-laurel",
+        "color": "#a855f7",
+        "repeat": 2,
+        "banner": "laurel"
+      }
     ]
   },
   "world_lore": [

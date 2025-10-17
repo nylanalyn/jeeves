@@ -114,10 +114,14 @@ convenience:
     wiki_cooldown: 10.0
     news_cooldown: 15.0
     youtube_cooldown: 15.0
-    sassy_google_chance: 0.1 # Chance (0.0 to 1.0) of using a "Let Me Google That" link.
-    sassy_wiki_chance: 0.1   # Chance (0.0 to 1.0) of using a sassy response for Wikipedia.
-    sassy_ud_chance: 0.05    # Chance (0.0 to 1.0) of looking up a sassy term instead.
-    sassy_ud_terms:          # List of terms to substitute for a sassy UD response.
+    # Chance (0.0 to 1.0) of using a "Let Me Google That" link.
+    sassy_google_chance: 0.1
+    # Chance (0.0 to 1.0) of using a sassy response for Wikipedia.
+    sassy_wiki_chance: 0.1
+    # Chance (0.0 to 1.0) of looking up a sassy term instead.
+    sassy_ud_chance: 0.05
+    # List of terms to substitute for a sassy UD response.
+    sassy_ud_terms:
       - "lazy"
       - "procrastination"
       - "slacker"

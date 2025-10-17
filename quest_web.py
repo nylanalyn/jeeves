@@ -31,13 +31,31 @@ DEFAULT_THEME: Dict[str, object] = {
     "table_stripe": "#121a33",
     "link": "#fb923c",
     "link_hover": "#fbbf24",
-    "prestige_colors": [
-        "#fb923c",
-        "#facc15",
-        "#38bdf8",
-        "#a855f7",
-        "#f43f5e",
-        "#f472b6",
+    "prestige_tiers": [
+        {
+            "max": 3,
+            "icon": "\u2605",
+            "class": "tier-star",
+            "color": "#fb923c",
+            "repeat": 3,
+            "banner": None,
+        },
+        {
+            "max": 6,
+            "icon": "\u2620",
+            "class": "tier-skull",
+            "color": "#facc15",
+            "repeat": 3,
+            "banner": "shroud",
+        },
+        {
+            "max": None,
+            "icon": "\ud83c\udfc5",
+            "class": "tier-laurel",
+            "color": "#a855f7",
+            "repeat": 2,
+            "banner": "laurel",
+        },
     ],
 }
 
@@ -193,8 +211,10 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
                 cells.append(f"<td>{idx}</td>")
 
             prestige_value = self._to_int(player.get("prestige", 0))
-            prestige_color = self._prestige_color(prestige_value)
-            name_html = self._render_player_name(player, prestige_color)
+            tier_info = self._tier_for_prestige(prestige_value)
+            prestige_color = tier_info.get("color")
+            prestige_color = prestige_color if isinstance(prestige_color, str) else ""
+            name_html = self._render_player_name(player, prestige_value, tier_info)
             player_url = f"/player/{quote(str(player['id']))}"
             cells.append(f'<td><a href="{player_url}">{name_html}</a></td>')
             cells.append(f"<td>{prestige_value}</td>")
@@ -206,6 +226,8 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             cells.append(f"<td>{player.get('win_streak', 0)}</td>")
 
             row_class = ["prestige-row"]
+            if tier := tier_info.get("class"):
+                row_class.append(str(tier))
             row_style = ""
             if prestige_value > 0:
                 row_class.append("glow")
@@ -249,10 +271,12 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             "class": player_classes.get(user_id, "no class"),
         }
 
-        prestige_color = self._prestige_color(self._to_int(profile["prestige"], 0))
+        prestige_value = self._to_int(profile["prestige"], 0)
+        tier_info = self._tier_for_prestige(prestige_value)
         name_heading = self._render_player_name(
-            {"name": profile["name"], "prestige": profile["prestige"], "id": user_id},
-            prestige_color,
+            {"name": profile["name"], "prestige": prestige_value, "id": user_id},
+            prestige_value,
+            tier_info,
         )
 
         details = ["<section class=\"card\">"]
@@ -487,7 +511,7 @@ a:hover {{
 .player-name {{
     display: inline-flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
     font-weight: 600;
     text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
 }}
@@ -495,21 +519,43 @@ a:hover {{
     color: var(--glow-color, {palette['accent']});
     text-shadow: 0 0 12px var(--glow-color, rgba(249, 115, 22, 0.55));
 }}
-.player-name .stars {{
+.player-name .icons {{
     display: inline-flex;
-    gap: 0.15rem;
-    letter-spacing: 0.1rem;
+    align-items: center;
+    gap: 0.25rem;
+    letter-spacing: 0.08rem;
     color: var(--glow-color, {palette['accent']});
     filter: drop-shadow(0 0 6px rgba(249, 115, 22, 0.45));
 }}
-.player-name .stars::after {{
-    content: '';
+.player-name .icon {{
+    font-size: 1.2rem;
+    line-height: 1;
 }}
-.player-name[data-prestige="0"] .stars {{
-    display: none;
+.player-name .overflow {{
+    font-size: 0.75rem;
+    opacity: 0.8;
+    color: rgba(248, 250, 252, 0.75);
 }}
 .player-name .name {{
     position: relative;
+}}
+.player-name .banner {{
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(15, 21, 38, 0.65);
+    border: 1px solid rgba(248, 250, 252, 0.12);
+    box-shadow: inset 0 0 8px rgba(15, 21, 38, 0.65);
+}}
+.player-name .banner.banner-shroud {{
+    background: linear-gradient(135deg, rgba(10, 10, 17, 0.8), rgba(45, 32, 54, 0.85));
+    border-color: rgba(250, 204, 21, 0.45);
+}}
+.player-name .banner.banner-laurel {{
+    background: linear-gradient(135deg, rgba(30, 16, 56, 0.85), rgba(168, 85, 247, 0.55));
+    border-color: rgba(168, 85, 247, 0.6);
+}}
+.player-name .banner::after {{
+    content: '';
 }}
 .card {{
     background: {palette['card_background']};
@@ -579,29 +625,71 @@ a:hover {{
         except (TypeError, ValueError):
             return default
 
-    def _prestige_color(self, prestige: int) -> str:
-        if prestige <= 0:
-            return ""
-        colors = getattr(self, "theme", {}).get("prestige_colors")
-        if not isinstance(colors, list) or not colors:
-            return ""
-        index = min(prestige, len(colors)) - 1
-        color = colors[index]
-        return str(color)
+    def _prestige_tiers(self) -> List[Dict[str, object]]:
+        tiers = getattr(self, "theme", {}).get("prestige_tiers")
+        if not isinstance(tiers, list) or not tiers:
+            return DEFAULT_THEME["prestige_tiers"]  # type: ignore[index]
+        parsed: List[Dict[str, object]] = []
+        for entry in tiers:
+            if isinstance(entry, dict):
+                parsed.append(entry)
+        return parsed or DEFAULT_THEME["prestige_tiers"]  # type: ignore[index]
 
-    def _render_player_name(self, player: Dict[str, object], color: str) -> str:
+    def _tier_for_prestige(self, prestige: int) -> Dict[str, object]:
+        tiers = self._prestige_tiers()
+        floor = 0
+        for tier in tiers:
+            max_value = tier.get("max")
+            try:
+                within = prestige <= int(max_value) if max_value is not None else True
+            except (TypeError, ValueError):
+                within = True if max_value is None else False
+            if within:
+                tier = dict(tier)  # shallow copy to avoid mutating theme
+                tier["floor"] = floor
+                tier["level_in_tier"] = max(0, prestige - floor)
+                return tier
+            try:
+                floor = int(max_value)
+            except (TypeError, ValueError):
+                floor = prestige
+        fallback = dict(tiers[-1]) if tiers else {}
+        fallback["floor"] = floor
+        fallback["level_in_tier"] = max(0, prestige - floor)
+        return fallback
+
+    def _render_player_name(
+        self,
+        player: Dict[str, object],
+        prestige: int,
+        tier_info: Dict[str, object],
+    ) -> str:
         name = sanitize(str(player.get("name", "Unknown")))
-        prestige = self._to_int(player.get("prestige", 0))
-        style_attr = f' style="--glow-color: {color};"' if color else ""
+        color = tier_info.get("color")
+        style_attr = f' style="--glow-color: {color};"' if isinstance(color, str) else ""
         classes = ["player-name"]
-        segments = []
+        if tier_class := tier_info.get("class"):
+            classes.append(str(tier_class))
+
+        segments: List[str] = []
         if prestige > 0:
             classes.append("glow")
-            star_html = "".join('<span class="star">&#9733;</span>' for _ in range(prestige))
-            segments.append(f'<span class="stars">{star_html}</span>')
-        segments.append(f'<span class="name">{name}</span>')
-        if prestige > 0:
-            segments.append(f'<span class="stars">{star_html}</span>')
+            repeat = max(1, self._to_int(tier_info.get("repeat"), 3))
+            floor = self._to_int(tier_info.get("floor"), 0)
+            level_in_tier = max(1, prestige - floor)
+            icon_count = max(1, min(level_in_tier, repeat))
+            overflow = max(0, level_in_tier - repeat)
+            icon = sanitize(str(tier_info.get("icon", "★")))
+            icons = "".join(f'<span class="icon">{icon}</span>' for _ in range(icon_count))
+            segments.append(f'<span class="icons">{icons}</span>')
+            if overflow > 0:
+                segments.append(f'<span class="overflow">+{overflow}</span>')
+
+        banner_name = f'<span class="name">{name}</span>'
+        banner_type = tier_info.get("banner")
+        if isinstance(banner_type, str) and banner_type:
+            banner_name = f'<span class="name banner banner-{banner_type}">{name}</span>'
+        segments.append(banner_name)
 
         return (
             f'<span class="{" ".join(classes)}" data-prestige="{prestige}"{style_attr}>'

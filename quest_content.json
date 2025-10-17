@@ -1,4 +1,25 @@
 {
+  "theme": {
+    "name": "halloween",
+    "background": "#04050d",
+    "foreground": "#f8fafc",
+    "accent": "#f97316",
+    "accent_text": "#0b0f1b",
+    "card_background": "#0c101d",
+    "card_border": "#f97316",
+    "table_header": "#131a2b",
+    "table_stripe": "#13192a",
+    "link": "#fb923c",
+    "link_hover": "#fbbf24",
+    "prestige_colors": [
+      "#fb923c",
+      "#facc15",
+      "#38bdf8",
+      "#a855f7",
+      "#f43f5e",
+      "#f472b6"
+    ]
+  },
   "world_lore": [
     "The old manor has stood empty for decades. The locals say it watches those who pass by.",
     "Some nights, when the fog rolls in thick, travelers report seeing figures that vanish when approached.",

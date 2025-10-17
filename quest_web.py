@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Lightweight web UI for the quest module.
+"""Lightweight web UI for the quest module with seasonal theming.
 
-Run with: python quest_web.py --host 127.0.0.1 --port 8080
+Run with: python quest_web.py --host 127.0.0.1 --port 8080 --games config/games.json --content quest_content.json
 """
 
 from __future__ import annotations
@@ -17,6 +17,29 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 
 DEFAULT_GAMES_PATH = Path(__file__).resolve().parent / "config" / "games.json"
+DEFAULT_CONTENT_PATH = Path(__file__).resolve().parent / "quest_content.json"
+
+DEFAULT_THEME: Dict[str, object] = {
+    "name": "midnight-spire",
+    "background": "#050712",
+    "foreground": "#f8fafc",
+    "accent": "#f97316",
+    "accent_text": "#0b0f19",
+    "card_background": "#0f1526",
+    "card_border": "#f97316",
+    "table_header": "#162040",
+    "table_stripe": "#121a33",
+    "link": "#fb923c",
+    "link_hover": "#fbbf24",
+    "prestige_colors": [
+        "#fb923c",
+        "#facc15",
+        "#38bdf8",
+        "#a855f7",
+        "#f43f5e",
+        "#f472b6",
+    ],
+}
 
 
 def load_quest_state(games_path: Path) -> Tuple[Dict[str, dict], Dict[str, str]]:
@@ -41,12 +64,29 @@ def load_quest_state(games_path: Path) -> Tuple[Dict[str, dict], Dict[str, str]]
     return players, player_classes if isinstance(player_classes, dict) else {}
 
 
+def load_theme(content_path: Path) -> Dict[str, object]:
+    """Load theme configuration from quest content file."""
+    theme: Dict[str, object] = DEFAULT_THEME.copy()
+    try:
+        with content_path.open("r", encoding="utf-8") as f:
+            content = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return theme
+
+    file_theme = content.get("theme")
+    if isinstance(file_theme, dict):
+        for key, value in file_theme.items():
+            theme[key] = value
+    return theme
+
+
 def sanitize(text: str) -> str:
     return html.escape(text, quote=True)
 
 
 class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
     games_path: Path = DEFAULT_GAMES_PATH
+    theme: Dict[str, object] = DEFAULT_THEME
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -152,10 +192,12 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             if show_rank:
                 cells.append(f"<td>{idx}</td>")
 
-            name = sanitize(str(player["name"]))
+            prestige_value = self._to_int(player.get("prestige", 0))
+            prestige_color = self._prestige_color(prestige_value)
+            name_html = self._render_player_name(player, prestige_color)
             player_url = f"/player/{quote(str(player['id']))}"
-            cells.append(f'<td><a href="{player_url}">{name}</a></td>')
-            cells.append(f"<td>{player.get('prestige', 0)}</td>")
+            cells.append(f'<td><a href="{player_url}">{name_html}</a></td>')
+            cells.append(f"<td>{prestige_value}</td>")
             cells.append(f"<td>{player.get('level', 1)}</td>")
             cells.append(f"<td>{player.get('xp', 0)}</td>")
 
@@ -163,7 +205,19 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             cells.append(f"<td>{sanitize(player_class)}</td>")
             cells.append(f"<td>{player.get('win_streak', 0)}</td>")
 
-            row_html = "<tr>{}</tr>".format("".join(cells))
+            row_class = ["prestige-row"]
+            row_style = ""
+            if prestige_value > 0:
+                row_class.append("glow")
+                if prestige_color:
+                    row_style = f' style="--glow-color: {prestige_color};"'
+
+            row_html = "<tr class=\"{}\" data-prestige=\"{}\"{}>{}</tr>".format(
+                " ".join(row_class),
+                prestige_value,
+                row_style,
+                "".join(cells),
+            )
             rows_html.append(row_html)
 
         rows_html.append("</tbody></table>")
@@ -195,8 +249,14 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             "class": player_classes.get(user_id, "no class"),
         }
 
+        prestige_color = self._prestige_color(self._to_int(profile["prestige"], 0))
+        name_heading = self._render_player_name(
+            {"name": profile["name"], "prestige": profile["prestige"], "id": user_id},
+            prestige_color,
+        )
+
         details = ["<section class=\"card\">"]
-        details.append(f"<h2>{sanitize(str(profile['name']))}</h2>")
+        details.append(f"<h2 class=\"detail-name\">{name_heading}</h2>")
         details.append("<ul>")
         details.append(f"<li><strong>Prestige:</strong> {profile['prestige']}</li>")
         details.append(f"<li><strong>Level:</strong> {profile['level']}</li>")
@@ -282,7 +342,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             )
             details.append(injuries_html)
 
-        back_link = '<p><a href="/">&#8592; Back to leaderboard</a></p>'
+        back_link = '<p class="back-link"><a href="/">&#8592; Back to leaderboard</a></p>'
         content = "".join(details) + back_link
         return HTTPStatus.OK, self._render_layout(
             f"Adventurer | {profile['name']}", content
@@ -291,6 +351,22 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
     def _render_layout(
         self, title: str, body: str, search_term: str = ""
     ) -> str:
+        theme = getattr(self, "theme", DEFAULT_THEME)
+        palette = {
+            "background": str(theme.get("background", DEFAULT_THEME["background"])),
+            "foreground": str(theme.get("foreground", DEFAULT_THEME["foreground"])),
+            "accent": str(theme.get("accent", DEFAULT_THEME["accent"])),
+            "accent_text": str(theme.get("accent_text", DEFAULT_THEME["accent_text"])),
+            "card_background": str(theme.get("card_background", DEFAULT_THEME["card_background"])),
+            "card_border": str(theme.get("card_border", DEFAULT_THEME["card_border"])),
+            "table_header": str(theme.get("table_header", DEFAULT_THEME["table_header"])),
+            "table_stripe": str(theme.get("table_stripe", DEFAULT_THEME["table_stripe"])),
+            "link": str(theme.get("link", DEFAULT_THEME["link"])),
+            "link_hover": str(theme.get("link_hover", DEFAULT_THEME["link_hover"])),
+        }
+
+        prestige_css = ""
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -298,20 +374,36 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
 <title>{sanitize(title)}</title>
 <style>
 body {{
-    font-family: Arial, sans-serif;
-    margin: 2rem auto;
+    font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+    margin: 0;
+    padding: 2rem;
+    color: {palette['foreground']};
+    background: radial-gradient(circle at top, rgba(249, 115, 22, 0.08), transparent 55%), {palette['background']};
+}}
+main {{
+    margin: 0 auto;
     max-width: 960px;
-    color: #1f2933;
-    background: #f7f9fb;
 }}
 h1 {{
-    margin-bottom: 0.5rem;
+    margin: 0;
+    font-size: 2.5rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px rgba(249, 115, 22, 0.6);
 }}
 header {{
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: rgba(12, 16, 29, 0.8);
+    border: 1px solid {palette['card_border']};
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}}
+header p {{
+    margin: 0;
+    color: rgba(248, 250, 252, 0.8);
 }}
 form {{
     display: flex;
@@ -319,54 +411,156 @@ form {{
 }}
 input[type="text"] {{
     flex: 1;
-    padding: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(251, 146, 60, 0.4);
+    background: rgba(12, 16, 29, 0.85);
+    color: {palette['foreground']};
+}}
+input[type="text"]:focus {{
+    outline: none;
+    border-color: {palette['accent']};
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.25);
 }}
 button {{
-    padding: 0.5rem 1rem;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, {palette['accent']} 0%, #fb5607 100%);
+    border: none;
+    border-radius: 0.5rem;
+    color: {palette['accent_text']};
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}}
+button:hover {{
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(249, 115, 22, 0.3);
 }}
 table {{
     width: 100%;
     border-collapse: collapse;
-    background: #ffffff;
+    background: rgba(12, 16, 29, 0.85);
+    backdrop-filter: blur(4px);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 }}
 th, td {{
-    border: 1px solid #d2d6dc;
-    padding: 0.5rem;
+    padding: 0.85rem 1rem;
     text-align: left;
+    border-bottom: 1px solid rgba(15, 21, 38, 0.75);
 }}
 th {{
-    background: #e4ebf5;
+    background: {palette['table_header']};
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.8rem;
+    color: rgba(248, 250, 252, 0.75);
 }}
 tbody tr:nth-child(even) {{
-    background: #f1f5f9;
+    background: {palette['table_stripe']};
+}}
+tbody tr:last-child td {{
+    border-bottom: none;
+}}
+.prestige-row {{
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-left: 4px solid transparent;
+}}
+.prestige-row.glow {{
+    transform: translateX(4px);
+    box-shadow: 0 0 18px var(--glow-color, rgba(249, 115, 22, 0.4));
+    border-left-color: var(--glow-color, {palette['accent']});
+}}
+.prestige-row:hover {{
+    transform: translateX(6px);
 }}
 a {{
-    color: #0b7285;
+    color: {palette['link']};
     text-decoration: none;
 }}
 a:hover {{
-    text-decoration: underline;
+    color: {palette['link_hover']};
+}}
+.player-name {{
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+}}
+.player-name.glow {{
+    color: var(--glow-color, {palette['accent']});
+    text-shadow: 0 0 12px var(--glow-color, rgba(249, 115, 22, 0.55));
+}}
+.player-name .stars {{
+    display: inline-flex;
+    gap: 0.15rem;
+    letter-spacing: 0.1rem;
+    color: var(--glow-color, {palette['accent']});
+    filter: drop-shadow(0 0 6px rgba(249, 115, 22, 0.45));
+}}
+.player-name .stars::after {{
+    content: '';
+}}
+.player-name[data-prestige="0"] .stars {{
+    display: none;
+}}
+.player-name .name {{
+    position: relative;
 }}
 .card {{
-    background: #ffffff;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border: 1px solid #d2d6dc;
+    background: {palette['card_background']};
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid {palette['card_border']};
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }}
-ul {{
-    padding-left: 1.25rem;
+.card h3 {{
+    margin-top: 0;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: {palette['accent']};
 }}
+.card table {{
+    border-radius: 0.5rem;
+    box-shadow: none;
+}}
+.card th, .card td {{
+    border: 1px solid rgba(248, 250, 252, 0.06);
+}}
+.detail-name {{
+    font-size: 2rem;
+    margin: 0 0 1rem 0;
+}}
+.back-link {{
+    text-align: right;
+    font-size: 0.95rem;
+}}
+.back-link a {{
+    color: {palette['link']};
+}}
+.back-link a:hover {{
+    color: {palette['link_hover']};
+}}
+{prestige_css}
 </style>
 </head>
 <body>
+<main>
 <header>
   <h1>Quest Adventurers</h1>
+  <p>Seasonal whispers echo through the halls. Track the bravest souls facing the horrors beyond the veil.</p>
   <form method="get" action="/">
     <input type="text" name="q" placeholder="Search by name or user id" value="{sanitize(search_term)}" />
     <button type="submit">Search</button>
   </form>
 </header>
 {body}
+</main>
 </body>
 </html>
 """
@@ -378,6 +572,42 @@ ul {{
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
+
+    def _to_int(self, value: object, default: int = 0) -> int:
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return default
+
+    def _prestige_color(self, prestige: int) -> str:
+        if prestige <= 0:
+            return ""
+        colors = getattr(self, "theme", {}).get("prestige_colors")
+        if not isinstance(colors, list) or not colors:
+            return ""
+        index = min(prestige, len(colors)) - 1
+        color = colors[index]
+        return str(color)
+
+    def _render_player_name(self, player: Dict[str, object], color: str) -> str:
+        name = sanitize(str(player.get("name", "Unknown")))
+        prestige = self._to_int(player.get("prestige", 0))
+        style_attr = f' style="--glow-color: {color};"' if color else ""
+        classes = ["player-name"]
+        segments = []
+        if prestige > 0:
+            classes.append("glow")
+            star_html = "".join('<span class="star">&#9733;</span>' for _ in range(prestige))
+            segments.append(f'<span class="stars">{star_html}</span>')
+        segments.append(f'<span class="name">{name}</span>')
+        if prestige > 0:
+            segments.append(f'<span class="stars">{star_html}</span>')
+
+        return (
+            f'<span class="{" ".join(classes)}" data-prestige="{prestige}"{style_attr}>'
+            + "".join(segments)
+            + "</span>"
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -400,23 +630,31 @@ def parse_args() -> argparse.Namespace:
         default=str(DEFAULT_GAMES_PATH),
         help="Path to games.json (default: config/games.json)",
     )
+    parser.add_argument(
+        "--content",
+        default=str(DEFAULT_CONTENT_PATH),
+        help="Path to quest_content.json (default: quest_content.json)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     games_path = Path(args.games).expanduser().resolve()
+    content_path = Path(args.content).expanduser().resolve()
+    theme = load_theme(content_path)
 
     class Handler(QuestHTTPRequestHandler):
         """Request handler bound to the chosen games.json path."""
         pass
 
     Handler.games_path = games_path  # type: ignore[attr-defined]
+    Handler.theme = theme  # type: ignore[attr-defined]
 
     server = HTTPServer((args.host, args.port), Handler)
     print(
         f"Quest web UI running on http://{args.host}:{args.port}/ "
-        f"(reading {games_path})"
+        f"(reading {games_path}, theme {content_path})"
     )
     try:
         server.serve_forever()

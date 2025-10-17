@@ -59,6 +59,15 @@ DEFAULT_THEME: Dict[str, object] = {
     ],
 }
 
+# Mirrors prestige bonuses from modules/quest.py so the web UI stays in sync.
+PRESTIGE_BONUS_TABLE: List[Dict[str, object]] = [
+    {"min": 1, "max": 3, "win": 5, "xp": 0, "energy": 0},
+    {"min": 4, "max": 6, "win": 10, "xp": 25, "energy": 1},
+    {"min": 7, "max": 8, "win": 15, "xp": 50, "energy": 2},
+    {"min": 9, "max": 9, "win": 15, "xp": 75, "energy": 3},
+    {"min": 10, "max": None, "win": 20, "xp": 100, "energy": 3},
+]
+
 
 def load_quest_state(games_path: Path) -> Tuple[Dict[str, dict], Dict[str, str]]:
     """Read quest players and class selections from games.json."""
@@ -245,48 +254,29 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         rows_html.append("</tbody></table>")
         return "".join(rows_html)
 
-    def _calculate_prestige_bonuses(self, prestige: int) -> dict:
-        """Calculate all accumulated prestige bonuses for display."""
-        if prestige == 0:
-            return {}
+    def _calculate_prestige_bonuses(self, prestige: int) -> Dict[str, int]:
+        """Return the cumulative prestige bonuses matching quest module logic."""
+        if prestige <= 0:
+            return {"win": 0, "xp": 0, "energy": 0}
 
-        # Win chance bonus
-        if prestige <= 3:
-            win_bonus = 5
-        elif prestige <= 6:
-            win_bonus = 10
-        elif prestige <= 9:
-            win_bonus = 15
-        else:
-            win_bonus = 20
+        bonus = {"win": 0, "xp": 0, "energy": 0}
+        for tier in PRESTIGE_BONUS_TABLE:
+            tier_min = self._to_int(tier.get("min"), 0)
+            tier_max = tier.get("max")
+            within = prestige >= tier_min and (
+                tier_max is None or prestige <= self._to_int(tier_max, prestige)
+            )
+            if within:
+                bonus.update(
+                    {
+                        "win": self._to_int(tier.get("win"), bonus["win"]),
+                        "xp": self._to_int(tier.get("xp"), bonus["xp"]),
+                        "energy": self._to_int(tier.get("energy"), bonus["energy"]),
+                    }
+                )
+                break
 
-        # XP multiplier bonus
-        if prestige < 2:
-            xp_mult = 0
-        elif prestige < 5:
-            xp_mult = 25
-        elif prestige < 8:
-            xp_mult = 50
-        elif prestige < 10:
-            xp_mult = 75
-        else:
-            xp_mult = 100
-
-        # Energy bonus
-        if prestige < 3:
-            energy_bonus = 0
-        elif prestige < 6:
-            energy_bonus = 1
-        elif prestige < 9:
-            energy_bonus = 2
-        else:
-            energy_bonus = 3
-
-        return {
-            "win_chance": win_bonus,
-            "xp_multiplier": xp_mult,
-            "energy": energy_bonus
-        }
+        return bonus
 
     def _render_player_detail(self, user_id: str) -> Tuple[HTTPStatus, str]:
         players, player_classes = load_quest_state(self.games_path)
@@ -331,10 +321,10 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         if prestige_value > 0:
             bonuses = self._calculate_prestige_bonuses(prestige_value)
             bonus_parts = []
-            if bonuses.get("win_chance", 0) > 0:
-                bonus_parts.append(f"+{bonuses['win_chance']}% win chance")
-            if bonuses.get("xp_multiplier", 0) > 0:
-                bonus_parts.append(f"+{bonuses['xp_multiplier']}% XP")
+            if bonuses.get("win", 0) > 0:
+                bonus_parts.append(f"+{bonuses['win']}% win chance")
+            if bonuses.get("xp", 0) > 0:
+                bonus_parts.append(f"+{bonuses['xp']}% XP")
             if bonuses.get("energy", 0) > 0:
                 bonus_parts.append(f"+{bonuses['energy']} max energy")
 

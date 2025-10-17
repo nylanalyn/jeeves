@@ -245,6 +245,49 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         rows_html.append("</tbody></table>")
         return "".join(rows_html)
 
+    def _calculate_prestige_bonuses(self, prestige: int) -> dict:
+        """Calculate all accumulated prestige bonuses for display."""
+        if prestige == 0:
+            return {}
+
+        # Win chance bonus
+        if prestige <= 3:
+            win_bonus = 5
+        elif prestige <= 6:
+            win_bonus = 10
+        elif prestige <= 9:
+            win_bonus = 15
+        else:
+            win_bonus = 20
+
+        # XP multiplier bonus
+        if prestige < 2:
+            xp_mult = 0
+        elif prestige < 5:
+            xp_mult = 25
+        elif prestige < 8:
+            xp_mult = 50
+        elif prestige < 10:
+            xp_mult = 75
+        else:
+            xp_mult = 100
+
+        # Energy bonus
+        if prestige < 3:
+            energy_bonus = 0
+        elif prestige < 6:
+            energy_bonus = 1
+        elif prestige < 9:
+            energy_bonus = 2
+        else:
+            energy_bonus = 3
+
+        return {
+            "win_chance": win_bonus,
+            "xp_multiplier": xp_mult,
+            "energy": energy_bonus
+        }
+
     def _render_player_detail(self, user_id: str) -> Tuple[HTTPStatus, str]:
         players, player_classes = load_quest_state(self.games_path)
         player = players.get(user_id)
@@ -283,6 +326,22 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         details.append(f"<h2 class=\"detail-name\">{name_heading}</h2>")
         details.append("<ul>")
         details.append(f"<li><strong>Prestige:</strong> {profile['prestige']}</li>")
+
+        # Add prestige bonuses section
+        if prestige_value > 0:
+            bonuses = self._calculate_prestige_bonuses(prestige_value)
+            bonus_parts = []
+            if bonuses.get("win_chance", 0) > 0:
+                bonus_parts.append(f"+{bonuses['win_chance']}% win chance")
+            if bonuses.get("xp_multiplier", 0) > 0:
+                bonus_parts.append(f"+{bonuses['xp_multiplier']}% XP")
+            if bonuses.get("energy", 0) > 0:
+                bonus_parts.append(f"+{bonuses['energy']} max energy")
+
+            if bonus_parts:
+                bonus_text = ", ".join(bonus_parts)
+                details.append(f"<li><strong>Prestige Bonuses:</strong> {bonus_text}</li>")
+
         details.append(f"<li><strong>Level:</strong> {profile['level']}</li>")
 
         xp_to_next = profile["xp_to_next"]

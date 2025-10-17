@@ -1,0 +1,371 @@
+# Jeeves Bot Configuration
+# This is the central configuration file for Jeeves.
+
+# --- Core Settings ---
+core:
+    # A list of nicknames that are considered administrators.
+    admins:
+      - "nullveil"
+      - "rumi-nation"
+    # A list of module filenames to prevent from loading.
+    module_blacklist:
+      - "chatter.py"
+    # A regex pattern to detect when the bot is being addressed by name.
+    name_pattern: "(?:jeeves|jeevesbot)"
+    debug_mode_on_startup: true
+    debug_log_file: "debug.log"
+
+# --- IRC Connection Details ---
+connection:
+  server: "irc.libera.chat"
+  port: 6697
+  nick: "JeevesBot"
+  channel: "#fractalsignal"
+  # If your nickname is registered with NickServ, provide the password here.
+  nickserv_pass: "n34Dqr8hIPY9wU"
+
+# --- API Keys ---
+api_keys:
+  giphy: "bcWtRhaCCaCbC7MfiGu8A2tD3cb18rJW"
+  youtube: "AIzaSyD3QRPGiFLIcZt58pGP3f8Nv9lKjhOZzKc"
+  openai_api_key: "4fd70c68-05d8-4404-a9a6-363f7c54af20"
+  # For the shorten module, using a self-hosted Shlink instance.
+  # It is highly recommended to secure your Shlink instance with HTTPS.
+  shlink_url: "https://s.nylan.cat"
+  shlink_key: "27a49548-ec6f-4542-bc74-d370c28bf753"
+  # For the weather module, PirateWeather is used for US locations (more accurate than yr.no)
+  # Get your free API key at https://pirateweather.net/
+  pirateweather: "6wkQZU3mrhwuVbejW9akT9kUVmFDgN7Y"
+  # DeepL API key for translate module
+  deepl_api_key: "85fe6fe9-f469-4633-9ea0-e0ed077bbdc9:fx"
+
+# --- Module-Specific Configurations ---
+# Each module can have its own section for configuration.
+# If a module's section is missing, it will use its default values.
+
+# Channel filtering can be done with:
+#   allowed_channels: [] - If empty, module works in all channels (default)
+#   blocked_channels: [] - Channels to block module from (only applies if allowed_channels is empty)
+# If allowed_channels is not empty, module ONLY works in those channels
+
+adventure:
+    vote_window_seconds: 75
+    story_sentences_per_round: 3
+    cooldown_seconds: 10
+    # Cosmetic Item Discovery System
+    item_find_chance: 0.25 # Chance (0.0 to 1.0) to find an item on a winning vote.
+    max_inventory_size: 3   # Max number of recent items to show with !items.
+    item_adjectives:
+      - "clucking"
+      - "tasty"
+      - "foreign"
+      - "glowing"
+      - "rusty"
+      - "miniature"
+      - "singing"
+      - "forgotten"
+    item_nouns:
+      - "wand"
+      - "chicken"
+      - "candybar"
+      - "key"
+      - "coin"
+      - "sock"
+      - "dataslate"
+      - "teacup"
+
+ambient:
+    response_rate: 0.15 # Probability of responding to dog whistle patterns
+    cooldown_seconds: 30
+
+arithmetic:
+    reliability_percent: 85
+    max_fudge_factor: 2
+    cooldown_seconds: 5
+
+bell:
+    min_hours_between_rings: 1
+    max_hours_between_rings: 8
+    response_window_seconds: 15
+    allowed_channels:
+        - "#fractalsignal"
+
+chatter:
+    cooldowns:
+        animal: 3600
+        weather: 1800
+        tech: 900
+        food: 1200
+        greeting: 300
+
+clock:
+    cooldown_seconds: 10
+
+coffee:
+    cooldown_seconds: 10
+    beverage_limit: 2
+    limit_reset_hours: 1
+    limit_message: "Perhaps that is enough beverages for now, {title}."
+    force_messages:
+        - "Very well, {title}. If you insist."
+
+convenience:
+    google_cooldown: 5.0
+    ud_cooldown: 10.0
+    wiki_cooldown: 10.0
+    news_cooldown: 15.0
+    youtube_cooldown: 15.0
+    sassy_google_chance: 0.1 # Chance (0.0 to 1.0) of using a "Let Me Google That" link.
+    sassy_wiki_chance: 0.1   # Chance (0.0 to 1.0) of using a sassy response for Wikipedia.
+    sassy_ud_chance: 0.05    # Chance (0.0 to 1.0) of looking up a sassy term instead.
+    sassy_ud_terms:          # List of terms to substitute for a sassy UD response.
+      - "lazy"
+      - "procrastination"
+      - "slacker"
+      - "work-shy"
+    titles_enabled: true
+    titles_cooldown_seconds: 5
+    titles_max_download_bytes: 32768
+
+flirt:
+    global_cooldown: 30.0
+    per_user_cooldown: 60.0
+
+fortune:
+    cooldown_seconds: 10
+
+gif:
+    cooldown_seconds: 10
+
+help:
+    cooldown_seconds: 10
+    reference_url: "" # Optional URL to public command reference
+
+hunt:
+    min_hours_between_spawns: 2
+    max_hours_between_spawns: 10
+    allowed_channels:
+      - "#fractalsignal"
+    event_settings:
+        escape_chance: 0.1
+        min_flock_delay_minutes: 2
+        max_flock_delay_minutes: 60
+        min_flock_size: 20
+        max_flock_size: 50
+    animals:
+        - name: "Duck"
+          ascii_art: "<quack>"
+          hug_message: "{username} gently embraces the Duck. It seems content."
+          hunt_message: "{username} deftly catches the Duck. A fine specimen."
+        - name: "Cat"
+          ascii_art: "=^..^="
+          hug_message: "{username} gives the Cat a gentle scratch behind the ears. It purrs."
+          hunt_message: "{username} manages to wrangle the Cat into a carrier. It seems displeased."
+        - name: "Puppy"
+          ascii_art: ".'`'-.'`'-. "
+          hug_message: "{username} is immediately covered in happy puppy licks."
+          hunt_message: "{username} scoops up the puppy. It seems to think this is a new game."
+
+memos:
+    cooldown_seconds: 5
+    max_deliver_per_burst: 3
+    max_pending_per_user: 3
+
+oracle:
+    ai_channel: "#fractalsignal" # The only channel where the AI will respond.
+    openai_base_url: "https://api.arliai.com/v1" # The base URL for your provider.
+    model: "GLM-4.6" # The ArliAI model to use.
+    system_prompt: "You are Jeeves, a helpful, witty, and impeccably formal robotic butler. You serve the members of this IRC channel. Maintain your persona at all times."
+    system_prompt_file: "" # Optional: filename in config/ directory for system prompt (overrides system_prompt if set)
+    history_length: 10 # Number of past messages to remember for context.
+    max_irc_line_bytes: 450
+
+pron:
+    cooldown_seconds: 30
+
+quest:
+    cooldown_seconds: 0
+    xp_curve_formula: "level * 10"
+    monster_spawn_chance: 0.8
+    rare_spawn_chance: 0.10
+    rare_spawn_xp_multiplier: 2.0
+    first_win_bonus_xp: 50
+    xp_level_multiplier: 2
+    xp_loss_percentage: 0.25
+    max_streak_bonus: 5
+    crit_chance: 0.15
+    level_cap: 20
+    max_prestige: 10
+    mob_cooldown_seconds: 3600
+    mob_join_window_seconds: 60
+    base_xp_reward: 50
+
+    difficulty:
+        easy: { level_mod: -2, xp_mult: 0.7 }
+        normal: { level_mod: 1, xp_mult: 1.0 }
+        hard: { level_mod: 3, xp_mult: 1.5 }
+
+    combat:
+        base_win_chance: 0.50
+        win_chance_level_modifier: 0.10
+        min_win_chance: 0.05
+        max_win_chance: 0.95
+
+    energy_system:
+        enabled: true
+        max_energy: 10
+        regen_minutes: 10
+        penalties:
+            - { threshold: 5, xp_multiplier: 0.5, win_chance_modifier: 0.0 }
+            - { threshold: 2, xp_multiplier: 0.5, win_chance_modifier: -0.15 }
+
+    # --- Injury System ---
+    injury_system:
+        enabled: true
+        injury_chance_on_loss: 0.75 # 75% chance to get an injury on defeat
+        injuries:
+            - name: "Concussion"
+              description: "Your head is ringing, making it hard to focus."
+              duration_hours: 2
+              effects:
+                  xp_multiplier: 0.5 # Gains 50% less XP
+            - name: "Sprained Ankle"
+              description: "It is difficult to move with purpose."
+              duration_hours: 4
+              effects:
+                  energy_regen_modifier: -1 # Regenerates 0 energy instead of 1
+            - name: "Exhaustion"
+              description: "You are utterly drained from the battle."
+              duration_hours: 1
+              effects:
+                  energy_regen_modifier: -1 # Regenerates 0 energy
+                  xp_multiplier: 0.75 # Gains 25% less XP
+
+    world_lore:
+      - "The network is old. Older than the concrete and steel that house it. They say it dreams of dial-up tones."
+      - "Some data packets never reach their destination. They just... wander. Ghosts in the machine."
+      - "Firewalls were originally built to keep things out. Now, some say they're to keep something *in*."
+    story_beats:
+        openers:
+          - "{user} traces a corrupted data line into a forgotten server room, seeking a {monster}."
+          - "{user} jacks into a dusty terminal, looking for the signature of a {monster}."
+          - "Following a trail of flickering lights, {user} finds the nest of a {monster}."
+        actions:
+          - "{user} initiates a debug sequence to try and quarantine the {monster}."
+          - "{user} deploys a counter-exploit against the {monster}."
+          - "With a burst of static, {user} confronts the {monster} in the digital ether."
+
+    monsters:
+        - name: "Glitched Packet"
+          min_level: 1
+          max_level: 3
+          xp_win_min: 15
+          xp_win_max: 30
+        - name: "Spam Bot"
+          min_level: 2
+          max_level: 5
+          xp_win_min: 20
+          xp_win_max: 40
+        - name: "Trojan Horse"
+          min_level: 6
+          max_level: 10
+          xp_win_min: 50
+          xp_win_max: 100
+        - name: "Rogue AI Fragment"
+          min_level: 8
+          max_level: 14
+          xp_win_min: 80
+          xp_win_max: 150
+        - name: "Data Wraith"
+          min_level: 16
+          max_level: 25
+          xp_win_min: 200
+          xp_win_max: 400
+
+    # --- Medic Quest System ---
+    medic_quests:
+        enabled: true
+        medkit_drop_chance: 0.25  # 25% chance to find a medkit on victory
+        self_heal_xp_multiplier: 0.75  # 75% of normal quest XP for self-heal
+        altruistic_heal_xp_multiplier: 3.0  # 3x normal quest XP for healing others
+
+    # --- Search System (Item Finding) ---
+    search_system:
+        enabled: true
+        energy_cost: 1  # Energy cost per search
+        # Drop probabilities (remaining % is "nothing found")
+        medkit_chance: 0.25           # 25%
+        energy_potion_chance: 0.15    # 15%
+        lucky_charm_chance: 0.15      # 15%
+        armor_shard_chance: 0.10      # 10%
+        xp_scroll_chance: 0.10        # 10%
+        injury_chance: 0.05           # 5% (bad outcome)
+        # 20% chance to find nothing
+
+    # --- Group Content Settings ---
+    group_content:
+        join_window_seconds: 90
+        # Monster level is avg_party_level + level_modifier.
+        level_modifier: 5
+        # Win chance is modified based on the number of participants.
+        win_chance_modifiers:
+          - { players: 1, modifier: -0.40 } # Very difficult for one player
+          - { players: 2, modifier: -0.15 } # Slim chance for two
+          - { players: 3, modifier: 0.05 }  # Fair chance for three
+          - { players: 4, modifier: 0.20 }  # Likely win for four
+        # XP reward is scaled for larger groups to prevent farming.
+        xp_scaling:
+          - { players: 5, multiplier: 0.8 }
+          - { players: 6, multiplier: 0.6 }
+          - { players: 7, multiplier: 0.5 } # etc.
+
+    boss_monsters:
+        - name: "The Tyrant Lizard"
+          min_level: 10
+          max_level: 20
+          xp_win_min: 500
+          xp_win_max: 1000
+        - name: "Matriarch Elephant"
+          min_level: 15
+          max_level: 25
+          xp_win_min: 800
+          xp_win_max: 1500
+        - name: "The Horned One (Rhino)"
+          min_level: 20
+          max_level: 30
+          xp_win_min: 1200
+          xp_win_max: 2000
+
+reminders:
+    cooldown_seconds: 5
+
+roadtrip:
+    hours_between_trips:
+        min: 3
+        max: 18
+    messages_for_trigger:
+        min: 35
+        max: 85
+    trigger_probability: 0.25
+    join_window_seconds: 120
+    report_delay_seconds: 3600
+
+sailing:
+    target_user: "witeshark2"
+    cooldown_seconds: 5.0
+
+sed:
+    mode: "self"  # "self" or "all" - whether to apply sed to own messages only or all
+    history_size: 20
+
+shorten:
+    enabled: true
+    cooldown_seconds: 10
+    min_length_for_auto_shorten: 70
+
+translate:
+    cooldown_seconds: 15
+    default_target_language: "EN-US"
+
+weather:
+    cooldown_seconds: 10

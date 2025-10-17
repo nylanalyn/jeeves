@@ -408,7 +408,10 @@ def main() -> None:
     games_path = Path(args.games).expanduser().resolve()
 
     class Handler(QuestHTTPRequestHandler):
-        games_path = games_path  # type: ignore
+        """Request handler bound to the chosen games.json path."""
+        pass
+
+    Handler.games_path = games_path  # type: ignore[attr-defined]
 
     server = HTTPServer((args.host, args.port), Handler)
     print(

@@ -39,6 +39,9 @@ class Quest(SimpleCommandModule):
         # Load quest content from JSON file
         self.content = self._load_content()
 
+        # Load challenge paths
+        self.challenge_paths = self._load_challenge_paths()
+
     def _load_content(self) -> Dict[str, Any]:
         """Load quest content from quest_content.json file."""
         content_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quest_content.json")
@@ -54,6 +57,32 @@ class Quest(SimpleCommandModule):
         except json.JSONDecodeError as e:
             self.log_debug(f"Error parsing quest content JSON: {e}, using config fallback")
             return {}
+
+    def _load_challenge_paths(self) -> Dict[str, Any]:
+        """Load challenge paths from challenge_paths.json file."""
+        paths_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "challenge_paths.json")
+
+        try:
+            with open(paths_file, 'r') as f:
+                paths = json.load(f)
+                self.log_debug(f"Loaded challenge paths from {paths_file}")
+                return paths
+        except FileNotFoundError:
+            self.log_debug(f"Challenge paths file not found at {paths_file}")
+            return {"paths": {}, "active_path": None}
+        except json.JSONDecodeError as e:
+            self.log_debug(f"Error parsing challenge paths JSON: {e}")
+            return {"paths": {}, "active_path": None}
+
+    def _save_challenge_paths(self):
+        """Save challenge paths back to challenge_paths.json."""
+        paths_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "challenge_paths.json")
+        try:
+            with open(paths_file, 'w') as f:
+                json.dump(self.challenge_paths, f, indent=2)
+            self.log_debug(f"Saved challenge paths to {paths_file}")
+        except Exception as e:
+            self.log_debug(f"Error saving challenge paths: {e}")
 
     def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
         """Get content from JSON file, falling back to config if not found."""
@@ -124,6 +153,14 @@ class Quest(SimpleCommandModule):
         # Register more specific patterns first
         self.register_command(r"^\s*!quest\s+reload\s*$", self._cmd_quest_reload, name="quest_reload",
                               admin_only=True, description="Reload quest content from quest_content.json")
+        self.register_command(r"^\s*!quest\s+challenge\s+activate\s+(\S+)\s*$", self._cmd_challenge_activate, name="challenge_activate",
+                              admin_only=True, description="Activate a challenge path by name")
+        self.register_command(r"^\s*!quest\s+challenge\s+deactivate\s*$", self._cmd_challenge_deactivate, name="challenge_deactivate",
+                              admin_only=True, description="Deactivate the current challenge path")
+        self.register_command(r"^\s*!quest\s+challenge\s+list\s*$", self._cmd_challenge_list, name="challenge_list",
+                              admin_only=True, description="List all available challenge paths")
+        self.register_command(r"^\s*!quest\s+challenge\s+reload\s*$", self._cmd_challenge_reload, name="challenge_reload",
+                              admin_only=True, description="Reload challenge paths from file")
         self.register_command(r"^\s*!quest\s+mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
         self.register_command(r"^\s*!quest\s+mob\s*$", self._cmd_mob_start, name="mob")
         self.register_command(r"^\s*!quest\s+join\s*$", self._cmd_mob_join, name="join")
@@ -547,7 +584,7 @@ class Quest(SimpleCommandModule):
         elif subcommand in ("top", "leaderboard"):
             return self._handle_leaderboard(connection, event)
         elif subcommand == "prestige":
-            return self._handle_prestige(connection, event, username)
+            return self._handle_prestige(connection, event, username, args[1:])
         elif subcommand == "use":
             return self._handle_use_item(connection, event, username, args[1:])
         else:
@@ -618,11 +655,17 @@ class Quest(SimpleCommandModule):
         title = self.bot.title_for(player["name"])
         player_class = self.get_state("player_classes", {}).get(user_id, "None")
         prestige_level = player.get("prestige", 0)
+        challenge_path = player.get("challenge_path")
         max_energy = self._get_player_max_energy(player, event.target)
 
-        # Build profile header with prestige
+        # Build profile header with prestige and challenge path
         if prestige_level > 0:
-            profile_parts = [f"Profile for {title}: Level {player['level']} (Prestige {prestige_level})"]
+            prestige_text = f"Prestige {prestige_level}"
+            if challenge_path:
+                path_data = self.challenge_paths.get("paths", {}).get(challenge_path, {})
+                path_name = path_data.get("name", challenge_path)
+                prestige_text = f"{prestige_text} [{path_name}]"
+            profile_parts = [f"Profile for {title}: Level {player['level']} ({prestige_text})"]
         else:
             profile_parts = [f"Profile for {title}: Level {player['level']}"]
 
@@ -699,7 +742,7 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
         return True
 
-    def _handle_prestige(self, connection, event, username):
+    def _handle_prestige(self, connection, event, username, args):
         """Handle prestige - reset to level 1 with permanent bonuses."""
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
@@ -710,6 +753,13 @@ class Quest(SimpleCommandModule):
             self.safe_reply(connection, event, f"You must reach level {level_cap} before you can prestige. Current level: {player['level']}")
             return True
 
+        # Check for challenge prestige
+        is_challenge = args and args[0].lower() == "challenge"
+
+        if is_challenge:
+            return self._handle_challenge_prestige(connection, event, username, user_id, player)
+
+        # Normal prestige
         # Check if already at max prestige
         max_prestige = self.get_config_value("max_prestige", default=10)
         current_prestige = player.get("prestige", 0)
@@ -755,6 +805,63 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, f"*** {self.bot.title_for(username)} HAS ASCENDED TO PRESTIGE {new_prestige}! ***")
         self.safe_reply(connection, event, f"Reborn at Level 1 with permanent bonuses: {bonus_text}")
         self.safe_reply(connection, event, f"The cycle begins anew, but you are forever changed...")
+
+        return True
+
+    def _handle_challenge_prestige(self, connection, event, username, user_id, player):
+        """Handle challenge path prestige - special alternate progression."""
+        # Check if a challenge path is active
+        active_path_id = self.challenge_paths.get("active_path")
+        if not active_path_id:
+            self.safe_reply(connection, event, "No challenge path is currently available. Use normal !quest prestige instead.")
+            return True
+
+        path_data = self.challenge_paths["paths"].get(active_path_id)
+        if not path_data:
+            self.safe_reply(connection, event, "Challenge path configuration error. Contact an administrator.")
+            return True
+
+        # Check requirements
+        current_prestige = player.get("prestige", 0)
+        min_prestige = path_data.get("requirements", {}).get("min_prestige", 0)
+        max_prestige = path_data.get("requirements", {}).get("max_prestige", 10)
+
+        if current_prestige < min_prestige:
+            self.safe_reply(connection, event, f"You need at least Prestige {min_prestige} to enter this challenge path.")
+            return True
+
+        if current_prestige >= max_prestige:
+            self.safe_reply(connection, event, f"You have exceeded the maximum prestige ({max_prestige}) for this challenge path.")
+            return True
+
+        # Reset player for challenge path
+        new_prestige = current_prestige + 1
+        player["level"] = 1
+        player["xp"] = 0
+        player["xp_to_next_level"] = self._calculate_xp_for_level(1)
+        player["prestige"] = new_prestige
+        player["win_streak"] = 0
+        player["active_injuries"] = []
+        player["challenge_path"] = active_path_id  # Track which path they're on
+        if "active_injury" in player:
+            del player["active_injury"]
+
+        # Save player state
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        # Announce challenge prestige
+        self.safe_reply(connection, event, f"*** {self.bot.title_for(username)} HAS ENTERED THE CHALLENGE PATH: {path_data['name']}! ***")
+        self.safe_reply(connection, event, f"Prestige {new_prestige} - {path_data['description']}")
+
+        # Show special rules
+        if "special_rules" in path_data and path_data["special_rules"]:
+            for rule in path_data["special_rules"]:
+                self.safe_reply(connection, event, f"  - {rule}")
+
+        self.safe_reply(connection, event, "Your journey takes a new and dangerous turn...")
 
         return True
 
@@ -1926,6 +2033,85 @@ class Quest(SimpleCommandModule):
         elif not effects:
             self.safe_reply(connection, event, "Status: Healthy")
 
+        return True
+
+    def _cmd_challenge_activate(self, connection, event, msg, username, match):
+        """Activate a challenge path by name (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        path_name = match.group(1)
+
+        if path_name not in self.challenge_paths.get("paths", {}):
+            self.safe_reply(connection, event, f"Challenge path '{path_name}' not found. Use !quest challenge list to see available paths.")
+            return True
+
+        path_data = self.challenge_paths["paths"][path_name]
+
+        if not path_data.get("enabled", False):
+            self.safe_reply(connection, event, f"Challenge path '{path_name}' is not enabled in the config.")
+            return True
+
+        # Activate the path
+        self.challenge_paths["active_path"] = path_name
+        self._save_challenge_paths()
+
+        self.safe_reply(connection, event, f"Challenge path activated: {path_data['name']}")
+        self.safe_reply(connection, event, f"Players at level 20 can now use !quest prestige challenge to enter this path.")
+        return True
+
+    def _cmd_challenge_deactivate(self, connection, event, msg, username, match):
+        """Deactivate the current challenge path (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        if not self.challenge_paths.get("active_path"):
+            self.safe_reply(connection, event, "No challenge path is currently active.")
+            return True
+
+        old_path = self.challenge_paths["active_path"]
+        self.challenge_paths["active_path"] = None
+        self._save_challenge_paths()
+
+        self.safe_reply(connection, event, f"Challenge path '{old_path}' has been deactivated. Normal prestige is now available.")
+        return True
+
+    def _cmd_challenge_list(self, connection, event, msg, username, match):
+        """List all available challenge paths (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        paths = self.challenge_paths.get("paths", {})
+        active_path = self.challenge_paths.get("active_path")
+
+        if not paths:
+            self.safe_reply(connection, event, "No challenge paths defined.")
+            return True
+
+        self.safe_reply(connection, event, "Available Challenge Paths:")
+        for path_id, path_data in paths.items():
+            status = "[ACTIVE]" if path_id == active_path else "[inactive]"
+            enabled = "enabled" if path_data.get("enabled", False) else "DISABLED"
+            self.safe_reply(connection, event, f"  {status} {path_id}: {path_data.get('name', 'Unnamed')} ({enabled})")
+
+        if active_path:
+            self.safe_reply(connection, event, f"Current active path: {active_path}")
+        else:
+            self.safe_reply(connection, event, "No path currently active (normal prestige only)")
+
+        return True
+
+    def _cmd_challenge_reload(self, connection, event, msg, username, match):
+        """Reload challenge paths from file (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        old_path_count = len(self.challenge_paths.get("paths", {}))
+        self.challenge_paths = self._load_challenge_paths()
+        new_path_count = len(self.challenge_paths.get("paths", {}))
+
+        self.safe_reply(connection, event, f"Challenge paths reloaded from challenge_paths.json")
+        self.safe_reply(connection, event, f"Paths: {old_path_count} -> {new_path_count}")
         return True
 
     def _cmd_quest_reload(self, connection, event, msg, username, match):

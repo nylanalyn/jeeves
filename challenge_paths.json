@@ -1,0 +1,32 @@
+{
+  "_comment": "Challenge Paths - Special prestige options that modify gameplay",
+  "_usage": "Activate with !admin challenge <pathname>, players can then !quest prestige challenge at level 20",
+
+  "paths": {
+    "example_hard_mode": {
+      "name": "Example Hard Mode",
+      "description": "An example challenge path - replace with your own!",
+      "enabled": false,
+      "requirements": {
+        "min_prestige": 0,
+        "max_prestige": 10
+      },
+      "modifiers": {
+        "xp_gain_multiplier": 0.5,
+        "win_chance_modifier": -0.10,
+        "energy_max_bonus": 5
+      },
+      "special_rules": [
+        "Gain 50% less XP from all sources",
+        "Win chance reduced by 10%",
+        "Gain +5 max energy as compensation"
+      ],
+      "rewards": {
+        "prestige_xp_bonus": 0.25,
+        "title_suffix": " the Challenger"
+      }
+    }
+  },
+
+  "active_path": null
+}

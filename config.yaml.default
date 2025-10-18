@@ -203,6 +203,12 @@ quest:
     mob_join_window_seconds: 60
     base_xp_reward: 50
 
+    # Boss Encounter System (random encounters during solo quests)
+    boss_encounter_chance: 0.10  # 10% chance when in level range
+    boss_encounter_min_level: 17  # Minimum level to trigger boss encounters
+    boss_encounter_max_level: 20  # Maximum level to trigger boss encounters
+    boss_xp_multiplier: 2.5  # Boss encounters give 2.5x XP on victory
+
     difficulty:
         easy: { level_mod: -2, xp_mult: 0.7 }
         normal: { level_mod: 1, xp_mult: 1.0 }

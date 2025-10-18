@@ -819,7 +819,15 @@ class Quest(SimpleCommandModule):
             self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence.")
             for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)
             return True
-            
+
+        # Check for boss encounter (levels 17-20, 10% chance)
+        boss_encounter_chance = self.get_config_value("boss_encounter_chance", event.target, default=0.10)
+        boss_min_level = self.get_config_value("boss_encounter_min_level", event.target, default=17)
+        boss_max_level = self.get_config_value("boss_encounter_max_level", event.target, default=20)
+
+        if boss_min_level <= player_level <= boss_max_level and random.random() < boss_encounter_chance:
+            return self._trigger_boss_encounter(connection, event, username, user_id, player, energy_enabled)
+
         if energy_enabled: player["energy"] -= 1
         
         target_monster_level = player_level + diff_mod["level_mod"]
@@ -925,6 +933,72 @@ class Quest(SimpleCommandModule):
         self.set_state("players", players)
         self.save_state()
         return True
+
+    def _trigger_boss_encounter(self, connection, event, username, user_id, player, energy_enabled):
+        """Trigger a random boss encounter that acts like a mob fight."""
+        # Check if there's already an active mob
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if active_mob:
+                # If there's already a mob, just do a normal quest instead
+                self.log_debug("Boss encounter skipped - active mob already exists")
+                return False  # Fall through to normal quest logic
+
+            # Select a boss monster
+            boss_monsters = self._get_content("boss_monsters", event.target, default=[])
+            suitable_bosses = [b for b in boss_monsters if isinstance(b, dict) and b.get("min_level", 1) <= player["level"]]
+
+            if not suitable_bosses:
+                # No suitable boss, fall through to normal quest
+                self.log_debug("No suitable boss monsters found")
+                return False
+
+            boss = random.choice(suitable_bosses)
+            boss_level = max(player["level"], player["level"] + 3)  # Boss is at least 3 levels higher
+
+            # Deduct energy from initiator
+            if energy_enabled and player["energy"] > 0:
+                player["energy"] -= 1
+
+            # Create the boss encounter (similar to mob)
+            join_window_seconds = self.get_config_value("mob_join_window_seconds", event.target, default=60)
+            close_time = time.time() + join_window_seconds
+
+            mob_data = {
+                "channel": event.target,
+                "monster": boss,
+                "monster_level": boss_level,
+                "is_rare": False,
+                "is_boss": True,  # Mark this as a boss encounter
+                "participants": [{"user_id": user_id, "username": username}],
+                "initiator": username,
+                "close_epoch": close_time
+            }
+
+            self.set_state("active_mob", mob_data)
+
+            # Save player state
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+
+            # Schedule mob window close
+            schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
+
+            # Announce the boss encounter!
+            self.safe_say(f"\u26a0\ufe0f BOSS ENCOUNTER! \u26a0\ufe0f", event.target)
+            self.safe_say(f"{username} has stumbled upon a [BOSS] Level {boss_level} {boss['name']}!", event.target)
+            self.safe_say(f"This is too powerful to face alone! Others can !quest join (or !join) within {join_window_seconds} seconds!", event.target)
+
+            # Ping users who opted in for mob notifications
+            mob_pings = self.get_state("mob_pings", {})
+            if event.target in mob_pings and mob_pings[event.target]:
+                ping_names = list(mob_pings[event.target].values())
+                if ping_names:
+                    self.safe_say(f"BOSS alert: {', '.join(ping_names)}", event.target)
+
+            return True
 
     def _cmd_mob_ping(self, connection, event, msg, username, match):
         """Toggle mob ping notifications for the user."""
@@ -1095,9 +1169,18 @@ class Quest(SimpleCommandModule):
             schedule.clear(self.name)
 
             # Calculate win chance based on party size
-            # 1 person = 5%, 2 = 25%, 3 = 75%, 4+ = 95%
-            win_chance_map = {1: 0.05, 2: 0.25, 3: 0.75}
-            win_chance = win_chance_map.get(party_size, 0.95)  # 4+ people = 95%
+            is_boss = active_mob.get("is_boss", False)
+
+            if is_boss:
+                # Boss encounters are much harder!
+                # 1 person = 1%, 2 = 10%, 3 = 40%, 4 = 70%, 5+ = 85%
+                win_chance_map = {1: 0.01, 2: 0.10, 3: 0.40, 4: 0.70}
+                win_chance = win_chance_map.get(party_size, 0.85)  # 5+ people = 85%
+            else:
+                # Normal mob encounters
+                # 1 person = 5%, 2 = 25%, 3 = 75%, 4+ = 95%
+                win_chance_map = {1: 0.05, 2: 0.25, 3: 0.75}
+                win_chance = win_chance_map.get(party_size, 0.95)  # 4+ people = 95%
 
             win = random.random() < win_chance
 
@@ -1105,8 +1188,9 @@ class Quest(SimpleCommandModule):
             is_rare = active_mob.get("is_rare", False)
             rare_xp_mult = self.get_config_value("rare_spawn_xp_multiplier", channel, default=2.0)
 
+            boss_prefix = "[BOSS] " if is_boss else ""
             rare_prefix = "[RARE] " if is_rare else ""
-            monster_name = f"{rare_prefix}Level {monster_level} {monster['name']}"
+            monster_name = f"{boss_prefix}{rare_prefix}Level {monster_level} {monster['name']}"
 
             # Deduct energy from all participants
             energy_enabled = self.get_config_value("energy_system.enabled", channel, default=True)
@@ -1131,6 +1215,11 @@ class Quest(SimpleCommandModule):
             if win:
                 # Victory - distribute XP
                 total_xp = (base_xp + monster_level * xp_level_mult) * 1.5  # Bonus for mob
+
+                # Apply boss multiplier (bosses give way more XP!)
+                if is_boss:
+                    boss_xp_mult = self.get_config_value("boss_xp_multiplier", channel, default=2.5)
+                    total_xp *= boss_xp_mult
 
                 # Apply rare spawn multiplier
                 if is_rare:

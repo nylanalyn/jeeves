@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 DEFAULT_GAMES_PATH = Path(__file__).resolve().parent / "config" / "games.json"
 DEFAULT_CONTENT_PATH = Path(__file__).resolve().parent / "quest_content.json"
+DEFAULT_CHALLENGE_PATHS = Path(__file__).resolve().parent / "challenge_paths.json"
 
 DEFAULT_THEME: Dict[str, object] = {
     "name": "midnight-spire",
@@ -99,6 +100,15 @@ def load_theme(content_path: Path) -> Dict[str, object]:
     return theme
 
 
+def load_challenge_paths(paths_file: Path) -> Dict[str, object]:
+    """Load challenge paths and abilities from challenge_paths.json."""
+    try:
+        with paths_file.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"paths": {}, "abilities": {}, "active_path": None}
+
+
 def sanitize(text: str) -> str:
     return html.escape(text, quote=True)
 
@@ -106,6 +116,7 @@ def sanitize(text: str) -> str:
 class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
     games_path: Path = DEFAULT_GAMES_PATH
     theme: Dict[str, object] = DEFAULT_THEME
+    challenge_paths: Dict[str, object] = {"paths": {}, "abilities": {}, "active_path": None}
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -309,6 +320,10 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             "active_injuries": player.get("active_injuries", []),
             "last_fight": player.get("last_fight"),
             "class": player_classes.get(user_id, "no class"),
+            "challenge_path": player.get("challenge_path"),
+            "unlocked_abilities": player.get("unlocked_abilities", []),
+            "ability_cooldowns": player.get("ability_cooldowns", {}),
+            "challenge_stats": player.get("challenge_stats", {}),
         }
 
         prestige_value = self._to_int(profile["prestige"], 0)
@@ -351,6 +366,19 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         details.append(
             f"<li><strong>Class:</strong> {sanitize(str(profile['class']))}</li>"
         )
+
+        # Show challenge path if active
+        if profile.get("challenge_path"):
+            challenge_paths_data = getattr(self, "challenge_paths", {})
+            paths = challenge_paths_data.get("paths", {})
+            path_info = paths.get(profile["challenge_path"], {})
+            path_name = path_info.get("name", profile["challenge_path"])
+            details.append(f"<li><strong>Challenge Path:</strong> {sanitize(path_name)}</li>")
+
+            # Show challenge stats if any
+            stats = profile.get("challenge_stats", {})
+            if stats.get("medkits_used_this_prestige") is not None:
+                details.append(f"<li><strong>Medkits Used This Prestige:</strong> {stats['medkits_used_this_prestige']}</li>")
 
         if profile["energy"] is not None:
             details.append(f"<li><strong>Energy:</strong> {profile['energy']}</li>")
@@ -421,6 +449,41 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
                 "</section>"
             )
             details.append(injuries_html)
+
+        # Show unlocked abilities
+        unlocked = profile.get("unlocked_abilities", [])
+        if unlocked:
+            challenge_paths_data = getattr(self, "challenge_paths", {})
+            abilities_data = challenge_paths_data.get("abilities", {})
+            ability_rows = []
+
+            for ability_id in unlocked:
+                ability = abilities_data.get(ability_id, {})
+                ability_name = sanitize(ability.get("name", ability_id))
+                description = sanitize(ability.get("description", "No description"))
+                cooldown_hours = ability.get("cooldown_hours", 24)
+
+                # Check cooldown status
+                cooldowns = profile.get("ability_cooldowns", {})
+                status = "READY"
+                if ability_id in cooldowns:
+                    # Note: We can't calculate time remaining server-side without datetime parsing
+                    # Just show the expiry time
+                    status = f"Cooldown until {sanitize(cooldowns[ability_id])}"
+
+                ability_rows.append(
+                    f"<tr><td>{ability_name}</td><td>{description}</td>"
+                    f"<td>{cooldown_hours}h</td><td>{status}</td></tr>"
+                )
+
+            abilities_html = (
+                "<section class=\"card\">"
+                "<h3>Unlocked Abilities</h3>"
+                "<table><thead><tr><th>Ability</th><th>Effect</th><th>Cooldown</th><th>Status</th></tr></thead>"
+                f"<tbody>{''.join(ability_rows)}</tbody></table>"
+                "</section>"
+            )
+            details.append(abilities_html)
 
         back_link = '<p class="back-link"><a href="/">&#8592; Back to leaderboard</a></p>'
         content = "".join(details) + back_link
@@ -786,7 +849,9 @@ def main() -> None:
     args = parse_args()
     games_path = Path(args.games).expanduser().resolve()
     content_path = Path(args.content).expanduser().resolve()
+    challenge_paths_file = DEFAULT_CHALLENGE_PATHS
     theme = load_theme(content_path)
+    challenge_paths = load_challenge_paths(challenge_paths_file)
 
     class Handler(QuestHTTPRequestHandler):
         """Request handler bound to the chosen games.json path."""
@@ -794,6 +859,7 @@ def main() -> None:
 
     Handler.games_path = games_path  # type: ignore[attr-defined]
     Handler.theme = theme  # type: ignore[attr-defined]
+    Handler.challenge_paths = challenge_paths  # type: ignore[attr-defined]
 
     server = HTTPServer((args.host, args.port), Handler)
     print(

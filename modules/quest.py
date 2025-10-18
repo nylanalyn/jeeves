@@ -168,6 +168,8 @@ class Quest(SimpleCommandModule):
                               description="Use a medkit to heal yourself or another player")
         self.register_command(r"^\s*!quest\s+inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
                               description="View your medkits and active injuries")
+        self.register_command(r"^\s*!quest\s+ability(?:\s+(.+))?\s*$", self._cmd_ability, name="ability",
+                              description="List or use unlocked abilities")
         self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
 
         # Short aliases for frequently-used quest commands
@@ -440,6 +442,15 @@ class Quest(SimpleCommandModule):
         # Active effects (buffs/debuffs with expiry)
         player.setdefault("active_effects", [])
 
+        # Unlocked abilities and cooldowns
+        player.setdefault("unlocked_abilities", [])
+        player.setdefault("ability_cooldowns", {})
+
+        # Challenge path stats (for completion tracking)
+        player.setdefault("challenge_stats", {
+            "medkits_used_this_prestige": 0
+        })
+
         player["name"] = username
 
         return player
@@ -522,7 +533,17 @@ class Quest(SimpleCommandModule):
         if leveled_up:
             if player["level"] >= level_cap:
                 messages.append(f"*** LEVEL {player['level']} ACHIEVED - MAXIMUM POWER! ***")
-                messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
+
+                # Check if player completed a challenge path
+                challenge_path = player.get("challenge_path")
+                if challenge_path:
+                    completion_result = self._check_challenge_completion(user_id, username, player, challenge_path)
+                    if completion_result:
+                        messages.extend(completion_result)
+                    else:
+                        messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
+                else:
+                    messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
             else:
                 messages.append(f"Congratulations, you have reached Level {player['level']}!")
         return messages
@@ -742,6 +763,62 @@ class Quest(SimpleCommandModule):
         self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
         return True
 
+    def _check_challenge_completion(self, user_id: str, username: str, player: Dict[str, Any], challenge_path_id: str) -> Optional[List[str]]:
+        """Check if player completed challenge path requirements and grant rewards."""
+        path_data = self.challenge_paths.get("paths", {}).get(challenge_path_id)
+        if not path_data:
+            return None
+
+        completion = path_data.get("completion_conditions", {})
+        if not completion:
+            return None
+
+        # Check if completion conditions are met
+        completed = True
+        failure_reason = None
+
+        if completion.get("no_medkits_used"):
+            medkits_used = player.get("challenge_stats", {}).get("medkits_used_this_prestige", 0)
+            if medkits_used > 0:
+                completed = False
+                failure_reason = f"You used {medkits_used} medkit(s) during this prestige."
+
+        if not completed:
+            messages = [
+                "You reached level 20, but you did not complete the challenge requirements.",
+                failure_reason,
+                "You can still use !quest prestige to continue, but you won't earn the challenge rewards."
+            ]
+            return messages
+
+        # Player completed the challenge! Grant rewards
+        messages = [
+            f"*** CHALLENGE COMPLETED: {path_data['name']}! ***",
+            "You have demonstrated incredible skill and dedication!"
+        ]
+
+        rewards = path_data.get("rewards", {})
+
+        # Unlock ability
+        if "ability_unlock" in rewards:
+            ability_id = rewards["ability_unlock"]
+            if ability_id not in player.get("unlocked_abilities", []):
+                player["unlocked_abilities"].append(ability_id)
+
+                ability_data = self.challenge_paths.get("abilities", {}).get(ability_id, {})
+                ability_name = ability_data.get("name", ability_id)
+                messages.append(f"NEW ABILITY UNLOCKED: {ability_name}!")
+                messages.append(f"Use !quest ability {ability_data.get('command', ability_id)} to activate it.")
+
+        # Save player state
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        messages.append("Use !quest prestige to ascend to your next prestige level.")
+        return messages
+
     def _handle_prestige(self, connection, event, username, args):
         """Handle prestige - reset to level 1 with permanent bonuses."""
         user_id = self.bot.get_user_id(username)
@@ -843,6 +920,12 @@ class Quest(SimpleCommandModule):
         player["win_streak"] = 0
         player["active_injuries"] = []
         player["challenge_path"] = active_path_id  # Track which path they're on
+
+        # Reset challenge stats for new prestige
+        player["challenge_stats"] = {
+            "medkits_used_this_prestige": 0
+        }
+
         if "active_injury" in player:
             del player["active_injury"]
 
@@ -1887,6 +1970,11 @@ class Quest(SimpleCommandModule):
         # Deduct medkit (use new inventory system)
         player["inventory"]["medkits"] -= 1
 
+        # Track medkit usage for challenge paths
+        if "challenge_stats" not in player:
+            player["challenge_stats"] = {}
+        player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
+
         # Grant partial XP
         base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
         self_heal_multiplier = self.get_config_value("medic_quests.self_heal_xp_multiplier", event.target, default=0.75)
@@ -1934,6 +2022,11 @@ class Quest(SimpleCommandModule):
 
         # Deduct medkit from healer (use new inventory system)
         player["inventory"]["medkits"] -= 1
+
+        # Track medkit usage for challenge paths
+        if "challenge_stats" not in player:
+            player["challenge_stats"] = {}
+        player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
 
         # Grant MASSIVE XP to healer
         base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
@@ -2034,6 +2127,158 @@ class Quest(SimpleCommandModule):
             self.safe_reply(connection, event, "Status: Healthy")
 
         return True
+
+    def _cmd_ability(self, connection, event, msg, username, match):
+        """List or use unlocked abilities."""
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+
+        # If no args, list abilities
+        if not args_str:
+            return self._list_abilities(connection, event, username, player)
+
+        # Otherwise, try to use an ability
+        ability_name = args_str.lower()
+        return self._use_ability(connection, event, username, user_id, player, ability_name)
+
+    def _list_abilities(self, connection, event, username, player):
+        """List all unlocked abilities for a player."""
+        unlocked = player.get("unlocked_abilities", [])
+
+        if not unlocked:
+            self.safe_reply(connection, event, f"{username}, you haven't unlocked any abilities yet. Complete challenge paths to earn them!")
+            return True
+
+        self.safe_reply(connection, event, f"{username}'s Unlocked Abilities:")
+
+        abilities_data = self.challenge_paths.get("abilities", {})
+        for ability_id in unlocked:
+            ability = abilities_data.get(ability_id, {})
+            ability_name = ability.get("name", ability_id)
+            description = ability.get("description", "No description")
+            command = ability.get("command", ability_id)
+
+            # Check cooldown
+            cooldowns = player.get("ability_cooldowns", {})
+            if ability_id in cooldowns:
+                cooldown_expires = datetime.fromisoformat(cooldowns[ability_id])
+                now = datetime.now(UTC)
+                if now < cooldown_expires:
+                    time_left = self._format_timedelta(cooldown_expires)
+                    self.safe_reply(connection, event, f"  !quest ability {command} - {description} [Cooldown: {time_left}]")
+                    continue
+
+            self.safe_reply(connection, event, f"  !quest ability {command} - {description} [READY]")
+
+        return True
+
+    def _use_ability(self, connection, event, username, user_id, player, ability_name):
+        """Use an unlocked ability."""
+        # Check if player has this ability unlocked
+        unlocked = player.get("unlocked_abilities", [])
+        abilities_data = self.challenge_paths.get("abilities", {})
+
+        # Find the ability by command name
+        ability_id = None
+        ability_data = None
+        for aid, adata in abilities_data.items():
+            if adata.get("command", "").lower() == ability_name:
+                ability_id = aid
+                ability_data = adata
+                break
+
+        if not ability_id or ability_id not in unlocked:
+            self.safe_reply(connection, event, f"You don't have the '{ability_name}' ability unlocked.")
+            return True
+
+        # Check cooldown
+        cooldowns = player.get("ability_cooldowns", {})
+        if ability_id in cooldowns:
+            cooldown_expires = datetime.fromisoformat(cooldowns[ability_id])
+            now = datetime.now(UTC)
+            if now < cooldown_expires:
+                time_left = self._format_timedelta(cooldown_expires)
+                self.safe_reply(connection, event, f"That ability is on cooldown for {time_left}.")
+                return True
+
+        # Execute the ability
+        effect = ability_data.get("effect")
+        success = self._execute_ability_effect(connection, event, username, user_id, effect, ability_data)
+
+        if success:
+            # Set cooldown
+            cooldown_hours = ability_data.get("cooldown_hours", 24)
+            cooldown_expires = datetime.now(UTC) + timedelta(hours=cooldown_hours)
+            player["ability_cooldowns"][ability_id] = cooldown_expires.isoformat()
+
+            # Save player state
+            players = self.get_state("players")
+            players[user_id] = player
+            self.set_state("players", players)
+            self.save_state()
+
+            # Announce to channel
+            announcement = ability_data.get("announcement", "{user} uses {ability}!")
+            announcement = announcement.format(user=self.bot.title_for(username), ability=ability_data.get("name"))
+            self.safe_say(announcement, event.target)
+
+        return True
+
+    def _execute_ability_effect(self, connection, event, username, user_id, effect, ability_data):
+        """Execute the actual effect of an ability."""
+        if effect == "heal_all_injuries":
+            # Heal all injuries for all players in channel
+            players = self.get_state("players", {})
+            healed_count = 0
+
+            for pid, pdata in players.items():
+                if isinstance(pdata, dict):
+                    if pdata.get("active_injuries") and len(pdata.get("active_injuries", [])) > 0:
+                        pdata["active_injuries"] = []
+                        healed_count += 1
+                        players[pid] = pdata
+
+            self.set_state("players", players)
+            self.save_state()
+
+            if healed_count > 0:
+                self.safe_say(f"{healed_count} player(s) have been healed!", event.target)
+            return True
+
+        elif effect == "restore_party_energy":
+            # Restore energy to all players
+            players = self.get_state("players", {})
+            energy_amount = ability_data.get("effect_data", {}).get("energy_amount", 5)
+            restored_count = 0
+
+            for pid, pdata in players.items():
+                if isinstance(pdata, dict):
+                    max_energy = self._get_player_max_energy(pdata, event.target)
+                    old_energy = pdata.get("energy", 0)
+                    pdata["energy"] = min(max_energy, old_energy + energy_amount)
+                    if pdata["energy"] > old_energy:
+                        restored_count += 1
+                    players[pid] = pdata
+
+            self.set_state("players", players)
+            self.save_state()
+
+            if restored_count > 0:
+                self.safe_say(f"{restored_count} player(s) restored energy!", event.target)
+            return True
+
+        elif effect == "party_buff_win_chance":
+            # Add a timed buff to all players
+            # This would require more complex buff tracking - placeholder for now
+            self.safe_say("Party buff applied! (Full implementation pending)", event.target)
+            return True
+
+        return False
 
     def _cmd_challenge_activate(self, connection, event, msg, username, match):
         """Activate a challenge path by name (admin only)."""

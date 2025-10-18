@@ -21,10 +21,75 @@
         "Win chance reduced by 10%",
         "Gain +5 max energy as compensation"
       ],
+      "completion_conditions": {
+        "reach_level_20": true,
+        "custom_stat": {
+          "stat_name": "medkits_used",
+          "comparison": "less_than",
+          "value": 1
+        }
+      },
       "rewards": {
         "prestige_xp_bonus": 0.25,
-        "title_suffix": " the Challenger"
+        "title_suffix": " the Challenger",
+        "ability_unlock": "doctor"
       }
+    },
+    "ironman_challenge": {
+      "name": "Path of the Ironman",
+      "description": "Complete prestige 20 without using a single medkit",
+      "enabled": false,
+      "requirements": {
+        "min_prestige": 0,
+        "max_prestige": 10
+      },
+      "modifiers": {},
+      "special_rules": [
+        "No medkits allowed!",
+        "Complete to unlock Doctor ability"
+      ],
+      "completion_conditions": {
+        "reach_level_20": true,
+        "no_medkits_used": true
+      },
+      "rewards": {
+        "ability_unlock": "doctor",
+        "title_suffix": " the Ironman"
+      }
+    }
+  },
+
+  "abilities": {
+    "doctor": {
+      "name": "Doctor",
+      "description": "Heal all injuries for all players in the channel",
+      "command": "doctor",
+      "cooldown_hours": 168,
+      "effect": "heal_all_injuries",
+      "announcement": "{user} channels healing energy! All injuries in the channel have been healed!"
+    },
+    "bloodlust": {
+      "name": "Bloodlust",
+      "description": "Grant +20% win chance to all players for the next hour",
+      "command": "bloodlust",
+      "cooldown_hours": 72,
+      "effect": "party_buff_win_chance",
+      "effect_data": {
+        "win_bonus": 0.20,
+        "duration_hours": 1
+      },
+      "announcement": "{user} unleashes a battle cry! All players gain +20% win chance for 1 hour!"
+    },
+    "rally": {
+      "name": "Rally",
+      "description": "Restore 5 energy to all players",
+      "command": "rally",
+      "cooldown_hours": 48,
+      "effect": "restore_party_energy",
+      "effect_data": {
+        "energy_amount": 5
+      },
+      "announcement": "{user} rallies the troops! All players restore 5 energy!"
     }
   },
 

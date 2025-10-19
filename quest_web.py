@@ -548,6 +548,51 @@ header p {{
     margin: 0;
     color: rgba(248, 250, 252, 0.8);
 }}
+.commands-toggle {{
+    margin-top: 1rem;
+    cursor: pointer;
+    color: {palette['link']};
+    font-weight: 600;
+    transition: color 0.2s ease;
+}}
+.commands-toggle:hover {{
+    color: {palette['link_hover']};
+}}
+.commands-section {{
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(251, 146, 60, 0.3);
+}}
+.commands-section h3 {{
+    margin: 0 0 1rem 0;
+    font-size: 1.2rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: {palette['accent']};
+}}
+.command-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}}
+.command-item {{
+    background: rgba(15, 21, 38, 0.5);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(251, 146, 60, 0.2);
+}}
+.command-item .cmd {{
+    font-family: "Courier New", monospace;
+    color: {palette['accent']};
+    font-weight: 700;
+    font-size: 0.95rem;
+}}
+.command-item .desc {{
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    color: rgba(248, 250, 252, 0.7);
+    line-height: 1.4;
+}}
 form {{
     display: flex;
     gap: 0.5rem;
@@ -723,6 +768,74 @@ a:hover {{
     <input type="text" name="q" placeholder="Search by name or user id" value="{sanitize(search_term)}" />
     <button type="submit">Search</button>
   </form>
+  <div class="commands-toggle" onclick="document.getElementById('commands').style.display = document.getElementById('commands').style.display === 'none' ? 'block' : 'none'">
+    &#9776; Show/Hide Quest Commands
+  </div>
+  <div id="commands" class="commands-section" style="display: none;">
+    <h3>Quest Commands</h3>
+    <div class="command-grid">
+      <div class="command-item">
+        <div class="cmd">!quest</div>
+        <div class="desc">Start a normal difficulty quest (!q for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest easy</div>
+        <div class="desc">Start an easy quest (!qe for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest hard</div>
+        <div class="desc">Start a hard quest (!qh for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest search</div>
+        <div class="desc">Search for items (energy potions, lucky charms, etc.) (!qs for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest use [item]</div>
+        <div class="desc">Use an item from your inventory (!qu for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest medic</div>
+        <div class="desc">Go on a medic quest for medkit rewards (!qm for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest profile [user]</div>
+        <div class="desc">View your or another user's profile (!qp for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest inventory</div>
+        <div class="desc">View your medkits and active injuries (!qi for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest class [name]</div>
+        <div class="desc">View or set your character class (!qc for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest story</div>
+        <div class="desc">Get a random piece of world lore</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest top</div>
+        <div class="desc">View the leaderboard (!qt for short)</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest prestige</div>
+        <div class="desc">Ascend at level 20 for permanent bonuses</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!quest medkit [user]</div>
+        <div class="desc">Use a medkit to heal yourself or another player</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!mob</div>
+        <div class="desc">Start a group boss fight</div>
+      </div>
+      <div class="command-item">
+        <div class="cmd">!join</div>
+        <div class="desc">Join an active mob fight</div>
+      </div>
+    </div>
+  </div>
 </header>
 {body}
 </main>

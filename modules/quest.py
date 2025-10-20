@@ -1151,7 +1151,8 @@ class Quest(SimpleCommandModule):
                 player["energy"] -= 1
 
             # Create the boss encounter (similar to mob)
-            join_window_seconds = self.get_config_value("mob_join_window_seconds", event.target, default=60)
+            # Use longer timer for random boss encounters to give more time for people to join
+            join_window_seconds = self.get_config_value("boss_join_window_seconds", event.target, default=300)
             close_time = time.time() + join_window_seconds
 
             mob_data = {
@@ -1177,9 +1178,10 @@ class Quest(SimpleCommandModule):
             schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
 
             # Announce the boss encounter!
+            join_minutes = join_window_seconds // 60
             self.safe_say(f"\u26a0\ufe0f BOSS ENCOUNTER! \u26a0\ufe0f", event.target)
             self.safe_say(f"{username} has stumbled upon a [BOSS] Level {boss_level} {boss['name']}!", event.target)
-            self.safe_say(f"This is too powerful to face alone! Others can !quest join (or !join) within {join_window_seconds} seconds!", event.target)
+            self.safe_say(f"This is too powerful to face alone! Others can !quest join (or !join) within {join_minutes} minutes!", event.target)
 
             # Ping users who opted in for mob notifications
             mob_pings = self.get_state("mob_pings", {})

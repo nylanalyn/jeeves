@@ -201,6 +201,7 @@ quest:
     max_prestige: 10
     mob_cooldown_seconds: 3600
     mob_join_window_seconds: 60
+    boss_join_window_seconds: 300  # 5 minutes for random boss encounters (vs 60s for !mob)
     base_xp_reward: 50
 
     # Boss Encounter System (random encounters during solo quests)

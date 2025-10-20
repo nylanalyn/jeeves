@@ -250,6 +250,9 @@ class Hunt(SimpleCommandModule):
         existing_animal = self.get_state("active_animal")
         if existing_animal:
             self.log_debug(f"WARNING: active_animal already exists: {existing_animal}")
+            self.log_debug("Skipping spawn, scheduling next attempt")
+            self._schedule_next_spawn()
+            return False
 
         animal = random.choice(animals).copy()
         animal['spawned_at'] = datetime.now(UTC).isoformat()

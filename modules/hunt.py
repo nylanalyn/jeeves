@@ -202,12 +202,17 @@ class Hunt(SimpleCommandModule):
         return True
 
     def _schedule_next_spawn(self):
+        # Clear any existing spawn jobs to prevent duplicates
+        cleared_count = len(schedule.get_jobs(f"{self.name}-spawn"))
         schedule.clear(f"{self.name}-spawn")
+        if cleared_count > 0:
+            self.log_debug(f"_schedule_next_spawn: cleared {cleared_count} existing spawn job(s)")
+
         allowed_channels = self.get_config_value("allowed_channels", default=[])
         animals = self.get_config_value("animals", default=[])
         if not allowed_channels or not animals:
             return
-            
+
         min_h = self.get_config_value("min_hours_between_spawns", default=2)
         max_h = self.get_config_value("max_hours_between_spawns", default=10)
         delay_hours = random.uniform(min_h, max_h)
@@ -219,8 +224,10 @@ class Hunt(SimpleCommandModule):
         schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
 
     def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
+        # Clear spawn jobs immediately to prevent race conditions
+        pending_jobs = len(schedule.get_jobs(f"{self.name}-spawn"))
         schedule.clear(f"{self.name}-spawn")
-        self.log_debug(f"_spawn_animal called (target_channel={target_channel})")
+        self.log_debug(f"_spawn_animal called (target_channel={target_channel}, cleared {pending_jobs} pending job(s))")
 
         animals = self.get_config_value("animals", default=[])
         if not animals:

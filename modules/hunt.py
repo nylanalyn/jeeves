@@ -3,6 +3,7 @@
 import random
 import re
 import schedule
+import threading
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
@@ -43,6 +44,7 @@ class Hunt(SimpleCommandModule):
     def __init__(self, bot):
         super().__init__(bot)
         self._is_loaded = False
+        self._spawn_lock = threading.Lock()
         self.set_state("scores", self.get_state("scores", {}))
         self.set_state("active_animal", self.get_state("active_animal", None))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
@@ -224,58 +226,60 @@ class Hunt(SimpleCommandModule):
         schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
 
     def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
-        # Clear spawn jobs immediately to prevent race conditions
-        pending_jobs = len(schedule.get_jobs(f"{self.name}-spawn"))
-        schedule.clear(f"{self.name}-spawn")
-        self.log_debug(f"_spawn_animal called (target_channel={target_channel}, cleared {pending_jobs} pending job(s))")
+        # Use a lock to prevent race conditions when multiple scheduled jobs fire simultaneously
+        with self._spawn_lock:
+            # Clear spawn jobs immediately to prevent race conditions
+            pending_jobs = len(schedule.get_jobs(f"{self.name}-spawn"))
+            schedule.clear(f"{self.name}-spawn")
+            self.log_debug(f"_spawn_animal called (target_channel={target_channel}, cleared {pending_jobs} pending job(s))")
 
-        animals = self.get_config_value("animals", default=[])
-        if not animals:
-            self.log_debug("No animals configured, scheduling next spawn")
-            self._schedule_next_spawn()
-            return False
+            animals = self.get_config_value("animals", default=[])
+            if not animals:
+                self.log_debug("No animals configured, scheduling next spawn")
+                self._schedule_next_spawn()
+                return False
 
-        allowed_channels = self.get_config_value("allowed_channels", default=[])
+            allowed_channels = self.get_config_value("allowed_channels", default=[])
 
-        # Deduplicate channels in case of config duplicates
-        spawn_locations = list(set([room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]))
-        self.log_debug_vars("channel_resolution",
-                           allowed_channels=allowed_channels,
-                           joined_channels=self.bot.joined_channels,
-                           spawn_locations=spawn_locations)
+            # Deduplicate channels in case of config duplicates
+            spawn_locations = list(set([room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]))
+            self.log_debug_vars("channel_resolution",
+                               allowed_channels=allowed_channels,
+                               joined_channels=self.bot.joined_channels,
+                               spawn_locations=spawn_locations)
 
-        if target_channel and target_channel in spawn_locations:
-            spawn_locations = [target_channel]
-            self.log_debug(f"target_channel specified, using only: {spawn_locations}")
+            if target_channel and target_channel in spawn_locations:
+                spawn_locations = [target_channel]
+                self.log_debug(f"target_channel specified, using only: {spawn_locations}")
 
-        if not spawn_locations:
-            self.log_debug("No valid spawn locations, scheduling next spawn")
-            self._schedule_next_spawn()
-            return False
+            if not spawn_locations:
+                self.log_debug("No valid spawn locations, scheduling next spawn")
+                self._schedule_next_spawn()
+                return False
 
-        # Check if there's already an active animal
-        existing_animal = self.get_state("active_animal")
-        if existing_animal:
-            self.log_debug(f"WARNING: active_animal already exists: {existing_animal}")
-            self.log_debug("Skipping spawn, scheduling next attempt")
-            self._schedule_next_spawn()
-            return False
+            # Check if there's already an active animal
+            existing_animal = self.get_state("active_animal")
+            if existing_animal:
+                self.log_debug(f"WARNING: active_animal already exists: {existing_animal}")
+                self.log_debug("Skipping spawn, scheduling next attempt")
+                self._schedule_next_spawn()
+                return False
 
-        animal = random.choice(animals).copy()
-        animal['spawned_at'] = datetime.now(UTC).isoformat()
-        self.log_debug(f"Selected animal: {animal.get('name', 'unknown')}")
+            animal = random.choice(animals).copy()
+            animal['spawned_at'] = datetime.now(UTC).isoformat()
+            self.log_debug(f"Selected animal: {animal.get('name', 'unknown')}")
 
-        self.set_state("active_animal", animal)
-        self.save_state()
-        self.log_debug(f"Saved active_animal to state")
+            self.set_state("active_animal", animal)
+            self.save_state()
+            self.log_debug(f"Saved active_animal to state")
 
-        self.log_debug(f"Announcing to {len(spawn_locations)} rooms: {spawn_locations}")
-        for room in spawn_locations:
-            self.log_debug(f"Sending announcement to {room}")
-            self.safe_say(random.choice(self.SPAWN_ANNOUNCEMENTS), target=room)
-            self.safe_say(animal.get("ascii_art", "An animal appears."), target=room)
+            self.log_debug(f"Announcing to {len(spawn_locations)} rooms: {spawn_locations}")
+            for room in spawn_locations:
+                self.log_debug(f"Sending announcement to {room}")
+                self.safe_say(random.choice(self.SPAWN_ANNOUNCEMENTS), target=room)
+                self.safe_say(animal.get("ascii_art", "An animal appears."), target=room)
 
-        return True
+            return True
 
     def _end_hunt(self, connection, event, username, action):
         self.log_debug(f"_end_hunt called by {username}, action={action}")

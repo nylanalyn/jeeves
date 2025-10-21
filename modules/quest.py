@@ -2006,6 +2006,16 @@ class Quest(SimpleCommandModule):
         target_id = self.bot.get_user_id(target_nick)
         target_player = self._get_player(target_id, target_nick)
 
+        # Check if target is on a no-medkit challenge path
+        target_challenge_path = target_player.get("challenge_path")
+        if target_challenge_path:
+            path_data = self.challenge_paths.get("paths", {}).get(target_challenge_path, {})
+            completion = path_data.get("completion_conditions", {})
+            if completion.get("no_medkits_used"):
+                path_name = path_data.get("name", target_challenge_path)
+                self.safe_reply(connection, event, f"{target_nick} is on the {path_name} challenge and cannot be healed with medkits!")
+                return True
+
         # Migrate old format
         if 'active_injury' in target_player:
             target_player['active_injuries'] = [target_player['active_injury']]

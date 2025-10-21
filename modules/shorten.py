@@ -4,6 +4,7 @@ import re
 import requests
 import json
 from typing import Optional
+from urllib.parse import urlparse
 from .base import SimpleCommandModule
 
 def setup(bot):
@@ -18,7 +19,7 @@ def setup(bot):
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "3.0.0" # Dynamic configuration refactor
+    version = "3.1.0" # Added Amazon URL cleaning to remove tracking parameters
     description = "Shortens URLs using a self-hosted Shlink instance."
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
@@ -29,6 +30,39 @@ class Shorten(SimpleCommandModule):
         self.SHLINK_API_URL = shlink_url
         self.SHLINK_API_KEY = shlink_key
         self.http_session = self.requests_retry_session()
+
+        # Regex to extract Amazon product ASIN from various URL formats
+        # Matches patterns like /dp/ASIN, /gp/product/ASIN, /product/ASIN, etc.
+        self.AMAZON_ASIN_PATTERN = re.compile(
+            r'(?:/dp/|/gp/product/|/product/|/ASIN/)([A-Z0-9]{10})(?:/|$|\?)',
+            re.IGNORECASE
+        )
+
+    def _clean_url(self, url: str) -> str:
+        """
+        Cleans tracking parameters and unnecessary content from URLs.
+        Currently supports Amazon URLs - extracts just the product ASIN.
+        Returns the cleaned URL, or the original if no cleaning is applicable.
+        """
+        try:
+            parsed = urlparse(url)
+            hostname = parsed.hostname.lower() if parsed.hostname else ""
+
+            # Handle Amazon URLs
+            if 'amazon.' in hostname or 'amzn.' in hostname:
+                # Try to extract the ASIN (Amazon product ID)
+                asin_match = self.AMAZON_ASIN_PATTERN.search(parsed.path)
+                if asin_match:
+                    asin = asin_match.group(1)
+                    # Use the short amzn.com domain for cleaner links
+                    cleaned = f"https://amzn.com/{asin}"
+                    self.log_debug(f"Cleaned Amazon URL: {url} -> {cleaned}")
+                    return cleaned
+        except Exception as e:
+            self.log_debug(f"Error cleaning URL {url}: {e}")
+
+        # Return original URL if cleaning failed or wasn't applicable
+        return url
 
     def _register_commands(self):
         """Registers the !shorten command."""
@@ -43,9 +77,12 @@ class Shorten(SimpleCommandModule):
         if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
             return None
 
+        # Clean the URL before shortening (removes tracking parameters, etc.)
+        cleaned_url = self._clean_url(url_to_shorten)
+
         api_endpoint = f"{self.SHLINK_API_URL.rstrip('/')}/rest/v2/short-urls"
         headers = {"X-Api-Key": self.SHLINK_API_KEY, "Content-Type": "application/json"}
-        payload = {"longUrl": url_to_shorten, "findIfExists": True}
+        payload = {"longUrl": cleaned_url, "findIfExists": True}
 
         try:
             response = self.http_session.post(api_endpoint, headers=headers, json=payload, timeout=10)

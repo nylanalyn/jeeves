@@ -59,7 +59,9 @@ class Hunt(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         self._is_loaded = True
-        schedule.clear(self.name)
+        cleared = self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn")
+        if cleared:
+            self.log_debug(f"on_load: cleared {cleared} leftover scheduled job(s)")
         
         event = self.get_state("event")
         if event and event.get("active"):
@@ -74,7 +76,21 @@ class Hunt(SimpleCommandModule):
         elif not self.get_state("active_animal"):
             self._schedule_next_spawn()
 
+    def _clear_scheduled_jobs(self, *tags: str) -> int:
+        if not tags:
+            tags = (f"{self.name}-spawn", f"{self.name}-event_spawn", self.name)
+        total_cleared = 0
+        for tag in tags:
+            jobs = schedule.get_jobs(tag)
+            if not jobs:
+                continue
+            count = len(jobs)
+            schedule.clear(tag)
+            total_cleared += count
+        return total_cleared
+
     def _resume_event_scheduler(self):
+        self._clear_scheduled_jobs(f"{self.name}-event_spawn")
         event = self.get_state("event")
         next_event_spawn_str = event.get("next_spawn_time")
         if next_event_spawn_str:
@@ -87,9 +103,10 @@ class Hunt(SimpleCommandModule):
                 if remaining > 0:
                     schedule.every(remaining).seconds.do(self._start_event_spawn).tag(f"{self.name}-event_spawn")
         else:
-             self._start_event_spawn()
+            self._start_event_spawn()
 
     def _resume_normal_spawn_scheduler(self, next_spawn_str):
+        self._clear_scheduled_jobs(f"{self.name}-spawn")
         next_spawn_time = datetime.fromisoformat(next_spawn_str)
         now = datetime.now(UTC)
         if now >= next_spawn_time:
@@ -101,7 +118,7 @@ class Hunt(SimpleCommandModule):
 
     def on_unload(self):
         super().on_unload()
-        schedule.clear(self.name)
+        self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn")
 
     def _register_commands(self):
         self.register_command(r"^\s*!hug(?:\s+(.+))?\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
@@ -205,8 +222,7 @@ class Hunt(SimpleCommandModule):
 
     def _schedule_next_spawn(self):
         # Clear any existing spawn jobs to prevent duplicates
-        cleared_count = len(schedule.get_jobs(f"{self.name}-spawn"))
-        schedule.clear(f"{self.name}-spawn")
+        cleared_count = self._clear_scheduled_jobs(f"{self.name}-spawn")
         if cleared_count > 0:
             self.log_debug(f"_schedule_next_spawn: cleared {cleared_count} existing spawn job(s)")
 
@@ -270,6 +286,7 @@ class Hunt(SimpleCommandModule):
             self.log_debug(f"Selected animal: {animal.get('name', 'unknown')}")
 
             self.set_state("active_animal", animal)
+            self.set_state("next_spawn_time", None)
             self.save_state()
             self.log_debug(f"Saved active_animal to state")
 
@@ -455,4 +472,3 @@ class Hunt(SimpleCommandModule):
         # and is outside the scope of the immediate bugfix.
         self.safe_reply(connection, event, "The event system is not compatible with the simplified scoring model.")
         return True
-

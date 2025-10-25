@@ -6,23 +6,23 @@ from pathlib import Path
 
 
 DEFAULT_THEME: Dict[str, Any] = {
-    "name": "midnight-spire",
-    "background": "#050712",
-    "foreground": "#f8fafc",
-    "accent": "#f97316",
-    "accent_text": "#0b0f19",
-    "card_background": "#0f1526",
-    "card_border": "#f97316",
-    "table_header": "#162040",
-    "table_stripe": "#121a33",
-    "link": "#fb923c",
-    "link_hover": "#fbbf24",
+    "name": "haunted-hollow",
+    "background": "#0a0a0f",
+    "foreground": "#e0e0e0",
+    "accent": "#ff6b35",
+    "accent_text": "#0a0a0f",
+    "card_background": "#1a1a24",
+    "card_border": "#ff6b35",
+    "table_header": "#1f1f2e",
+    "table_stripe": "#15151f",
+    "link": "#ff8c42",
+    "link_hover": "#ffa552",
     "prestige_tiers": [
         {
             "max": 3,
-            "icon": "★",
-            "class": "tier-star",
-            "color": "#fb923c",
+            "icon": "🎃",
+            "class": "tier-pumpkin",
+            "color": "#ff6b35",
             "repeat": 3,
             "banner": None,
         },
@@ -30,17 +30,17 @@ DEFAULT_THEME: Dict[str, Any] = {
             "max": 6,
             "icon": "☠",
             "class": "tier-skull",
-            "color": "#facc15",
+            "color": "#9d4edd",
             "repeat": 3,
-            "banner": "shroud",
+            "banner": "CURSED",
         },
         {
             "max": 10,
-            "icon": "♚",
+            "icon": "👑",
             "class": "tier-crown",
             "color": "#c084fc",
             "repeat": 4,
-            "banner": "imperial",
+            "banner": "OVERLORD",
         },
     ],
 }
@@ -78,10 +78,12 @@ class ThemeManager:
 
     def get_prestige_tier(self, prestige: int) -> Dict[str, Any]:
         """Get prestige tier information for a given prestige level."""
-        for tier in reversed(self.theme["prestige_tiers"]):
+        # Iterate forward through tiers to find the first tier that fits
+        for tier in self.theme["prestige_tiers"]:
             if prestige <= tier["max"]:
                 return tier
-        return self.theme["prestige_tiers"][-1]  # Return highest tier
+        # If prestige exceeds all tiers, return the highest tier
+        return self.theme["prestige_tiers"][-1]
 
     def get_prestige_icons(self, prestige: int) -> str:
         """Get formatted prestige icons for display."""
@@ -109,7 +111,9 @@ class ThemeManager:
         """Generate CSS for prestige tiers."""
         css_rules = []
         for i, tier in enumerate(self.theme["prestige_tiers"]):
-            rule = f""".tier-{tier["class"]} {{
+            # Fix class name extraction to remove "tier-" prefix if already in class
+            class_name = tier["class"].replace("tier-", "")
+            rule = f""".tier-{class_name} {{
     color: {tier["color"]};
     text-shadow: 0 0 10px {tier["color"]};
 }}"""

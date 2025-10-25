@@ -13,7 +13,12 @@ def sanitize(text: str) -> str:
 
 
 def load_quest_state(games_path: Path) -> Tuple[Dict[str, dict], Dict[str, str]]:
-    """Read quest players and class selections from games.json."""
+    """Read quest players and class selections from games.json.
+
+    Returns:
+        Tuple of (players_dict, classes_dict) where players_dict has user_id as keys
+        and each player object includes 'user_id' and 'username' fields.
+    """
     if not games_path.exists():
         return {}, {}
 
@@ -23,17 +28,34 @@ def load_quest_state(games_path: Path) -> Tuple[Dict[str, dict], Dict[str, str]]
             if not isinstance(data, dict):
                 return {}, {}
 
-            quest_state = data.get("quest", {})
+            # Quest data is nested under modules.quest
+            modules = data.get("modules", {})
+            if not isinstance(modules, dict):
+                return {}, {}
+
+            quest_state = modules.get("quest", {})
             if not isinstance(quest_state, dict):
                 return {}, {}
 
-            players = quest_state.get("players", {})
+            players_raw = quest_state.get("players", {})
             classes = quest_state.get("player_classes", {})
 
-            if not isinstance(players, dict):
-                players = {}
+            if not isinstance(players_raw, dict):
+                players_raw = {}
             if not isinstance(classes, dict):
                 classes = {}
+
+            # Transform players dict to include user_id and username in each player object
+            players = {}
+            for user_id, player_data in players_raw.items():
+                if isinstance(player_data, dict):
+                    # Create a copy with user_id and username added
+                    player = player_data.copy()
+                    player["user_id"] = user_id
+                    # Use "name" field as "username" for template compatibility
+                    if "name" in player_data:
+                        player["username"] = player_data["name"]
+                    players[user_id] = player
 
             return players, classes
     except (json.JSONDecodeError, IOError):

@@ -40,12 +40,45 @@ class TemplateEngine:
             color: var(--foreground);
             line-height: 1.6;
             min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }}
+
+        body::before {{
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background:
+                radial-gradient(ellipse at top, rgba(157, 78, 221, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom, rgba(255, 107, 53, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }}
+
+        @keyframes flicker {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.85; }}
+        }}
+
+        @keyframes float {{
+            0%, 100% {{ transform: translateY(0px); }}
+            50% {{ transform: translateY(-10px); }}
+        }}
+
+        @keyframes glow-pulse {{
+            0%, 100% {{ text-shadow: 0 0 20px var(--accent), 0 0 40px var(--accent); }}
+            50% {{ text-shadow: 0 0 30px var(--accent), 0 0 60px var(--accent), 0 0 80px var(--accent); }}
         }}
 
         .container {{
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
+            position: relative;
+            z-index: 1;
         }}
 
         .header {{
@@ -61,12 +94,22 @@ class TemplateEngine:
             font-size: 2.5em;
             margin-bottom: 10px;
             color: var(--accent);
-            text-shadow: 0 0 20px var(--accent);
+            animation: glow-pulse 3s ease-in-out infinite;
+            letter-spacing: 2px;
         }}
 
         .header p {{
-            opacity: 0.8;
+            opacity: 0.9;
             font-size: 1.1em;
+            color: #9d4edd;
+            font-style: italic;
+        }}
+
+        .spooky-decoration {{
+            font-size: 1.5em;
+            animation: float 3s ease-in-out infinite;
+            display: inline-block;
+            margin: 0 10px;
         }}
 
         .nav {{
@@ -85,17 +128,20 @@ class TemplateEngine:
             color: var(--foreground);
             text-decoration: none;
             transition: all 0.3s ease;
+            box-shadow: 0 2px 10px rgba(157, 78, 221, 0.1);
         }}
 
         .nav a:hover {{
             background: var(--accent);
             color: var(--accent_text);
             transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);
         }}
 
         .nav a.active {{
             background: var(--accent);
             color: var(--accent_text);
+            box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);
         }}
 
         .search-box {{
@@ -133,17 +179,26 @@ class TemplateEngine:
             border-radius: 8px;
             padding: 20px;
             text-align: center;
+            box-shadow: 0 4px 15px rgba(157, 78, 221, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }}
+
+        .stat-card:hover {{
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(157, 78, 221, 0.2);
         }}
 
         .stat-card h3 {{
             color: var(--accent);
             margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
         }}
 
         .stat-card .value {{
             font-size: 2em;
             font-weight: bold;
             margin-bottom: 5px;
+            color: #9d4edd;
         }}
 
         .card {{
@@ -152,6 +207,23 @@ class TemplateEngine:
             border-radius: 8px;
             overflow: hidden;
             margin-bottom: 20px;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(255, 107, 53, 0.1);
+            transition: box-shadow 0.3s ease;
+        }}
+
+        .card:hover {{
+            box-shadow: 0 6px 30px rgba(255, 107, 53, 0.2);
+        }}
+
+        .card::before {{
+            content: "🕸️";
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            font-size: 2em;
+            opacity: 0.3;
+            pointer-events: none;
         }}
 
         .table {{
@@ -164,6 +236,9 @@ class TemplateEngine:
             padding: 12px;
             text-align: left;
             font-weight: 600;
+            color: var(--accent);
+            text-shadow: 0 0 8px rgba(255, 107, 53, 0.3);
+            border-bottom: 2px solid var(--accent);
         }}
 
         .table td {{
@@ -181,6 +256,17 @@ class TemplateEngine:
 
         .player-name {{
             font-weight: 600;
+        }}
+
+        .player-name a {{
+            color: var(--link);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }}
+
+        .player-name a:hover {{
+            color: var(--accent);
+            text-decoration: underline;
         }}
 
         .player-info {{
@@ -307,8 +393,8 @@ class TemplateEngine:
 <body>
     <div class="container">
         <div class="header">
-            <h1>⚔️ Jeeves Quest Leaderboard</h1>
-            <p>Track your progress through the digital realm</p>
+            <h1><span class="spooky-decoration">🦇</span>Jeeves Quest: Haunted Hollow<span class="spooky-decoration">🦇</span></h1>
+            <p>🎃 Venture into the cursed digital realm... if you dare 👻</p>
         </div>
 
         <nav class="nav">
@@ -319,7 +405,8 @@ class TemplateEngine:
         {content}
 
         <div class="footer">
-            <p>Powered by Jeeves IRC Bot | Quest System v6.0</p>
+            <p>👻 Powered by Jeeves IRC Bot | Quest System v6.0 🎃</p>
+            <p style="font-size: 0.9em; opacity: 0.6; margin-top: 5px;">Beware the creatures of the night...</p>
         </div>
     </div>
 </body>
@@ -406,11 +493,16 @@ class TemplateEngine:
             win_rate = calculate_win_rate(wins, losses)
             streak = format_streak(player.get("streak", 0))
 
+            # Get XP progress to next level
+            current_xp = player.get("xp", 0)
+            xp_to_next = player.get("xp_to_next_level", 0)
+            xp_display = f"{current_xp:,}/{xp_to_next:,}" if xp_to_next > 0 else f"{current_xp:,}"
+
             content += f'''
             <tr>
                 <td>{rank_display}</td>
                 <td>
-                    <div class="player-name">{sanitize(nick)}</div>
+                    <div class="player-name"><a href="/player/{sanitize(nick)}">{sanitize(nick)}</a></div>
                     <div class="player-info">{prestige_icons} Prestige {prestige}</div>
                 </td>
                 <td>{sanitize(player_class)}</td>
@@ -420,7 +512,7 @@ class TemplateEngine:
                         <div class="progress-fill" style="width: {progress:.0f}%"></div>
                     </div>
                 </td>
-                <td class="xp">{format_xp(xp)}</td>
+                <td class="xp">{xp_display}</td>
                 <td>{win_rate}</td>
                 <td>{streak}</td>
             </tr>
@@ -519,5 +611,178 @@ class TemplateEngine:
             </ul>
         </div>
         """
+
+        return content
+
+    def render_player_detail(self, player: Dict[str, Any], player_class: str,
+                            challenge_info: Optional[Dict[str, Any]] = None) -> str:
+        """Render detailed player profile view."""
+        username = sanitize(player.get("username", "Unknown Player"))
+        prestige = player.get("prestige", 0)
+        level = player.get("level", 1)
+        xp = player.get("xp", 0)
+        xp_to_next = player.get("xp_to_next_level", 0)
+        energy = player.get("energy", 0)
+        wins = player.get("wins", 0)
+        losses = player.get("losses", 0)
+        win_streak = player.get("win_streak", 0)
+        prestige_icons = self.theme.get_prestige_icons(prestige)
+
+        # Format XP display
+        xp_display = f"{xp:,}/{xp_to_next:,}" if xp_to_next > 0 else f"{xp:,}"
+
+        # Get inventory
+        inventory = player.get("inventory", {})
+        medkits = inventory.get("medkits", 0)
+        energy_potions = inventory.get("energy_potions", 0)
+        lucky_charms = inventory.get("lucky_charms", 0)
+        armor_shards = inventory.get("armor_shards", 0)
+        xp_scrolls = inventory.get("xp_scrolls", 0)
+
+        # Active effects
+        active_effects = player.get("active_effects", [])
+        active_injuries = player.get("active_injuries", [])
+
+        # Last fight info
+        last_fight = player.get("last_fight", {})
+        last_fight_display = ""
+        if last_fight:
+            monster_name = last_fight.get("monster_name", "Unknown")
+            monster_level = last_fight.get("monster_level", 1)
+            was_win = last_fight.get("win", False)
+            result = "✅ Victory" if was_win else "❌ Defeat"
+            last_fight_display = f"{result} vs {sanitize(monster_name)} (Lvl {monster_level})"
+
+        # Challenge path
+        challenge_path = player.get("challenge_path", "None")
+        challenge_stats = player.get("challenge_stats", {})
+
+        # Unlocked abilities
+        unlocked_abilities = player.get("unlocked_abilities", [])
+
+        content = f"""
+        <div style="margin-bottom: 20px;">
+            <a href="/" style="color: var(--link); text-decoration: none;">&larr; Back to Leaderboard</a>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+            <div style="padding: 30px; text-align: center; background: linear-gradient(135deg, var(--card_background), var(--table_stripe));">
+                <h1 style="font-size: 2.5em; margin-bottom: 10px; color: var(--accent);">{username}</h1>
+                <div style="font-size: 1.2em; margin-bottom: 10px;">{prestige_icons} Prestige {prestige} {sanitize(player_class).title()}</div>
+                <div style="font-size: 1.5em; color: var(--link);">Level {level}</div>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>⚡ Energy</h3>
+                <div class="value">{energy}</div>
+            </div>
+            <div class="stat-card">
+                <h3>📊 Win/Loss</h3>
+                <div class="value">{wins}/{losses}</div>
+                <div style="font-size: 0.9em; opacity: 0.8;">{calculate_win_rate(wins, losses)} Win Rate</div>
+            </div>
+            <div class="stat-card">
+                <h3>🔥 Win Streak</h3>
+                <div class="value">{win_streak}</div>
+            </div>
+            <div class="stat-card">
+                <h3>✨ XP Progress</h3>
+                <div class="value">{xp_display}</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <div style="padding: 20px;">
+                <h2 style="color: var(--accent); margin-bottom: 15px;">🎒 Inventory</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">🩹</div>
+                        <div style="font-weight: bold;">{medkits}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Medkits</div>
+                    </div>
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">⚡</div>
+                        <div style="font-weight: bold;">{energy_potions}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Energy Potions</div>
+                    </div>
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">🍀</div>
+                        <div style="font-weight: bold;">{lucky_charms}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Lucky Charms</div>
+                    </div>
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">🛡️</div>
+                        <div style="font-weight: bold;">{armor_shards}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Armor Shards</div>
+                    </div>
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">📜</div>
+                        <div style="font-weight: bold;">{xp_scrolls}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">XP Scrolls</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+        # Active effects and injuries
+        if active_effects or active_injuries:
+            content += '<div class="card" style="margin-top: 20px;"><div style="padding: 20px;">'
+            content += '<h2 style="color: var(--accent); margin-bottom: 15px;">🔮 Active Effects</h2>'
+
+            if active_effects:
+                content += '<div style="margin-bottom: 15px;"><strong>Buffs:</strong><ul style="margin-top: 5px;">'
+                for effect in active_effects:
+                    content += f'<li>{sanitize(str(effect))}</li>'
+                content += '</ul></div>'
+
+            if active_injuries:
+                content += '<div><strong>Injuries:</strong><ul style="margin-top: 5px; color: #ef4444;">'
+                for injury in active_injuries:
+                    content += f'<li>{sanitize(str(injury))}</li>'
+                content += '</ul></div>'
+
+            content += '</div></div>'
+
+        # Unlocked abilities
+        if unlocked_abilities:
+            content += f"""
+            <div class="card" style="margin-top: 20px;">
+                <div style="padding: 20px;">
+                    <h2 style="color: var(--accent); margin-bottom: 15px;">⚔️ Unlocked Abilities</h2>
+                    <div style="display: grid; gap: 10px;">
+            """
+            for ability in unlocked_abilities:
+                content += f'<div style="padding: 10px; background: var(--table_stripe); border-radius: 6px;">{sanitize(str(ability))}</div>'
+            content += "</div></div></div>"
+
+        # Challenge path
+        if challenge_path != "None":
+            content += f"""
+            <div class="card" style="margin-top: 20px;">
+                <div style="padding: 20px;">
+                    <h2 style="color: var(--accent); margin-bottom: 15px;">🎯 Challenge Path</h2>
+                    <div style="font-size: 1.2em; margin-bottom: 10px;">{sanitize(challenge_path).replace('_', ' ').title()}</div>
+            """
+            if challenge_stats:
+                content += '<div style="margin-top: 10px;"><strong>Stats:</strong><ul style="margin-top: 5px;">'
+                for stat_name, stat_value in challenge_stats.items():
+                    formatted_name = stat_name.replace('_', ' ').title()
+                    content += f'<li>{sanitize(formatted_name)}: {sanitize(str(stat_value))}</li>'
+                content += '</ul></div>'
+            content += "</div></div>"
+
+        # Last fight
+        if last_fight_display:
+            content += f"""
+            <div class="card" style="margin-top: 20px;">
+                <div style="padding: 20px;">
+                    <h2 style="color: var(--accent); margin-bottom: 15px;">⚔️ Last Fight</h2>
+                    <div style="font-size: 1.1em;">{last_fight_display}</div>
+                </div>
+            </div>
+            """
 
         return content

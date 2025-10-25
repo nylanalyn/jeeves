@@ -18,13 +18,16 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler for quest web UI."""
 
     def __init__(self, *args, games_path: Path, content_path: Path, **kwargs):
-        super().__init__(*args, **kwargs)
+        # Initialize all instance attributes BEFORE calling super().__init__()
+        # because BaseHTTPRequestHandler.__init__() immediately handles the request
         self.games_path = games_path
         self.content_path = content_path
         self.theme_manager = ThemeManager(content_path)
         self.template_engine = TemplateEngine(self.theme_manager)
         self.players, self.classes = self._load_state()
         self.challenge_info = load_challenge_paths(content_path / "challenge_paths.json")
+        # Now call parent init which will handle the request
+        super().__init__(*args, **kwargs)
 
     def _load_state(self) -> Tuple[Dict[str, dict], Dict[str, str]]:
         """Load quest state from games.json."""
@@ -48,6 +51,8 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
                 self._handle_leaderboard()
             elif parsed_path.path == "/commands":
                 self._handle_commands()
+            elif parsed_path.path.startswith("/player/"):
+                self._handle_player_detail()
             elif parsed_path.path == "/api/status":
                 self._handle_api_status()
             elif parsed_path.path == "/api/reload":
@@ -103,6 +108,38 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         """Handle commands reference page."""
         content = self.template_engine.render_commands()
         html = self.template_engine.render_page("Quest Commands", content, "commands")
+        self._send_html(html)
+
+    def _handle_player_detail(self) -> None:
+        """Handle player detail page."""
+        # Extract user_id or username from path
+        path_parts = self.path.split("/")
+        if len(path_parts) < 3:
+            self._send_404()
+            return
+
+        player_identifier = path_parts[2].split("?")[0]  # Remove query params
+
+        # Find player by user_id or username
+        player = None
+        user_id = None
+        for uid, p in self.players.items():
+            if uid == player_identifier or p.get("username", "").lower() == player_identifier.lower():
+                player = p
+                user_id = uid
+                break
+
+        if not player:
+            self._send_404()
+            return
+
+        player_class = self.classes.get(user_id, "No class")
+        content = self.template_engine.render_player_detail(player, player_class, self.challenge_info)
+        html = self.template_engine.render_page(
+            f"{player.get('username', 'Player')} - Profile",
+            content,
+            ""
+        )
         self._send_html(html)
 
     def _handle_api_status(self) -> None:

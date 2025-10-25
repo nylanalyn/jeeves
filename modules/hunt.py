@@ -5,6 +5,7 @@ import re
 import schedule
 import threading
 import time
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
@@ -45,6 +46,7 @@ class Hunt(SimpleCommandModule):
         super().__init__(bot)
         self._is_loaded = False
         self._spawn_lock = threading.Lock()
+        self._spawn_job_token: Optional[str] = None
         self.set_state("scores", self.get_state("scores", {}))
         self.set_state("active_animal", self.get_state("active_animal", None))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
@@ -86,6 +88,8 @@ class Hunt(SimpleCommandModule):
                 continue
             count = len(jobs)
             schedule.clear(tag)
+            if tag == f"{self.name}-spawn":
+                self._spawn_job_token = None
             total_cleared += count
         return total_cleared
 
@@ -114,7 +118,7 @@ class Hunt(SimpleCommandModule):
         else:
             remaining_seconds = (next_spawn_time - now).total_seconds()
             if remaining_seconds > 0:
-                schedule.every(remaining_seconds).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
+                self._queue_spawn_job(remaining_seconds)
 
     def on_unload(self):
         super().on_unload()
@@ -239,7 +243,30 @@ class Hunt(SimpleCommandModule):
 
         self.set_state("next_spawn_time", next_spawn_time.isoformat())
         self.save_state()
-        schedule.every(delay_hours * 3600).seconds.do(self._spawn_animal).tag(f"{self.name}-spawn")
+        self._queue_spawn_job(delay_hours * 3600)
+
+    def _queue_spawn_job(self, delay_seconds: float, target_channel: Optional[str] = None) -> None:
+        """
+        Schedule a single-fire spawn job identified by a token so duplicate pending jobs
+        (e.g., after multiple !admin reloads) do not stack and fire back-to-back.
+        """
+        token = uuid.uuid4().hex
+        self._spawn_job_token = token
+
+        def _run_scheduled_spawn(job_token: str, channel_override: Optional[str] = None):
+            if job_token != self._spawn_job_token:
+                self.log_debug(f"_queue_spawn_job: ignoring stale spawn job token={job_token}")
+                return schedule.CancelJob
+            try:
+                self.log_debug(f"_queue_spawn_job: executing spawn job token={job_token}, target_channel={channel_override}")
+                self._spawn_animal(target_channel=channel_override)
+            finally:
+                # Prevent stale comparisons if another job is scheduled while this one runs
+                if self._spawn_job_token == job_token:
+                    self._spawn_job_token = None
+            return schedule.CancelJob
+
+        schedule.every(delay_seconds).seconds.do(_run_scheduled_spawn, token, target_channel).tag(f"{self.name}-spawn")
 
     def _spawn_animal(self, target_channel: Optional[str] = None) -> bool:
         # Use a lock to prevent race conditions when multiple scheduled jobs fire simultaneously
@@ -247,6 +274,8 @@ class Hunt(SimpleCommandModule):
             # Clear spawn jobs immediately to prevent race conditions
             pending_jobs = len(schedule.get_jobs(f"{self.name}-spawn"))
             schedule.clear(f"{self.name}-spawn")
+            # Reset spawn token since the job has fired (or is being forced manually)
+            self._spawn_job_token = None
             self.log_debug(f"_spawn_animal called (target_channel={target_channel}, cleared {pending_jobs} pending job(s))")
 
             animals = self.get_config_value("animals", default=[])

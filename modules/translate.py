@@ -121,13 +121,17 @@ class Translate(SimpleCommandModule):
         # Get the last message (most recent is at the end)
         last_username, last_message = self.recent_messages[channel][-1]
 
-        target_lang = self.get_config_value("default_target_language", event.target, default="EN-US")
+        target_lang = self._normalize_target_lang(
+            self.get_config_value("default_target_language", event.target, default="EN-US"),
+            event.target
+        )
         return self._do_translation(connection, event, username, last_message, target_lang, has_flavor)
 
     def _do_translation(self, connection, event, username, text_to_translate, target_lang, has_flavor):
         """Shared translation logic."""
         try:
-            result = self.translator.translate_text(text_to_translate, target_lang=target_lang)
+            normalized_lang = self._normalize_target_lang(target_lang, event.target)
+            result = self.translator.translate_text(text_to_translate, target_lang=normalized_lang)
             detected_lang = result.detected_source_lang
             translated_text = result.text
 
@@ -135,9 +139,9 @@ class Translate(SimpleCommandModule):
             self.save_state()
 
             if has_flavor:
-                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, ({detected_lang} -> {target_lang}): \"{translated_text}\"")
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, ({detected_lang} -> {normalized_lang}): \"{translated_text}\"")
             else:
-                self.safe_reply(connection, event, f"({detected_lang} -> {target_lang}): \"{translated_text}\"")
+                self.safe_reply(connection, event, f"({detected_lang} -> {normalized_lang}): \"{translated_text}\"")
 
         except deepl.DeepLException as e:
             self._record_error(f"DeepL API error: {e}")
@@ -161,15 +165,44 @@ class Translate(SimpleCommandModule):
         args_str = match.group(1).strip()
         args = args_str.split()
 
-        target_lang = self.get_config_value("default_target_language", event.target, default="EN-US")
+        target_lang = self._normalize_target_lang(
+            self.get_config_value("default_target_language", event.target, default="EN-US"),
+            event.target
+        )
         text_to_translate = args_str
 
         # Check if the first argument is a language code (e.g., DE, FR, PT-BR)
         # Simple check: 2-5 chars, contains only letters and possibly a hyphen.
         if len(args) > 1 and 2 <= len(args[0]) <= 5 and re.match(r'^[A-Z-]+$', args[0], re.IGNORECASE):
             # The DeepL library will validate the language code for us.
-            target_lang = args[0].upper()
+            target_lang = self._normalize_target_lang(args[0], event.target)
             text_to_translate = " ".join(args[1:])
 
         return self._do_translation(connection, event, username, text_to_translate, target_lang, has_flavor)
 
+    def _normalize_target_lang(self, value: str, channel: Optional[str] = None) -> str:
+        """
+        DeepL now requires regional variants for certain languages (e.g., EN-US/EN-GB, PT-PT/PT-BR).
+        This helper maps the short codes to configurable defaults so older commands keep working.
+        """
+        if not value:
+            return value
+
+        normalized = value.strip().upper()
+
+        # Allow overrides from config: translate.language_variant_overrides.{code}: "EN-GB"
+        overrides = self.get_config_value("language_variant_overrides", channel, default={})
+        if isinstance(overrides, dict):
+            override = overrides.get(normalized) or overrides.get(normalized.lower())
+            if override:
+                return override.strip().upper()
+
+        if normalized == "EN":
+            preferred_english = self.get_config_value("default_english_variant", channel, default=None)
+            return (preferred_english or "EN-US").upper()
+
+        if normalized == "PT":
+            preferred_portuguese = self.get_config_value("default_portuguese_variant", channel, default=None)
+            return (preferred_portuguese or "PT-BR").upper()
+
+        return normalized

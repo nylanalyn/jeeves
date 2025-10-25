@@ -3,6 +3,7 @@
 import json
 import os
 import random
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from .quest_state import QuestStateManager
@@ -17,13 +18,33 @@ class QuestStory:
         self.config = state_manager.get_quest_config()
 
     def load_content(self) -> Dict[str, Any]:
-        """Load quest content from quest_content.json file."""
-        content_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quest_content.json")
+        """Load quest content from appropriate themed JSON file based on month."""
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+
+        # Determine which theme file to use based on current month
+        current_month = datetime.now().month
+        if current_month == 11:  # November - Noir theme
+            content_file = os.path.join(base_dir, "quest_content_noir.json")
+            theme_name = "noir"
+        elif current_month == 10:  # October - Halloween theme (default)
+            content_file = os.path.join(base_dir, "quest_content.json")
+            theme_name = "halloween"
+        else:
+            # Other months - check for noir file first for testing, otherwise use default
+            noir_file = os.path.join(base_dir, "quest_content_noir.json")
+            default_file = os.path.join(base_dir, "quest_content.json")
+
+            if os.path.exists(noir_file):
+                content_file = noir_file
+                theme_name = "noir (test mode)"
+            else:
+                content_file = default_file
+                theme_name = "default"
 
         try:
             with open(content_file, 'r') as f:
                 content = json.load(f)
-                self.bot.log_debug(f"Loaded quest content from {content_file}")
+                self.bot.log_debug(f"Loaded quest content from {content_file} (theme: {theme_name})")
                 return content
         except FileNotFoundError:
             self.bot.log_debug(f"Quest content file not found at {content_file}, using config fallback")

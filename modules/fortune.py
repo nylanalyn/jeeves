@@ -16,7 +16,7 @@ class Fortune(SimpleCommandModule):
     version = "2.1.0" # Made ambient trigger more specific
     description = "Provides fortunes from a fortune cookie."
     
-    CATEGORIES = ["spooky", "happy", "sad", "silly"]
+    CATEGORIES = ["spooky", "happy", "sad", "silly", "sexy"]
     
     def __init__(self, bot):
         super().__init__(bot)
@@ -110,10 +110,11 @@ class Fortune(SimpleCommandModule):
     def _format_fortune_response(self, username: str, fortune: str, category: str) -> str:
         title = self.bot.title_for(username)
         intros = {
-            "spooky": f"{title}, the spirits whisper:", 
-            "happy": f"{title}, a most pleasant fortune awaits:", 
-            "sad": f"{title}, the omens are rather somber:", 
-            "silly": f"{title}, a rather whimsical fortune:"
+            "spooky": f"{title}, the spirits whisper:",
+            "happy": f"{title}, a most pleasant fortune awaits:",
+            "sad": f"{title}, the omens are rather somber:",
+            "silly": f"{title}, a rather whimsical fortune:",
+            "sexy": f"{title}, a sultry fortune awaits:"
         }
         intro = intros.get(category, f"{title}, your fortune:")
         return f"{username}, {intro} {fortune}"

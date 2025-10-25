@@ -1,19 +1,18 @@
 {
   "_comment": "Challenge Paths - Special prestige options that modify gameplay",
   "_usage": "Activate with !admin challenge <pathname>, players can then !quest prestige challenge at level 20",
-
   "paths": {
-    "example_hard_mode": {
-      "name": "Example Hard Mode",
-      "description": "An example challenge path - replace with your own!",
-      "enabled": false,
+    "hard_mode": {
+      "name": "Hard Mode",
+      "description": "Lower XP gain, lower win chance, bonus to energy if you make it!",
+      "enabled": true,
       "requirements": {
         "min_prestige": 0,
         "max_prestige": 10
       },
       "modifiers": {
         "xp_gain_multiplier": 0.5,
-        "win_chance_modifier": -0.10,
+        "win_chance_modifier": -0.1,
         "energy_max_bonus": 5
       },
       "special_rules": [
@@ -38,7 +37,7 @@
     "ironman_challenge": {
       "name": "Path of the Ironman",
       "description": "Complete prestige 20 without using a single medkit",
-      "enabled": false,
+      "enabled": true,
       "requirements": {
         "min_prestige": 0,
         "max_prestige": 10
@@ -58,7 +57,6 @@
       }
     }
   },
-
   "abilities": {
     "doctor": {
       "name": "Doctor",
@@ -75,7 +73,7 @@
       "cooldown_hours": 72,
       "effect": "party_buff_win_chance",
       "effect_data": {
-        "win_bonus": 0.20,
+        "win_bonus": 0.2,
         "duration_hours": 1
       },
       "announcement": "{user} unleashes a battle cry! All players gain +20% win chance for 1 hour!"
@@ -92,6 +90,5 @@
       "announcement": "{user} rallies the troops! All players restore 5 energy!"
     }
   },
-
-  "active_path": null
+  "active_path": "hard_mode"
 }

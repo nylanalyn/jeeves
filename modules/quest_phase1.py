@@ -1,5 +1,5 @@
-# modules/quest_final.py
-# Final refactored quest module - complete integration of all subsystems
+# modules/quest_refactored.py
+# Refactored quest module - main orchestrator for quest system
 import random
 import time
 import re
@@ -16,53 +16,85 @@ from .quest_core import QuestCore
 from .quest_items import QuestItems
 from .quest_status import QuestStatus
 from .quest_energy import QuestEnergy
-from .quest_combat import QuestCombat
-from .quest_challenges import QuestChallenges
-from .quest_story import QuestStory
-from .quest_admin import QuestAdmin
 
 UTC = timezone.utc
 
 def setup(bot):
-    """Initializes the final refactored Quest module."""
-    return QuestFinal(bot)
+    """Initializes the refactored Quest module."""
+    return QuestRefactored(bot)
 
-class QuestFinal(SimpleCommandModule):
-    """Final refactored quest module with complete subsystem integration."""
+class QuestRefactored(SimpleCommandModule):
+    """Refactored quest module orchestrating all quest subsystems."""
     name = "quest"
-    version = "6.0.0" # Complete modular architecture with all subsystems
+    version = "5.0.0" # Refactored modular architecture
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot):
-        """Initialize the complete refactored quest module."""
+        """Initialize the refactored quest module."""
         super().__init__(bot)
 
         # Initialize shared state manager
         self.state_manager = QuestStateManager(bot)
 
-        # Initialize all subsystems
+        # Initialize subsystems
         self.core = QuestCore(bot, self.state_manager)
         self.items = QuestItems(bot, self.state_manager)
         self.status = QuestStatus(bot, self.state_manager)
         self.energy = QuestEnergy(bot, self.state_manager)
-        self.combat = QuestCombat(bot, self.state_manager)
-        self.challenges = QuestChallenges(bot, self.state_manager)
-        self.story = QuestStory(bot, self.state_manager)
-        self.admin = QuestAdmin(bot, self.state_manager)
 
         # Initialize locks and state
         self.mob_lock = threading.Lock()
         self._is_loaded = False
 
         # Load content and challenge paths
-        self.content = self.story.load_content()
-        self.challenge_paths = self.challenges.load_challenge_paths()
+        self.content = self._load_content()
+        self.challenge_paths = self._load_challenge_paths()
 
         # Initialize legacy state for compatibility
         self.set_state("players", self.state_manager.get_all_players())
         self.set_state("active_mob", self.state_manager.get_active_mob())
         self.set_state("player_classes", self.state_manager.get_player_classes())
         self.save_state()
+
+    def _load_content(self) -> Dict[str, Any]:
+        """Load quest content from quest_content.json file."""
+        content_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quest_content.json")
+
+        try:
+            with open(content_file, 'r') as f:
+                content = json.load(f)
+                self.log_debug(f"Loaded quest content from {content_file}")
+                return content
+        except FileNotFoundError:
+            self.log_debug(f"Quest content file not found at {content_file}, using config fallback")
+            return {}
+        except json.JSONDecodeError as e:
+            self.log_debug(f"Error parsing quest content JSON: {e}, using config fallback")
+            return {}
+
+    def _load_challenge_paths(self) -> Dict[str, Any]:
+        """Load challenge paths from challenge_paths.json file."""
+        paths_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "challenge_paths.json")
+
+        try:
+            with open(paths_file, 'r') as f:
+                paths = json.load(f)
+                self.log_debug(f"Loaded challenge paths from {paths_file}")
+                return paths
+        except FileNotFoundError:
+            self.log_debug(f"Challenge paths file not found at {paths_file}")
+            return {"paths": {}, "active_path": None}
+        except json.JSONDecodeError as e:
+            self.log_debug(f"Error parsing challenge paths JSON: {e}")
+            return {"paths": {}, "active_path": None}
+
+    def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
+        """Get content from JSON file, falling back to config if not found."""
+        # Try to get from content file first
+        if key in self.content:
+            return self.content[key]
+        # Fall back to config
+        return self.get_config_value(key, channel, default=default)
 
     def on_load(self):
         """Called when module is loaded."""
@@ -78,11 +110,11 @@ class QuestFinal(SimpleCommandModule):
             close_time = active_mob.get("close_epoch", 0)
             now = time.time()
             if now >= close_time:
-                self.combat._close_mob_window()
+                self._close_mob_window()
             else:
                 remaining = close_time - now
                 if remaining > 0:
-                    schedule.every(remaining).seconds.do(self.combat._close_mob_window).tag(f"{self.name}-mob_close")
+                    schedule.every(remaining).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
 
     def on_unload(self):
         """Called when module is unloaded."""
@@ -98,24 +130,20 @@ class QuestFinal(SimpleCommandModule):
                               description="Show detailed player profile")
         self.register_command(r"^\s*!quest\s+leaderboard\s*$", self._cmd_leaderboard, name="leaderboard",
                               description="Show the quest leaderboard")
-        self.register_command(r"^\s*!quest\s+prestige(?:\s+(.+))?\s*$", self._cmd_prestige, name="prestige",
+        self.register_command(r"^\s*!quest\s+prestige\s*$", self._cmd_prestige, name="prestige",
                               description="Prestige at max level for permanent bonuses")
 
         # Class system
         self.register_command(r"^\s*!quest\s+class(?:\s+(.+))?\s*$", self._cmd_class, name="class",
                               description="Show or assign player class")
 
-        # Quest commands with difficulty
+        # Quest commands
         self.register_command(r"^\s*!quest\s+(?:start|begin|go|quest|adventure)\s*$", self._cmd_quest,
-                              name="quest", cooldown_seconds=300, description="Go on a solo quest (normal difficulty)")
-        self.register_command(r"^\s*!quest\s+easy\s*$", self._cmd_quest_easy, name="quest_easy",
-                              cooldown_seconds=300, description="Go on an easy quest")
-        self.register_command(r"^\s*!quest\s+hard\s*$", self._cmd_quest_hard, name="quest_hard",
-                              cooldown_seconds=300, description="Go on a hard quest")
-
-        # Search and inventory
+                              name="quest", cooldown_seconds=300, description="Go on a solo quest")
         self.register_command(r"^\s*!quest\s+search\s*$", self._cmd_search, name="search",
                               cooldown_seconds=300, description="Search for items")
+
+        # Inventory and items
         self.register_command(r"^\s*!quest\s+inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
                               description="View your inventory and active effects")
         self.register_command(r"^\s*!quest\s+use\s+(.+)$", self._cmd_use_item, name="use_item",
@@ -125,35 +153,15 @@ class QuestFinal(SimpleCommandModule):
         self.register_command(r"^\s*!quest\s+medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit",
                               description="Use a medkit to heal yourself or another player")
 
-        # Challenge path commands
-        self.register_command(r"^\s*!quest\s+ability(?:\s+(.+))?\s*$", self._cmd_ability, name="ability",
-                              description="Show or use unlocked abilities")
-
-        # Group content commands
+        # Group content
         self.register_command(r"^\s*!mob\s+(?:start|begin|go)\s*$", self._cmd_mob_start, name="mob_start",
                               admin_only=False, description="Start a mob encounter")
         self.register_command(r"^\s*!mob\s+join\s*$", self._cmd_mob_join, name="mob_join",
                               description="Join an active mob encounter")
-        self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping",
-                              description="Toggle mob notifications")
 
         # Admin commands
         self.register_command(r"^\s*!quest\s+reload\s*$", self._cmd_quest_reload, name="quest_reload",
                               admin_only=True, description="Reload quest content from JSON files")
-        self.register_command(r"^\s*!quest\s+stats\s*$", self._cmd_quest_stats, name="quest_stats",
-                              admin_only=True, description="Show quest system statistics")
-        self.register_command(r"^\s*!quest\s+heal_all\s*$", self._cmd_heal_all, name="heal_all",
-                              admin_only=True, description="Heal all injured players")
-        self.register_command(r"^\s*!quest\s+energy_all\s*$", self._cmd_energy_all, name="energy_all",
-                              admin_only=True, description="Restore energy for all players")
-
-        # Challenge admin commands
-        self.register_command(r"^\s*!quest\s+challenge\s+activate\s+(\S+)\s*$", self._cmd_challenge_activate, name="challenge_activate",
-                              admin_only=True, description="Activate a challenge path by name")
-        self.register_command(r"^\s*!quest\s+challenge\s+deactivate\s*$", self._cmd_challenge_deactivate, name="challenge_deactivate",
-                              admin_only=True, description="Deactivate the current challenge path")
-        self.register_command(r"^\s*!quest\s+challenge\s+list\s*$", self._cmd_challenge_list, name="challenge_list",
-                              admin_only=True, description="List all available challenge paths")
 
         # Short aliases
         self.register_command(r"^\s*!q\s*$", self._cmd_quest, name="quest_alias")
@@ -163,8 +171,6 @@ class QuestFinal(SimpleCommandModule):
         self.register_command(r"^\s*!search\s*$", self._cmd_search, name="search_alias")
         self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit_legacy")
         self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory_legacy")
-        self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob_legacy")
-        self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join_legacy")
 
     # Core Command Handlers
     def _cmd_quest_info(self, connection, event, msg, username, match):
@@ -175,7 +181,6 @@ class QuestFinal(SimpleCommandModule):
         # Basic stats
         energy_status = self.energy.format_energy_bar(user_id)
         injuries_text = self.status.format_injury_status(user_id)
-        challenge_info = self.challenges.get_challenge_path_info(user_id)
 
         # Quick summary
         response = f"⚔️ **{self.bot.title_for(username)}'s Quest Status**\n"
@@ -185,9 +190,6 @@ class QuestFinal(SimpleCommandModule):
 
         if injuries_text:
             response += f"🩹 {injuries_text}\n"
-
-        if challenge_info:
-            response += f"{challenge_info}\n"
 
         # Show available actions
         response += f"\n**Commands:** !quest (adventure) | !search | !inv | !profile"
@@ -233,14 +235,6 @@ class QuestFinal(SimpleCommandModule):
     def _cmd_prestige(self, connection, event, msg, username, match):
         """Handle prestige command."""
         user_id = self.bot.get_user_id(username)
-        args = match.group(1) if match.group(1) else ""
-
-        # Check for challenge prestige
-        is_challenge = args.lower() == "challenge"
-        if is_challenge:
-            return self._handle_challenge_prestige(connection, event, username, user_id)
-
-        # Normal prestige
         success, message = self.core.handle_prestige(user_id)
 
         if success:
@@ -276,200 +270,7 @@ class QuestFinal(SimpleCommandModule):
 
     # Quest Command Handlers
     def _cmd_quest(self, connection, event, msg, username, match):
-        """Handle solo quest command (normal difficulty)."""
-        self._handle_solo_quest(connection, event, username, "normal")
-
-    def _cmd_quest_easy(self, connection, event, msg, username, match):
-        """Handle easy quest command."""
-        self._handle_solo_quest(connection, event, username, "easy")
-
-    def _cmd_quest_hard(self, connection, event, msg, username, match):
-        """Handle hard quest command."""
-        self._handle_solo_quest(connection, event, username, "hard")
-
-    def _cmd_search(self, connection, event, msg, username, match):
-        """Handle search command."""
-        user_id = self.bot.get_user_id(username)
-
-        # Check if player is injured
-        if self.status.has_active_injuries(user_id):
-            injuries = self.status.get_injury_list(user_id)
-            if len(injuries) == 1:
-                self.safe_reply(connection, event, f"You're still recovering from {injuries[0]}! Searching while injured is dangerous.")
-            else:
-                self.safe_reply(connection, event, f"You're still recovering from: {', '.join(injuries)}! Searching while injured is dangerous.")
-            return
-
-        # Perform search
-        result = self.items.perform_search(user_id)
-
-        if result["success"]:
-            if result["type"] == "injury":
-                # Apply injury
-                injury_result = self.status.apply_injury_from_search(user_id)
-                self.safe_reply(connection, event, injury_result["message"])
-            else:
-                # Show search result
-                location = self.story.get_search_location_description(event.target)
-                response = f"You search through {location}... {result['message']}"
-                self.safe_reply(connection, event, response)
-        else:
-            self.safe_reply(connection, event, result["message"])
-
-    def _cmd_inventory(self, connection, event, msg, username, match):
-        """Show player inventory."""
-        user_id = self.bot.get_user_id(username)
-        inventory_text = self.items.format_inventory_display(user_id)
-        self.safe_reply(connection, event, inventory_text)
-
-    def _cmd_use_item(self, connection, event, msg, username, match):
-        """Handle using items."""
-        user_id = self.bot.get_user_id(username)
-        item_name = match.group(1).strip().lower()
-
-        # Parse target for medkit
-        target_arg = None
-        if item_name.startswith("medkit "):
-            target_arg = item_name[7:].strip()
-            item_name = "medkit"
-
-        # Use item
-        kwargs = {}
-        if target_arg:
-            target_user_id = self.bot.get_user_id(target_arg)
-            if target_user_id:
-                kwargs["target_user_id"] = target_user_id
-
-        result = self.items.use_item(user_id, item_name, **kwargs)
-
-        if result["success"]:
-            if result.get("xp_reward"):
-                # Grant XP if applicable
-                self.core.grant_xp(user_id, result["xp_reward"])
-
-        self.safe_reply(connection, event, result["message"])
-
-    def _cmd_medkit(self, connection, event, msg, username, match):
-        """Handle medkit command."""
-        user_id = self.bot.get_user_id(username)
-        target_arg = match.group(1) if match.group(1) else None
-
-        # Use medkit via items system
-        kwargs = {}
-        if target_arg:
-            target_user_id = self.bot.get_user_id(target_arg)
-            if target_user_id:
-                kwargs["target_user_id"] = target_user_id
-
-        result = self.items.use_item(user_id, "medkit", **kwargs)
-
-        if result["success"] and result.get("xp_reward"):
-            # Grant XP for healing
-            self.core.grant_xp(user_id, result["xp_reward"])
-
-        self.safe_reply(connection, event, result["message"])
-
-    def _cmd_ability(self, connection, event, msg, username, match):
-        """Handle ability commands."""
-        user_id = self.bot.get_user_id(username)
-        args_str = match.group(1) if match.group(1) else ""
-
-        if not args_str:
-            # Show available abilities
-            abilities_text = self.challenges.format_abilities_display(user_id)
-            self.safe_reply(connection, event, abilities_text)
-            return
-
-        # Use ability
-        ability_name = args_str.strip()
-        success, message = self.challenges.use_ability(user_id, username, ability_name)
-
-        if success:
-            # Make announcement to channel
-            self.safe_say(message, event.target)
-        else:
-            self.safe_reply(connection, event, message)
-
-    # Group Content Handlers
-    def _cmd_mob_start(self, connection, event, msg, username, match):
-        """Handle mob start command."""
-        user_id = self.bot.get_user_id(username)
-        success, message = self.combat.start_mob_encounter(username, user_id, event.target)
-        self.safe_reply(connection, event, message)
-
-    def _cmd_mob_join(self, connection, event, msg, username, match):
-        """Handle mob join command."""
-        user_id = self.bot.get_user_id(username)
-        success, message = self.combat.join_mob_encounter(username, user_id, event.target)
-        self.safe_reply(connection, event, message)
-
-    def _cmd_mob_ping(self, connection, event, msg, username, match):
-        """Handle mob ping toggle."""
-        user_id = self.bot.get_user_id(username)
-        action = match.group(1)
-        message = self.combat.toggle_mob_ping(user_id, username, event.target, action)
-        self.safe_reply(connection, event, message)
-
-    # Admin Command Handlers
-    def _cmd_quest_reload(self, connection, event, msg, username, match):
-        """Reload quest content and challenge paths."""
-        success, message = self.admin.reload_quest_content()
-        self.safe_reply(connection, event, message)
-
-    def _cmd_quest_stats(self, connection, event, msg, username, match):
-        """Show quest system statistics."""
-        report = self.admin.format_admin_report()
-        # Send in chunks to avoid IRC message length limits
-        lines = report.split('\n')
-        chunk = []
-        for line in lines:
-            chunk.append(line)
-            if len(chunk) >= 20:  # Send chunks of 20 lines
-                self.safe_reply(connection, event, '\n'.join(chunk))
-                chunk = []
-        if chunk:
-            self.safe_reply(connection, event, '\n'.join(chunk))
-
-    def _cmd_heal_all(self, connection, event, msg, username, match):
-        """Heal all injured players."""
-        healed_count, message = self.admin.heal_all_players(event.target)
-        self.safe_reply(connection, event, message)
-
-    def _cmd_energy_all(self, connection, event, msg, username, match):
-        """Restore energy for all players."""
-        restored_count, message = self.admin.restore_all_energy(event.target)
-        self.safe_reply(connection, event, message)
-
-    # Challenge Admin Commands
-    def _cmd_challenge_activate(self, connection, event, msg, username, match):
-        """Activate a challenge path."""
-        path_name = match.group(1)
-        success, message = self.challenges.activate_challenge_path(path_name)
-        self.safe_reply(connection, event, message)
-
-    def _cmd_challenge_deactivate(self, connection, event, msg, username, match):
-        """Deactivate the current challenge path."""
-        success, message = self.challenges.deactivate_challenge_path()
-        self.safe_reply(connection, event, message)
-
-    def _cmd_challenge_list(self, connection, event, msg, username, match):
-        """List all challenge paths."""
-        paths_list, active_path = self.challenges.list_challenge_paths()
-
-        if not paths_list:
-            self.safe_reply(connection, event, "No challenge paths defined.")
-            return
-
-        response = "🎯 **Challenge Paths:**\n"
-        for path in paths_list:
-            status = "✅ ACTIVE" if path["active"] else "   Available"
-            response += f"{status} {path['name']}: {path['description']}\n"
-
-        self.safe_reply(connection, event, response)
-
-    # Quest System Methods
-    def _handle_solo_quest(self, connection, event, username, difficulty):
-        """Handle a solo quest attempt."""
+        """Handle solo quest command."""
         user_id = self.bot.get_user_id(username)
         player = self.core.get_player(user_id)
 
@@ -494,43 +295,145 @@ class QuestFinal(SimpleCommandModule):
                 self.safe_reply(connection, event, f"You're still recovering from: {', '.join(injuries)}! Use a medkit or rest first.")
             return
 
-        # Get difficulty modifiers
-        diff_mods = self.combat.calculate_combat_difficulty_modifiers(difficulty)
-
         # Execute quest
-        self._execute_solo_quest(connection, event, username, user_id, difficulty, diff_mods)
+        self._handle_solo_quest(connection, event, username, user_id)
 
-        # Set cooldown
-        cooldown_seconds = self.config.get("cooldown_seconds", 300)
-        player["quest_cooldown"] = time.time() + cooldown_seconds
-        self.state_manager.update_player_data(user_id, player)
+    def _cmd_search(self, connection, event, msg, username, match):
+        """Handle search command."""
+        user_id = self.bot.get_user_id(username)
 
-    def _execute_solo_quest(self, connection, event, username, user_id, difficulty, diff_mods):
-        """Execute a solo quest with the given difficulty."""
+        # Check if player is injured
+        if self.status.has_active_injuries(user_id):
+            injuries = self.status.get_injury_list(user_id)
+            if len(injuries) == 1:
+                self.safe_reply(connection, event, f"You're still recovering from {injuries[0]}! Searching while injured is dangerous.")
+            else:
+                self.safe_reply(connection, event, f"You're still recovering from: {', '.join(injuries)}! Searching while injured is dangerous.")
+            return
+
+        # Perform search
+        result = self.items.perform_search(user_id)
+
+        if result["success"]:
+            if result["type"] == "injury":
+                # Apply injury
+                injury_result = self.status.apply_injury_from_search(user_id)
+                self.safe_reply(connection, event, injury_result["message"])
+            else:
+                # Show search result
+                self.safe_reply(connection, event, result["message"])
+        else:
+            self.safe_reply(connection, event, result["message"])
+
+    def _cmd_inventory(self, connection, event, msg, username, match):
+        """Show player inventory."""
+        user_id = self.bot.get_user_id(username)
+        inventory_text = self.items.format_inventory_display(user_id)
+        self.safe_reply(connection, event, inventory_text)
+
+    def _cmd_use_item(self, connection, event, msg, username, match):
+        """Handle using items."""
+        user_id = self.bot.get_user_id(username)
+        item_name = match.group(1).strip().lower()
+
+        # Parse target for medkit
+        target_arg = None
+        if item_name.startswith("medkit "):
+            target_arg = item_name[7:].strip()
+            item_name = "medkit"
+        elif item_name == "medkit" and " " in msg:
+            # Handle !quest use medkit target format
+            parts = msg.split()
+            if len(parts) > 3:
+                target_arg = " ".join(parts[3:]).strip()
+
+        # Use item
+        kwargs = {}
+        if target_arg:
+            target_user_id = self.bot.get_user_id(target_arg)
+            if target_user_id:
+                kwargs["target_user_id"] = target_user_id
+
+        result = self.items.use_item(user_id, item_name, **kwargs)
+
+        if result["success"]:
+            if result.get("xp_reward"):
+                # Grant XP if applicable
+                self.core.grant_xp(user_id, result["xp_reward"])
+
+            if result.get("healed_injuries"):
+                # Injuries were healed via the items module
+                pass
+
+        self.safe_reply(connection, event, result["message"])
+
+    def _cmd_medkit(self, connection, event, msg, username, match):
+        """Handle medkit command."""
+        user_id = self.bot.get_user_id(username)
+        target_arg = match.group(1) if match.group(1) else None
+
+        # Use medkit via items system
+        kwargs = {}
+        if target_arg:
+            target_user_id = self.bot.get_user_id(target_arg)
+            if target_user_id:
+                kwargs["target_user_id"] = target_user_id
+
+        result = self.items.use_item(user_id, "medkit", **kwargs)
+
+        if result["success"] and result.get("xp_reward"):
+            # Grant XP for healing
+            self.core.grant_xp(user_id, result["xp_reward"])
+
+        self.safe_reply(connection, event, result["message"])
+
+    # Group Content Handlers (simplified for now)
+    def _cmd_mob_start(self, connection, event, msg, username, match):
+        """Handle mob start command."""
+        self.safe_reply(connection, event, "Mob encounters are coming soon in the refactored version!")
+
+    def _cmd_mob_join(self, connection, event, msg, username, match):
+        """Handle mob join command."""
+        self.safe_reply(connection, event, "Mob encounters are coming soon in the refactored version!")
+
+    # Admin Commands
+    def _cmd_quest_reload(self, connection, event, msg, username, match):
+        """Reload quest content and challenge paths."""
+        # Reload content
+        self.content = self._load_content()
+        self.challenge_paths = self._load_challenge_paths()
+
+        # Update state manager
+        self.state_manager.update_content(self.content)
+        self.state_manager.update_challenge_paths(self.challenge_paths)
+
+        self.safe_reply(connection, event, "✅ Quest content and challenge paths reloaded successfully!")
+
+    # Quest System Methods
+    def _handle_solo_quest(self, connection, event, username, user_id):
+        """Handle a solo quest attempt."""
         player = self.core.get_player(user_id)
 
         # Consume energy
         self.energy.consume_energy(user_id, 1)
 
-        # Generate quest narrative
-        story_intro = self.story.format_quest_intro(username, "the foe", difficulty, event.target)
-
-        # Get monster
-        monster = self.combat.get_random_monster(player["level"] + diff_mods["level_modifier"])
-        if not monster:
-            self.safe_reply(connection, event, "No suitable monsters found for your level!")
-            return
+        # Calculate quest outcome
+        story_action = self._get_action_text(username, event.target)
+        monster = self._get_random_monster(player["level"])
 
         # Calculate win chance
-        base_win_chance = self.combat.calculate_win_chance(
-            player["level"],
-            monster["min_level"] + diff_mods["level_modifier"],
-            prestige_level=player.get("prestige", 0)
-        )
+        base_win_chance = self.get_config_value("combat.base_win_chance", event.target, default=0.50)
+        level_modifier = self.get_config_value("combat.win_chance_level_modifier", event.target, default=0.10)
+        min_win_chance = self.get_config_value("combat.min_win_chance", event.target, default=0.05)
+        max_win_chance = self.get_config_value("combat.max_win_chance", event.target, default=0.95)
+
+        level_diff = player["level"] - monster["min_level"]
+        win_chance = base_win_chance + (level_diff * level_modifier)
+        win_chance = max(min_win_chance, min(max_win_chance, win_chance))
 
         # Apply injury effects
         injury_effects = self.status.get_injury_effects(user_id)
-        win_chance = base_win_chance * injury_effects.get("xp_multiplier", 1.0)
+        win_chance *= injury_effects.get("xp_multiplier", 1.0)
 
         # Apply active effects
         for effect in player.get("active_effects", []):
@@ -541,26 +444,24 @@ class QuestFinal(SimpleCommandModule):
         # Determine outcome
         is_win = random.random() < win_chance
 
-        # Send quest intro
-        self.safe_reply(connection, event, story_intro)
-
         # Process outcome
         if is_win:
-            self._handle_quest_victory(connection, event, username, user_id, monster, diff_mods)
+            self._handle_quest_victory(connection, event, username, user_id, monster, story_action)
         else:
-            self._handle_quest_defeat(connection, event, username, user_id, monster)
+            self._handle_quest_defeat(connection, event, username, user_id, monster, story_action)
 
-        # Check for boss encounter trigger
-        if is_win and not self.state_manager.get_active_mob():
-            self.combat.trigger_boss_encounter(user_id, username, event.target)
+        # Set cooldown
+        cooldown_seconds = self.get_config_value("cooldown_seconds", event.target, default=300)
+        player["quest_cooldown"] = time.time() + cooldown_seconds
+        self.state_manager.update_player_data(user_id, player)
 
-    def _handle_quest_victory(self, connection, event, username, user_id, monster, diff_mods):
+    def _handle_quest_victory(self, connection, event, username, user_id, monster, action):
         """Handle quest victory."""
         player = self.core.get_player(user_id)
 
         # Calculate XP reward
         base_xp = random.randint(monster["xp_win_min"], monster["xp_win_max"])
-        xp_mult = diff_mods["xp_multiplier"]
+        xp_mult = 1.0
 
         # Apply injury effects
         injury_effects = self.status.get_injury_effects(user_id)
@@ -572,7 +473,7 @@ class QuestFinal(SimpleCommandModule):
                 xp_mult = effect.get("xp_multiplier", 1.5)
 
         # Grant XP and handle level up
-        new_level, leveled_up = self.core.grant_xp(user_id, int(base_xp * xp_mult), xp_mult)
+        new_level, leveled_up = self.core.grant_xp(user_id, base_xp, xp_mult)
 
         # Update stats
         player["wins"] += 1
@@ -590,25 +491,18 @@ class QuestFinal(SimpleCommandModule):
         self.state_manager.update_player_data(user_id, player)
 
         # Send victory message
-        victory_text = self.story.get_victory_flavor_text(monster["name"])
         total_xp = int(base_xp * xp_mult)
-        response = f"{victory_text} +{total_xp} XP"
+        response = f"{action}. Victory! You defeated the {monster['name']} and earned {total_xp} XP!"
 
         if leveled_up:
-            level_up_msg = self.story.get_level_up_message(new_level)
-            response += f"\n{level_up_msg}"
+            response += f" 🎉 **LEVEL UP!** You are now level {new_level}!"
 
         if player["streak"] > 1:
-            response += f"\n🔥 Win streak: {player['streak']}!"
-
-        # Check for challenge completion
-        completed, messages = self.challenges.check_challenge_completion(user_id, username)
-        if completed:
-            response += "\n" + "\n".join(messages)
+            response += f" 🔥 Win streak: {player['streak']}!"
 
         self.safe_reply(connection, event, response)
 
-    def _handle_quest_defeat(self, connection, event, username, user_id, monster):
+    def _handle_quest_defeat(self, connection, event, username, user_id, monster, action):
         """Handle quest defeat."""
         player = self.core.get_player(user_id)
 
@@ -617,7 +511,7 @@ class QuestFinal(SimpleCommandModule):
         player["streak"] = 0
 
         # Deduct XP
-        xp_loss_percentage = self.config.get("xp_loss_percentage", 0.25)
+        xp_loss_percentage = self.get_config_value("xp_loss_percentage", event.target, default=0.25)
         xp_for_current_level = self.core.calculate_xp_for_level(player["level"])
         max_xp_loss = int((player["xp"] - xp_for_current_level) * xp_loss_percentage)
         actual_xp_loss = self.core.deduct_xp(user_id, max_xp_loss)
@@ -632,8 +526,7 @@ class QuestFinal(SimpleCommandModule):
         self.state_manager.update_player_data(user_id, player)
 
         # Send defeat message
-        defeat_text = self.story.get_defeat_flavor_text(monster["name"])
-        response = f"{defeat_text}"
+        response = f"{action}. Defeat! You were overcome by the {monster['name']}."
 
         if actual_xp_loss > 0:
             response += f" Lost {actual_xp_loss} XP."
@@ -666,22 +559,44 @@ class QuestFinal(SimpleCommandModule):
 
         player["active_effects"] = remaining_effects
 
-    def _handle_challenge_prestige(self, connection, event, username, user_id):
-        """Handle challenge path prestige."""
-        player = self.core.get_player(user_id)
+    # Content Helper Methods
+    def _get_random_monster(self, level):
+        """Get a random monster appropriate for the player's level."""
+        monsters = self._get_content("monsters", default=[])
+        suitable_monsters = []
 
-        # Check if player meets requirements
-        if player["level"] < self.config.get("level_cap", 20):
-            self.safe_reply(connection, event, "You must reach level 20 before entering a challenge path!")
-            return
+        for monster in monsters:
+            if monster["min_level"] <= level <= monster["max_level"]:
+                suitable_monsters.append(monster)
 
-        # Enter challenge path
-        success, message = self.challenges.enter_challenge_path(user_id, username)
+        if not suitable_monsters:
+            # Fallback to any monster
+            suitable_monsters = monsters
 
-        if success:
-            # Reset energy
-            self.energy.reset_energy_on_prestige(user_id)
-            # Clear injuries
-            self.status.heal_injuries(user_id, all_injuries=True)
+        return random.choice(suitable_monsters) if suitable_monsters else {
+            "name": "Glitched Packet",
+            "min_level": 1,
+            "max_level": 3,
+            "xp_win_min": 15,
+            "xp_win_max": 30
+        }
 
-        self.safe_reply(connection, event, message)
+    def _get_action_text(self, username, channel):
+        """Get random action text for quest narrative."""
+        openers = self._get_content("story_beats", {}).get("openers", [])
+        actions = self._get_content("story_beats", {}).get("actions", [])
+
+        if openers and actions:
+            opener = random.choice(openers).format(user=username, monster="the foe")
+            action = random.choice(actions).format(user=username, monster="the foe")
+            return f"{opener} {action}"
+        else:
+            # Fallback narrative
+            return f"{username} ventures forth to challenge the unknown dangers lurking in the digital realm..."
+
+    def _close_mob_window(self):
+        """Close active mob window (placeholder)."""
+        active_mob = self.state_manager.get_active_mob()
+        if active_mob:
+            self.state_manager.update_active_mob(None)
+            self.log_debug("Mob window closed")

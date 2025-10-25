@@ -108,6 +108,9 @@ coffee:
     force_messages:
         - "Very well, {title}. If you insist."
 
+crypto:
+    cooldown_seconds: 5
+
 convenience:
     google_cooldown: 5.0
     ud_cooldown: 10.0

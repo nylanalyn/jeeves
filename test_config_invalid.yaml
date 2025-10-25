@@ -1,0 +1,57 @@
+# Test configuration with intentional errors for validation testing
+
+# --- Core Settings ---
+core:
+    # Empty admins list - should trigger warning
+    admins: []
+    # Invalid module blacklist - should trigger error
+    module_blacklist: "not_a_list"
+    # Invalid regex pattern - should trigger error
+    name_pattern: "[invalid_regex("
+    # Invalid debug mode - should trigger error
+    debug_mode_on_startup: "not_boolean"
+    # Empty debug log file - should trigger error
+    debug_log_file: ""
+
+# --- IRC Connection Details ---
+connection:
+  # Missing server - should trigger error
+  # port: 6697
+  # Invalid port - should trigger error
+  port: "not_a_number"
+  # Empty nick - should trigger error
+  nick: ""
+  # Channel without # - should trigger warning
+  channel: "test-channel"
+  # Invalid nickserv pass type - should trigger error
+  nickserv_pass: 12345
+
+# --- API Keys ---
+api_keys:
+  # Invalid type - should trigger error
+  giphy: 12345
+  # Placeholder values - should trigger warnings
+  youtube: "YourYouTubeDataAPIKey"
+  openai_api_key: "test123"
+  # Valid format but placeholder - should trigger warning
+  shlink_key: "placeholder_key_here"
+
+# --- Module Configs with Errors ---
+adventure:
+    # Invalid cooldown - negative value
+    cooldown_seconds: -10
+    # Invalid probability - over 1.0
+    item_find_chance: 1.5
+    # Invalid response rate - negative
+    response_rate: -0.1
+
+quest:
+    # Invalid cooldown - too high
+    cooldown_seconds: 100000
+    # Invalid spawn chance - over 1.0
+    monster_spawn_chance: 2.0
+
+# Invalid channel lists
+bell:
+    allowed_channels: "not_a_list"
+    blocked_channels: ["#channel1", "invalid_channel"]

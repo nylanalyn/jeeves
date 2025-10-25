@@ -1,0 +1,105 @@
+# Jeeves Bot Configuration - Environment Variable Example
+# This file demonstrates how to use environment variables for sensitive data
+
+# --- Core Settings ---
+core:
+    # A list of nicknames that are considered administrators.
+    admins:
+      - "YourAdminNick"
+    # A list of module filenames to prevent from loading.
+    module_blacklist:
+      - "example_module.py"
+    # A regex pattern to detect when the bot is being addressed by name.
+    name_pattern: "(?:jeeves|jeevesbot)"
+    debug_mode_on_startup: false
+    debug_log_file: "debug.log"
+
+# --- IRC Connection Details ---
+connection:
+  server: "irc.libera.chat"
+  port: 6697
+  nick: "JeevesBot"
+  channel: "#your-channel"
+  # Use environment variable for NickServ password
+  nickserv_pass: "${NICKSERV_PASSWORD}"
+
+# --- API Keys with Environment Variables ---
+# Recommended: Set these as environment variables for security
+api_keys:
+  giphy: "${GIPHY_API_KEY}"
+  youtube: "${YOUTUBE_API_KEY}"
+  openai_api_key: "${OPENAI_API_KEY}"
+  # For the shorten module, using a self-hosted Shlink instance.
+  shlink_url: "https://s.yourdomain.com"
+  shlink_key: "${SHLINK_API_KEY}"
+  # For the weather module, PirateWeather is used for US locations
+  pirateweather: "${PIRATEWEATHER_API_KEY}"
+  # DeepL API key for translate module
+  deepl_api_key: "${DEEPL_API_KEY}"
+
+# --- Module-Specific Configurations ---
+# These can use regular values or environment variables
+
+adventure:
+    vote_window_seconds: 75
+    story_sentences_per_round: 3
+    cooldown_seconds: 10
+    item_find_chance: 0.25
+    max_inventory_size: 3
+    item_adjectives:
+      - "clucking"
+      - "tasty"
+      - "foreign"
+      - "glowing"
+      - "rusty"
+      - "miniature"
+      - "singing"
+      - "forgotten"
+    item_nouns:
+      - "wand"
+      - "chicken"
+      - "candybar"
+      - "key"
+      - "coin"
+      - "sock"
+      - "dataslate"
+      - "teacup"
+
+# Quest module with environment variable for debug mode
+quest:
+    cooldown_seconds: ${QUEST_COOLDOWN_SECONDS:-300}  # Default to 300 if not set
+    xp_curve_formula: "level * 100"
+    monster_spawn_chance: 0.8
+    rare_spawn_chance: ${RARE_SPAWN_CHANCE:-0.10}
+    boss_encounter_chance: ${BOSS_ENCOUNTER_CHANCE:-0.10}
+    level_cap: 20
+    max_prestige: 10
+
+# Environment Variable Setup Examples:
+#
+# Bash/Linux:
+# export NICKSERV_PASSWORD="your_nickserv_password"
+# export GIPHY_API_KEY="your_giphy_key"
+# export YOUTUBE_API_KEY="your_youtube_key"
+# export OPENAI_API_KEY="your_openai_key"
+# export SHLINK_API_KEY="your_shlink_key"
+# export PIRATEWEATHER_API_KEY="your_pirateweather_key"
+# export DEEPL_API_KEY="your_deepl_key"
+#
+# Windows PowerShell:
+# $env:NICKSERV_PASSWORD="your_nickserv_password"
+# $env:GIPHY_API_KEY="your_giphy_key"
+# $env:YOUTUBE_API_KEY="your_youtube_key"
+# $env:OPENAI_API_KEY="your_openai_key"
+# $env:SHLINK_API_KEY="your_shlink_key"
+# $env:PIRATEWEATHER_API_KEY="your_pirateweather_key"
+# $env:DEEPL_API_KEY="your_deepl_key"
+#
+# Docker (.env file):
+# NICKSERV_PASSWORD=your_nickserv_password
+# GIPHY_API_KEY=your_giphy_key
+# YOUTUBE_API_KEY=your_youtube_key
+# OPENAI_API_KEY=your_openai_key
+# SHLINK_API_KEY=your_shlink_key
+# PIRATEWEATHER_API_KEY=your_pirateweather_key
+# DEEPL_API_KEY=your_deepl_key

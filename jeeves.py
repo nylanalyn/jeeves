@@ -21,6 +21,13 @@ from irc.bot import SingleServerIRCBot
 from irc.connection import Factory
 import schedule
 
+# Import configuration validator
+try:
+    from config_validator import load_and_validate_config
+except ImportError:
+    print("Error: Configuration validator not found. Please ensure config_validator.py is in the same directory.", file=sys.stderr)
+    sys.exit(1)
+
 UTC = timezone.utc
 ROOT = Path(__file__).resolve().parent
 
@@ -353,15 +360,17 @@ class Jeeves(SingleServerIRCBot):
         return self.pm.load_all()
 
     def core_reload_config(self):
-        self.log_debug("[core] Reloading configuration from config.yaml...")
+        self.log_debug("[core] Validating and reloading configuration from config.yaml...")
         try:
-            self.config = load_config()
-            if not self.config:
-                self.log_debug("[core] ERROR: Failed to reload config.yaml")
+            new_config, success = load_and_validate_config(CONFIG_PATH)
+            if not success or not new_config:
+                self.log_debug("[core] ERROR: Configuration validation failed during reload")
                 return False
+            self.config = new_config
             for name, instance in self.pm.plugins.items():
                 if hasattr(instance, "on_config_reload"):
                     instance.on_config_reload(self.config.get(name, {}))
+            self.log_debug("[core] Configuration reloaded and validated successfully")
             return True
         except Exception as e:
             self.log_debug(f"[core] FAILED to reload configuration from state: {e}")
@@ -564,7 +573,7 @@ state_manager = None
 
 def main():
     CONFIG_DEFAULT_PATH = ROOT / "config.yaml.default"
-    
+
     if not CONFIG_PATH.exists() and CONFIG_DEFAULT_PATH.exists():
         print(f"[boot] Creating default config from {CONFIG_DEFAULT_PATH}...", file=sys.stderr)
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -572,18 +581,24 @@ def main():
         print("\n--- FIRST RUN SETUP COMPLETE ---", file=sys.stderr)
         print(f"A default configuration has been created at: {CONFIG_PATH}", file=sys.stderr)
         print("Please edit this file with your IRC server details and any necessary API keys.", file=sys.stderr)
+        print("\n🔧 **Configuration Tips:**", file=sys.stderr)
+        print("• Use environment variables for sensitive data: ${VARIABLE_NAME}", file=sys.stderr)
+        print("• Example: api_keys.openai_api_key: ${OPENAI_API_KEY}", file=sys.stderr)
+        print("• Run 'python3 config_validator.py' to validate your configuration", file=sys.stderr)
         sys.exit(0)
-    
+
     global state_manager
     state_manager = StateManager(CONFIG_DIR)
 
-    # Load config directly from config.yaml (not from state)
-    print("[boot] Loading configuration from config.yaml...", file=sys.stderr)
-    config = load_config()
-    if not config:
-        print("[boot] CRITICAL: config.yaml is empty or could not be read.", file=sys.stderr)
+    # Validate and load configuration
+    print("[boot] Validating and loading configuration...", file=sys.stderr)
+    config, success = load_and_validate_config(CONFIG_PATH)
+
+    if not success:
+        print("[boot] CRITICAL: Configuration validation failed. Please fix the errors above.", file=sys.stderr)
+        print("Run 'python3 config_validator.py config/config.yaml' for detailed validation.", file=sys.stderr)
         sys.exit(1)
-        
+
     irc_config = config.get("connection", {})
     server = irc_config.get("server", "irc.libera.chat")
     port = irc_config.get("port", 6697)
@@ -591,6 +606,7 @@ def main():
     nick = irc_config.get("nick", "JeevesBot")
 
     print("\n" + "="*40, file=sys.stderr)
+    print(f"[boot] Configuration validated successfully!", file=sys.stderr)
     print(f"[boot] Preparing to connect...", file=sys.stderr)
     print(f"       Server:   {server}:{port}", file=sys.stderr)
     print(f"       Nickname: {nick}", file=sys.stderr)

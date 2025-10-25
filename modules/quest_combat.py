@@ -37,6 +37,15 @@ class QuestCombat:
     def get_random_monster(self, player_level: int, is_boss: bool = False) -> Optional[Dict[str, Any]]:
         """Get a random monster appropriate for the player's level."""
         if is_boss:
+            # Try to get a Legacy Boss first (25% chance)
+            if random.random() < 0.25:
+                from .quest_legacy import QuestLegacy
+                legacy = QuestLegacy(self.bot, self.state)
+                legacy_boss = legacy.get_random_legacy_boss(player_level)
+                if legacy_boss:
+                    return legacy_boss
+
+            # Fall back to regular boss monsters
             monsters = self.config.get("boss_monsters", [])
         else:
             monsters = self.config.get("monsters", [])
@@ -101,7 +110,14 @@ class QuestCombat:
             schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag("quest-mob_close")
 
             # Announce boss encounter
-            self.bot.safe_say(f"⚠️ **BOSS ENCOUNTER!** A wild {boss['name']} appears! Use !quest join to fight it together!", channel)
+            if boss.get("is_legacy"):
+                # Special announcement for Legacy Bosses
+                traits_str = ", ".join(boss.get("traits", [])[:2])  # Show first 2 traits
+                xp_reward = boss.get("xp_reward", 0)
+                self.bot.safe_say(f"🌟 **LEGACY BOSS ENCOUNTER!** {boss['name']} appears! ({traits_str})\n"
+                                 f"This transcendent warrior challenges you! Use !quest join to fight! [{xp_reward} XP reward]", channel)
+            else:
+                self.bot.safe_say(f"⚠️ **BOSS ENCOUNTER!** A wild {boss['name']} appears! Use !quest join to fight it together!", channel)
 
             # Ping users who opted in for mob notifications
             self._ping_mob_users(channel)
@@ -245,12 +261,21 @@ class QuestCombat:
                 break
 
         # Calculate overall win chance
-        win_chance = self.calculate_win_chance(int(avg_level), monster_level, group_modifier=group_modifier)
+        if monster.get("is_legacy"):
+            # Use predefined win chance for Legacy Bosses
+            win_chance = monster.get("win_chance", 0.4)  # Default 40% for Legacy Bosses
+        else:
+            win_chance = self.calculate_win_chance(int(avg_level), monster_level, group_modifier=group_modifier)
         is_win = random.random() < win_chance
 
         # Calculate XP rewards
-        base_xp = random.randint(monster["xp_win_min"], monster["xp_win_max"])
-        xp_mult = mob_data.get("xp_multiplier", 1.0) if mob_data else 1.0
+        if monster.get("is_legacy"):
+            # Use predefined XP reward for Legacy Bosses
+            base_xp = monster.get("xp_reward", random.randint(1000, 2000))
+            xp_mult = 1.0  # Legacy Bosses have built-in scaling
+        else:
+            base_xp = random.randint(monster["xp_win_min"], monster["xp_win_max"])
+            xp_mult = mob_data.get("xp_multiplier", 1.0) if mob_data else 1.0
 
         # Apply XP scaling for large groups
         xp_scaling = group_config.get("xp_scaling", [])
@@ -319,12 +344,34 @@ class QuestCombat:
             results.append(result)
             self.state.update_player_data(user_id, player)
 
+        # Record Legacy Boss defeat if applicable
+        if is_win and monster.get("is_legacy"):
+            from .quest_legacy import QuestLegacy
+            legacy = QuestLegacy(self.bot, self.state)
+            # Pick a random participant as the "main victor" for recording purposes
+            main_victor = random.choice(participants)
+            legacy.record_legacy_boss_defeat(monster, main_victor["username"], main_victor["user_id"])
+
         # Announce results
-        encounter_type = "BOSS" if is_boss else "RARE MOB" if mob_data and mob_data.get("is_rare") else "MOB"
+        if monster.get("is_legacy"):
+            encounter_type = "LEGACY BOSS"
+        elif is_boss:
+            encounter_type = "BOSS"
+        else:
+            encounter_type = "RARE MOB" if mob_data and mob_data.get("is_rare") else "MOB"
+
         outcome = "VICTORY!" if is_win else "DEFEAT!"
 
         self.bot.safe_say(f"🎯 {encounter_type} ENCOUNTER - {outcome}", channel)
-        self.bot.safe_say(f"⚔️ The party fought a {monster['name']} (Level {monster_level})", channel)
+
+        if monster.get("is_legacy"):
+            # Special message for Legacy Bosses
+            if is_win:
+                self.bot.safe_say(f"🌟 The party has defeated the transcendent warrior {monster['name']}! Their legend grows stronger!", channel)
+            else:
+                self.bot.safe_say(f"💀 The party was defeated by {monster['name']}! The Legacy Boss proves too powerful!", channel)
+        else:
+            self.bot.safe_say(f"⚔️ The party fought a {monster['name']} (Level {monster_level})", channel)
         self.bot.safe_say(f"👥 Party size: {len(participants)} | Win chance: {win_chance*100:.0f}%", channel)
 
         for result in results:

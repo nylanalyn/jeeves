@@ -20,6 +20,7 @@ from .quest_combat import QuestCombat
 from .quest_challenges import QuestChallenges
 from .quest_story import QuestStory
 from .quest_admin import QuestAdmin
+from .quest_legacy import QuestLegacy
 
 UTC = timezone.utc
 
@@ -49,6 +50,7 @@ class QuestFinal(SimpleCommandModule):
         self.challenges = QuestChallenges(bot, self.state_manager)
         self.story = QuestStory(bot, self.state_manager)
         self.admin = QuestAdmin(bot, self.state_manager)
+        self.legacy = QuestLegacy(bot, self.state_manager)
 
         # Initialize locks and state
         self.mob_lock = threading.Lock()
@@ -98,8 +100,12 @@ class QuestFinal(SimpleCommandModule):
                               description="Show detailed player profile")
         self.register_command(r"^\s*!quest\s+leaderboard\s*$", self._cmd_leaderboard, name="leaderboard",
                               description="Show the quest leaderboard")
+        self.register_command(r"^\s*!quest\s+legacy\s*$", self._cmd_legacy, name="legacy",
+                              description="View the Legacy Hall of Fame")
         self.register_command(r"^\s*!quest\s+prestige(?:\s+(.+))?\s*$", self._cmd_prestige, name="prestige",
                               description="Prestige at max level for permanent bonuses")
+        self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_transcend, name="transcend",
+                              description="Transcend at prestige 10 to become a Legacy Boss")
 
         # Class system
         self.register_command(r"^\s*!quest\s+class(?:\s+(.+))?\s*$", self._cmd_class, name="class",
@@ -230,6 +236,55 @@ class QuestFinal(SimpleCommandModule):
 
         self.safe_reply(connection, event, response)
 
+    def _cmd_legacy(self, connection, event, msg, username, match):
+        """Show the Legacy Hall of Fame."""
+        from .quest_legacy import QuestLegacy
+        legacy = QuestLegacy(self.bot, self.state_manager)
+
+        hall_of_fame = legacy.get_legacy_hall_of_fame()
+
+        if not hall_of_fame:
+            self.safe_reply(connection, event, "No players have transcended yet! Be the first to reach prestige 10 and use `!quest transcend`.")
+            return
+
+        response = "🌟 **Legacy Hall of Fame** 🌟\n"
+        response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        response += "Players who have transcended and live on as Legacy Bosses!\n\n"
+
+        for i, legacy_info in enumerate(hall_of_fame, 1):
+            username = legacy_info["username"]
+            title = legacy_info["title"]
+            original_class = legacy_info["original_class"]
+            transcend_num = legacy_info["transcendence_number"]
+            defeat_count = legacy_info["defeat_count"]
+            total_wins = legacy_info["total_wins"]
+            created_at = legacy_info["created_at"]
+
+            # Format date
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                date_str = dt.strftime("%Y-%m-%d")
+            except:
+                date_str = "Unknown"
+
+            response += f"**{i}. {username} {title}**\n"
+            response += f"   Class: {original_class} | Transcendence #{transcend_num}\n"
+            response += f"   Legacy Wins: {total_wins} | Defeated as Boss: {defeat_count} times\n"
+            response += f"   Transcended: {date_str}\n"
+
+            # Show last defeated by info
+            if legacy_info.get("last_defeated_by"):
+                last_defeat = legacy_info["last_defeated_by"]
+                response += f"   Last defeated by: {last_defeat['username']}\n"
+
+            response += "\n"
+
+        response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        response += "Legacy Bosses can appear in random encounters. Defeating them grants bonus XP!"
+
+        self.safe_reply(connection, event, response)
+
     def _cmd_prestige(self, connection, event, msg, username, match):
         """Handle prestige command."""
         user_id = self.bot.get_user_id(username)
@@ -250,6 +305,41 @@ class QuestFinal(SimpleCommandModule):
             self.status.heal_injuries(user_id, all_injuries=True)
 
         self.safe_reply(connection, event, message)
+
+    def _cmd_transcend(self, connection, event, msg, username, match):
+        """Handle transcend command for prestige 10 players."""
+        user_id = self.bot.get_user_id(username)
+
+        # Import here to avoid circular imports
+        from .quest_legacy import QuestLegacy
+        legacy = QuestLegacy(self.bot, self.state_manager)
+
+        # Check if player can transcend
+        can_transcend, message = legacy.can_transcend(user_id)
+        if not can_transcend:
+            self.safe_reply(connection, event, message)
+            return
+
+        # Create the legacy boss
+        success, message = legacy.create_legacy_boss(user_id, username)
+        if not success:
+            self.safe_reply(connection, event, message)
+            return
+
+        # Reset the player
+        reset_success, reset_message = legacy.reset_player_for_transcendence(user_id)
+        if not reset_success:
+            self.safe_reply(connection, event, f"Legacy boss created but reset failed: {reset_message}")
+            return
+
+        # Reset energy after transcendence
+        self.energy.reset_energy_on_prestige(user_id)
+        # Clear any active injuries
+        self.status.heal_injuries(user_id, all_injuries=True)
+
+        # Send transcendence message
+        full_message = f"🌟 **{message}**\n\n{reset_message}\n\nYou now live on as a Legend that other players may encounter in their adventures!"
+        self.safe_reply(connection, event, full_message)
 
     def _cmd_class(self, connection, event, msg, username, match):
         """Handle class assignment."""
@@ -525,7 +615,7 @@ class QuestFinal(SimpleCommandModule):
         base_win_chance = self.combat.calculate_win_chance(
             player["level"],
             monster["min_level"] + diff_mods["level_modifier"],
-            prestige_level=player.get("prestige", 0)
+            prestige_level=player.get("effective_prestige", player.get("prestige", 0))
         )
 
         # Apply injury effects

@@ -32,8 +32,9 @@ class QuestCore:
         final_amount = int(amount * multiplier)
 
         # Apply prestige bonuses
-        if player.get("prestige", 0) > 0:
-            prestige_bonus = player.get("prestige", 0) * 0.1  # 10% per prestige
+        effective_prestige = player.get("effective_prestige", player.get("prestige", 0))
+        if effective_prestige > 0:
+            prestige_bonus = effective_prestige * 0.1  # 10% per effective prestige
             final_amount = int(final_amount * (1 + prestige_bonus))
 
         player["xp"] += final_amount
@@ -115,7 +116,15 @@ class QuestCore:
         max_prestige = self.config.get("max_prestige", 10)
 
         if current_prestige >= max_prestige:
-            return False, f"You've reached the maximum prestige level of {max_prestige}!"
+            # Player has reached max prestige - offer transcendence option
+            from .quest_legacy import QuestLegacy
+            legacy = QuestLegacy(self.bot, self.state)
+
+            can_transcend, message = legacy.can_transcend(user_id)
+            if can_transcend:
+                return False, f"You've reached the maximum prestige level of {max_prestige}! Use **!quest transcend** to become a Legacy Boss and reset your journey!"
+            else:
+                return False, f"You've reached the maximum prestige level of {max_prestige}! {message}"
 
         # Perform prestige
         player["prestige"] += 1

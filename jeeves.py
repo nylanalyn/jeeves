@@ -396,6 +396,12 @@ class Jeeves(SingleServerIRCBot):
         if users_module:
             return users_module.get_user_id(nick)
         return nick.lower()
+
+    def get_user_nick(self, user_id: str) -> str:
+        users_module = self.pm.plugins.get("users")
+        if users_module and hasattr(users_module, "get_user_nick"):
+            return users_module.get_user_nick(user_id)
+        return user_id
     
     def get_utc_time(self) -> str:
         return datetime.now(UTC).isoformat()
@@ -493,6 +499,7 @@ class Jeeves(SingleServerIRCBot):
             users_module.on_nick(connection, event, old_nick, new_nick)
 
     def title_for(self, nick):
+        base_title = nick
         try:
             courtesy = self.pm.plugins.get("courtesy")
             if courtesy:
@@ -500,11 +507,24 @@ class Jeeves(SingleServerIRCBot):
                 profile = courtesy._get_user_profile(user_id)
                 if profile and "title" in profile:
                     title = profile.get("title")
-                    if title == "sir": return "Sir"
-                    if title == "madam": return "Madam"
+                    if title == "sir":
+                        base_title = "Sir"
+                    elif title == "madam":
+                        base_title = "Madam"
         except Exception:
             pass
-        return nick
+
+        try:
+            quest_module = self.pm.plugins.get("quest")
+            if quest_module and hasattr(quest_module, "get_legend_suffix_for_user"):
+                user_id = self.get_user_id(nick)
+                suffix = quest_module.get_legend_suffix_for_user(user_id)
+                if suffix and not base_title.endswith(suffix):
+                    base_title = f"{base_title} {suffix}"
+        except Exception:
+            pass
+
+        return base_title
 
     def pronouns_for(self, nick):
         try:

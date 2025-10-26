@@ -104,6 +104,18 @@ class Users(SimpleCommandModule):
             self.safe_reply(connection, event, "Flavor text disabled. Responses will be concise.")
         return True
 
+    def get_user_nick(self, user_id: str) -> str:
+        """Get the canonical nickname for a user ID."""
+        user_map = self.get_state("user_map", {})
+        profile = user_map.get(user_id)
+        if profile:
+            if profile.get("canonical_nick"):
+                return profile["canonical_nick"]
+            seen = profile.get("seen_nicks", [])
+            if seen:
+                return seen[-1]
+        return user_id
+
     def has_flavor_enabled(self, username: str) -> bool:
         """Check if a user has flavor text enabled (default: True)."""
         user_id = self.get_user_id(username)

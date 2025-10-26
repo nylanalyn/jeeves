@@ -203,7 +203,12 @@ class ModuleBase(ABC):
 
     def register_command(self, pattern: Union[str, re.Pattern],
                         handler: Callable, name: str, admin_only: bool = False,
-                        cooldown: float = 0.0, description: str = "") -> None:
+                        cooldown: float = 0.0, description: str = "", **kwargs) -> None:
+        # Backward compatibility for older modules using cooldown_seconds keyword.
+        if "cooldown_seconds" in kwargs:
+            cooldown = kwargs.pop("cooldown_seconds")
+        if kwargs:
+            raise TypeError(f"register_command() got unexpected keyword arguments: {', '.join(kwargs.keys())}")
         if isinstance(pattern, str):
             # Convert ! prefix to accept both ! and ,
             pattern = pattern.replace(r'!', r'[!,]')
@@ -245,7 +250,14 @@ class ModuleBase(ABC):
 
     def safe_reply(self, connection, event, text: str) -> bool:
         try:
-            connection.privmsg(event.target, text)
+            lines = text.splitlines()
+            if not lines:
+                lines = [text]
+            for line in lines:
+                sanitized = line.replace("\r", "")
+                if not sanitized:
+                    sanitized = " "
+                connection.privmsg(event.target, sanitized)
             return True
         except Exception as e:
             self.log_debug(f"Failed to reply: {e}")
@@ -254,7 +266,14 @@ class ModuleBase(ABC):
     def safe_say(self, text: str, target: Optional[str] = None) -> bool:
         try:
             target = target or self.bot.primary_channel
-            self.bot.connection.privmsg(target, text)
+            lines = text.splitlines()
+            if not lines:
+                lines = [text]
+            for line in lines:
+                sanitized = line.replace("\r", "")
+                if not sanitized:
+                    sanitized = " "
+                self.bot.connection.privmsg(target, sanitized)
             return True
         except Exception as e:
             self.log_debug(f"Failed to send message to {target}: {e}")
@@ -262,7 +281,14 @@ class ModuleBase(ABC):
 
     def safe_privmsg(self, username: str, text: str) -> bool:
         try:
-            self.bot.connection.privmsg(username, text)
+            lines = text.splitlines()
+            if not lines:
+                lines = [text]
+            for line in lines:
+                sanitized = line.replace("\r", "")
+                if not sanitized:
+                    sanitized = " "
+                self.bot.connection.privmsg(username, sanitized)
             return True
         except Exception as e:
             self.log_debug(f"Failed to send privmsg to {username}: {e}")

@@ -1,777 +1,3074 @@
-# modules/quest_final.py
-# Final refactored quest module - complete integration of all subsystems
+# modules/quest.py
+# A persistent RPG-style questing game for the channel.
 import random
 import time
 import re
 import schedule
 import threading
+import operator
 import json
 import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 
 from .base import SimpleCommandModule, admin_required
-from .quest_state import QuestStateManager
-from .quest_core import QuestCore
-from .quest_items import QuestItems
-from .quest_status import QuestStatus
-from .quest_energy import QuestEnergy
-from .quest_combat import QuestCombat
-from .quest_challenges import QuestChallenges
-from .quest_story import QuestStory
-from .quest_admin import QuestAdmin
-from .quest_legacy import QuestLegacy
 
 UTC = timezone.utc
 
-def setup(bot):
-    """Initializes the final refactored Quest module."""
-    return QuestFinal(bot)
+DUNGEON_ITEMS = [
+    {
+        "key": "ember_lantern",
+        "name": "Ember Lantern",
+        "counters": ["shadow_antechamber", "glacier_aquifer"],
+        "description": "A lantern that burns with bottled sunrise, perfect for banishing oppressive darkness or frost."
+    },
+    {
+        "key": "tempest_charm",
+        "name": "Tempest Charm",
+        "counters": ["storm_bridge", "crystal_singularity"],
+        "description": "A palm-sized fulgurite charm that drinks lightning and howling winds."
+    },
+    {
+        "key": "spiral_shell",
+        "name": "Spiral Siren-Shell",
+        "counters": ["echo_archive", "sirens_chorus"],
+        "description": "This shell hums with counter-harmony, unraveling echoes and enthralling songs."
+    },
+    {
+        "key": "venom_salve",
+        "name": "Venomveil Salve",
+        "counters": ["venom_garden", "scarlet_greenhouse"],
+        "description": "A shimmering ointment that renders the skin proof against toxins and spores."
+    },
+    {
+        "key": "gravity_boots",
+        "name": "Gravity Boots",
+        "counters": ["tilting_causeway", "sand_maw"],
+        "description": "Boots with rune-studded soles that cling to reality when the floor decides not to."
+    },
+    {
+        "key": "mirror_loom",
+        "name": "Mirrorloom Veil",
+        "counters": ["mirror_gallery", "chameleon_colonnade"],
+        "description": "A shining cloak that reveals impostors and bends false reflections away."
+    },
+    {
+        "key": "gearstone",
+        "name": "Gearstone Glyph",
+        "counters": ["clockwork_vault", "sealed_lab"],
+        "description": "A carved rune that convinces machinery you are cleared for passage."
+    }
+]
 
-class QuestFinal(SimpleCommandModule):
-    """Final refactored quest module with complete subsystem integration."""
+DUNGEON_ITEMS_BY_KEY = {item["key"]: item for item in DUNGEON_ITEMS}
+
+DUNGEON_REWARD_KEY = "dungeon_relics"
+DUNGEON_REWARD_NAME = "Mythic Relic"
+DUNGEON_REWARD_EFFECT_TEXT = "Use with !quest use dungeon_relic to guarantee victory in your next five solo fights."
+DUNGEON_REWARD_CHARGES = 5
+
+DUNGEON_ROOMS = [
+    {
+        "id": "shadow_antechamber",
+        "name": "Shadow Antechamber",
+        "intro": "A tenebrous hallway swallows torchlight as whispers coil around you.",
+        "bypass_text": "Your Ember Lantern flares, painting the shadows in molten gold as hidden glyphs reveal a safe path.",
+        "counter_items": ["ember_lantern"],
+        "monster": {
+            "name": "Gloom Siphon",
+            "level_offset": 1,
+            "win_chance_adjust": -0.05,
+            "xp_reward": 120
+        }
+    },
+    {
+        "id": "venom_garden",
+        "name": "Garden of Venom",
+        "intro": "Carnivorous blooms hiss, spraying arcs of glittering toxin across the path.",
+        "bypass_text": "You smear Venomveil Salve across your armor; the toxins bead harmlessly and you slip past.",
+        "counter_items": ["venom_salve"],
+        "monster": {
+            "name": "Bloom Tyrant",
+            "level_offset": 2,
+            "win_chance_adjust": -0.08,
+            "xp_reward": 140
+        }
+    },
+    {
+        "id": "storm_bridge",
+        "name": "Storm Bridge",
+        "intro": "A suspended bridge crackles with wild lightning as hurricane gusts slam the rails.",
+        "bypass_text": "The Tempest Charm drinks the storm. You cross as the winds bow respectfully.",
+        "counter_items": ["tempest_charm"],
+        "monster": {
+            "name": "Thunderbound Sentinel",
+            "level_offset": 2,
+            "win_chance_adjust": -0.03,
+            "xp_reward": 130
+        }
+    },
+    {
+        "id": "echo_archive",
+        "name": "Echo Archive",
+        "intro": "A vaulted archive hums with looping echoes that gnaw at your sense of self.",
+        "bypass_text": "The Spiral Siren-Shell thrums counterpoint, untangling the echoes and letting you stride through.",
+        "counter_items": ["spiral_shell"],
+        "monster": {
+            "name": "Mnemonic Lich",
+            "level_offset": 3,
+            "win_chance_adjust": -0.1,
+            "xp_reward": 160
+        }
+    },
+    {
+        "id": "mirror_gallery",
+        "name": "Mirror Gallery",
+        "intro": "Mirrors bloom from the walls, each reflection stepping forward with a hungry grin.",
+        "bypass_text": "The Mirrorloom Veil ripples and the impostors collapse back into glass.",
+        "counter_items": ["mirror_loom"],
+        "monster": {
+            "name": "Glass Doppel",
+            "level_offset": 1,
+            "win_chance_adjust": 0.0,
+            "xp_reward": 110
+        }
+    },
+    {
+        "id": "tilting_causeway",
+        "name": "Tilting Causeway",
+        "intro": "Floor plates pivot and yaw, threatening to fling you into endless abyss below.",
+        "bypass_text": "Your Gravity Boots lock onto the stone, anchoring each step until the shifting slows.",
+        "counter_items": ["gravity_boots"],
+        "monster": {
+            "name": "Abyssal Skitterer",
+            "level_offset": 1,
+            "win_chance_adjust": -0.02,
+            "xp_reward": 115
+        }
+    },
+    {
+        "id": "clockwork_vault",
+        "name": "Clockwork Vault",
+        "intro": "Interlocking gears rotate walls into deadly configurations, sealing off exits.",
+        "bypass_text": "You press the Gearstone Glyph into a socket; the mechanisms freeze, accepting you as an ally.",
+        "counter_items": ["gearstone"],
+        "monster": {
+            "name": "Colossal Gear-Guard",
+            "level_offset": 3,
+            "win_chance_adjust": -0.07,
+            "xp_reward": 170
+        }
+    },
+    {
+        "id": "crystal_singularity",
+        "name": "Crystal Singularity",
+        "intro": "Floating shards spin, screaming with psionic static that tugs at your bones.",
+        "bypass_text": "The Tempest Charm hums with resonance, harmonizing the shards until they drift aside.",
+        "counter_items": ["tempest_charm"],
+        "monster": {
+            "name": "Shardstorm Elemental",
+            "level_offset": 2,
+            "win_chance_adjust": -0.05,
+            "xp_reward": 150
+        }
+    },
+    {
+        "id": "scarlet_greenhouse",
+        "name": "Scarlet Greenhouse",
+        "intro": "Thick mist rolls over fungal beds, each spore pulsing with draining hunger.",
+        "bypass_text": "Another layer of Venomveil Salve seals your lungs; the spores fade to harmless motes.",
+        "counter_items": ["venom_salve"],
+        "monster": {
+            "name": "Spore Matriarch",
+            "level_offset": 2,
+            "win_chance_adjust": -0.06,
+            "xp_reward": 150
+        }
+    },
+    {
+        "id": "heart_of_the_abyss",
+        "name": "Heart of the Abyss",
+        "intro": "An ancient throne pulses with voidlight. The dungeon's architect unfurls their wings.",
+        "bypass_text": None,
+        "counter_items": [],
+        "monster": {
+            "name": "Voidbound Sovereign",
+            "level_offset": 4,
+            "win_chance_adjust": -0.12,
+            "xp_reward": 250
+        }
+    }
+]
+
+TOTAL_DUNGEON_ROOMS = len(DUNGEON_ROOMS)
+DUNGEON_ROOMS_BY_ID = {room["id"]: room for room in DUNGEON_ROOMS}
+
+def setup(bot):
+    """Initializes the Quest module."""
+    return Quest(bot)
+
+class Quest(SimpleCommandModule):
+    """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "6.0.0" # Complete modular architecture with all subsystems
+    version = "4.0.0" # Added search system with items (energy potions, lucky charms, armor shards, XP scrolls)
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot):
-        """Initialize the complete refactored quest module."""
+        """Initializes the Quest module's state and configuration."""
         super().__init__(bot)
 
-        # Initialize shared state manager
-        self.state_manager = QuestStateManager(bot)
-
-        # Initialize all subsystems
-        self.core = QuestCore(bot, self.state_manager)
-        self.items = QuestItems(bot, self.state_manager)
-        self.status = QuestStatus(bot, self.state_manager)
-        self.energy = QuestEnergy(bot, self.state_manager)
-        self.combat = QuestCombat(bot, self.state_manager)
-        self.challenges = QuestChallenges(bot, self.state_manager)
-        self.story = QuestStory(bot, self.state_manager)
-        self.admin = QuestAdmin(bot, self.state_manager)
-        self.legacy = QuestLegacy(bot, self.state_manager)
-
-        # Initialize locks and state
+        self.set_state("players", self.get_state("players", {}))
+        self.set_state("active_mob", self.get_state("active_mob", None))
+        self.set_state("player_classes", self.get_state("player_classes", {}))
+        self.set_state("legend_bosses", self.get_state("legend_bosses", {}))
         self.mob_lock = threading.Lock()
+        self.save_state()
         self._is_loaded = False
 
-        # Load content and challenge paths
-        self.content = self.story.load_content()
-        self.challenge_paths = self.challenges.load_challenge_paths()
+        # Load quest content from JSON file
+        self.content = self._load_content()
 
-        # Initialize legacy state for compatibility
-        self.set_state("players", self.state_manager.get_all_players())
-        self.set_state("active_mob", self.state_manager.get_active_mob())
-        self.set_state("player_classes", self.state_manager.get_player_classes())
-        self.save_state()
+        # Load challenge paths
+        self.challenge_paths = self._load_challenge_paths()
+
+    def _load_content(self) -> Dict[str, Any]:
+        """Load quest content from quest_content.json file."""
+        content_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quest_content.json")
+
+        try:
+            with open(content_file, 'r') as f:
+                content = json.load(f)
+                self.log_debug(f"Loaded quest content from {content_file}")
+                return content
+        except FileNotFoundError:
+            self.log_debug(f"Quest content file not found at {content_file}, using config fallback")
+            return {}
+        except json.JSONDecodeError as e:
+            self.log_debug(f"Error parsing quest content JSON: {e}, using config fallback")
+            return {}
+
+    def _load_challenge_paths(self) -> Dict[str, Any]:
+        """Load challenge paths from challenge_paths.json file."""
+        paths_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "challenge_paths.json")
+
+        try:
+            with open(paths_file, 'r') as f:
+                paths = json.load(f)
+                self.log_debug(f"Loaded challenge paths from {paths_file}")
+                return paths
+        except FileNotFoundError:
+            self.log_debug(f"Challenge paths file not found at {paths_file}")
+            return {"paths": {}, "active_path": None}
+        except json.JSONDecodeError as e:
+            self.log_debug(f"Error parsing challenge paths JSON: {e}")
+            return {"paths": {}, "active_path": None}
+
+    def _save_challenge_paths(self):
+        """Save challenge paths back to challenge_paths.json."""
+        paths_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "challenge_paths.json")
+        try:
+            with open(paths_file, 'w') as f:
+                json.dump(self.challenge_paths, f, indent=2)
+            self.log_debug(f"Saved challenge paths to {paths_file}")
+        except Exception as e:
+            self.log_debug(f"Error saving challenge paths: {e}")
+
+    def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
+        """Get content from JSON file, falling back to config if not found."""
+        # Try to get from content file first
+        if key in self.content:
+            return self.content[key]
+        # Fall back to config
+        return self.get_config_value(key, channel, default=default)
 
     def on_load(self):
-        """Called when module is loaded."""
         super().on_load()
         self._is_loaded = True
-
-        # Schedule energy regeneration
-        self.energy.schedule_energy_regeneration()
-
-        # Check for active mob windows
-        active_mob = self.state_manager.get_active_mob()
+        self._schedule_energy_regen()
+        active_mob = self.get_state("active_mob")
         if active_mob:
             close_time = active_mob.get("close_epoch", 0)
             now = time.time()
             if now >= close_time:
-                self.combat._close_mob_window()
+                self._close_mob_window()
             else:
                 remaining = close_time - now
                 if remaining > 0:
-                    schedule.every(remaining).seconds.do(self.combat._close_mob_window).tag(f"{self.name}-mob_close")
+                    schedule.every(remaining).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
 
     def on_unload(self):
-        """Called when module is unloaded."""
         super().on_unload()
         schedule.clear(self.name)
 
+    def _schedule_energy_regen(self):
+        energy_enabled = self.get_config_value("energy_system.enabled", default=True)
+        if not energy_enabled: return
+
+        regen_minutes = self.get_config_value("energy_system.regen_minutes", default=10)
+        schedule.clear(f"{self.name}-energy_regen")
+        schedule.every(regen_minutes).minutes.do(self._regenerate_energy).tag(f"{self.name}-energy_regen")
+
+    def _regenerate_energy(self):
+        energy_enabled = self.get_config_value("energy_system.enabled", default=True)
+        if not energy_enabled: return
+
+        players, updated = self.get_state("players", {}), False
+
+        for user_id, player_data in players.items():
+            if isinstance(player_data, dict):
+                max_energy = self._get_player_max_energy(player_data)
+                # Check for and apply injury effects on regeneration
+                regen_amount = 1
+
+                # Migrate old format
+                if 'active_injury' in player_data:
+                    player_data['active_injuries'] = [player_data['active_injury']]
+                    del player_data['active_injury']
+
+                # Sum all injury effects
+                if 'active_injuries' in player_data:
+                    for injury in player_data['active_injuries']:
+                        regen_mod = injury.get('effects', {}).get('energy_regen_modifier', 0)
+                        regen_amount += regen_mod
+
+                if regen_amount > 0 and player_data.get("energy", max_energy) < max_energy:
+                    player_data["energy"] = min(max_energy, player_data.get("energy", 0) + regen_amount)
+                    updated = True
+        if updated:
+            self.set_state("players", players)
+            self.save_state()
+
     def _register_commands(self):
-        """Register all quest commands."""
-        # Core quest commands
-        self.register_command(r"^\s*!quest\s*$", self._cmd_quest_info, name="quest_info",
-                              description="Show your quest profile and stats")
-        self.register_command(r"^\s*!quest\s+profile\s*$", self._cmd_profile, name="profile",
-                              description="Show detailed player profile")
-        self.register_command(r"^\s*!quest\s+leaderboard\s*$", self._cmd_leaderboard, name="leaderboard",
-                              description="Show the quest leaderboard")
-        self.register_command(r"^\s*!quest\s+legacy\s*$", self._cmd_legacy, name="legacy",
-                              description="View the Legacy Hall of Fame")
-        self.register_command(r"^\s*!quest\s+prestige(?:\s+(.+))?\s*$", self._cmd_prestige, name="prestige",
-                              description="Prestige at max level for permanent bonuses")
-        self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_transcend, name="transcend",
-                              description="Transcend at prestige 10 to become a Legacy Boss")
-
-        # Class system
-        self.register_command(r"^\s*!quest\s+class(?:\s+(.+))?\s*$", self._cmd_class, name="class",
-                              description="Show or assign player class")
-
-        # Quest commands with difficulty
-        self.register_command(r"^\s*!quest\s+(?:start|begin|go|quest|adventure)\s*$", self._cmd_quest,
-                              name="quest", cooldown_seconds=300, description="Go on a solo quest (normal difficulty)")
-        self.register_command(r"^\s*!quest\s+easy\s*$", self._cmd_quest_easy, name="quest_easy",
-                              cooldown_seconds=300, description="Go on an easy quest")
-        self.register_command(r"^\s*!quest\s+hard\s*$", self._cmd_quest_hard, name="quest_hard",
-                              cooldown_seconds=300, description="Go on a hard quest")
-
-        # Search and inventory
-        self.register_command(r"^\s*!quest\s+search\s*$", self._cmd_search, name="search",
-                              cooldown_seconds=300, description="Search for items")
-        self.register_command(r"^\s*!quest\s+inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
-                              description="View your inventory and active effects")
-        self.register_command(r"^\s*!quest\s+use\s+(.+)$", self._cmd_use_item, name="use_item",
-                              description="Use an item from your inventory")
-
-        # Medkit commands
-        self.register_command(r"^\s*!quest\s+medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit",
-                              description="Use a medkit to heal yourself or another player")
-
-        # Challenge path commands
-        self.register_command(r"^\s*!quest\s+ability(?:\s+(.+))?\s*$", self._cmd_ability, name="ability",
-                              description="Show or use unlocked abilities")
-
-        # Group content commands
-        self.register_command(r"^\s*!mob\s+(?:start|begin|go)\s*$", self._cmd_mob_start, name="mob_start",
-                              admin_only=False, description="Start a mob encounter")
-        self.register_command(r"^\s*!mob\s+join\s*$", self._cmd_mob_join, name="mob_join",
-                              description="Join an active mob encounter")
-        self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping",
-                              description="Toggle mob notifications")
-
-        # Admin commands
+        # Register more specific patterns first
         self.register_command(r"^\s*!quest\s+reload\s*$", self._cmd_quest_reload, name="quest_reload",
-                              admin_only=True, description="Reload quest content from JSON files")
-        self.register_command(r"^\s*!quest\s+stats\s*$", self._cmd_quest_stats, name="quest_stats",
-                              admin_only=True, description="Show quest system statistics")
-        self.register_command(r"^\s*!quest\s+heal_all\s*$", self._cmd_heal_all, name="heal_all",
-                              admin_only=True, description="Heal all injured players")
-        self.register_command(r"^\s*!quest\s+energy_all\s*$", self._cmd_energy_all, name="energy_all",
-                              admin_only=True, description="Restore energy for all players")
-
-        # Challenge admin commands
+                              admin_only=True, description="Reload quest content from quest_content.json")
         self.register_command(r"^\s*!quest\s+challenge\s+activate\s+(\S+)\s*$", self._cmd_challenge_activate, name="challenge_activate",
                               admin_only=True, description="Activate a challenge path by name")
         self.register_command(r"^\s*!quest\s+challenge\s+deactivate\s*$", self._cmd_challenge_deactivate, name="challenge_deactivate",
                               admin_only=True, description="Deactivate the current challenge path")
         self.register_command(r"^\s*!quest\s+challenge\s+list\s*$", self._cmd_challenge_list, name="challenge_list",
                               admin_only=True, description="List all available challenge paths")
+        self.register_command(r"^\s*!quest\s+challenge\s+reload\s*$", self._cmd_challenge_reload, name="challenge_reload",
+                              admin_only=True, description="Reload challenge paths from file")
+        self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_quest_transcend, name="quest_transcend",
+                              description="Transcend beyond prestige to become a legend.")
+        self.register_command(r"^\s*!equip\s*$", self._cmd_dungeon_equip, name="dungeon_equip",
+                              description="Equip random dungeon gear that can counter threats inside !dungeon runs.")
+        self.register_command(r"^\s*!dungeon\s*$", self._cmd_dungeon_run, name="dungeon_run",
+                              description="Run a ten-room dungeon via private messages.")
+        self.register_command(r"^\s*!quest\s+mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
+        self.register_command(r"^\s*!quest\s+mob\s*$", self._cmd_mob_start, name="mob")
+        self.register_command(r"^\s*!quest\s+join\s*$", self._cmd_mob_join, name="join")
+        self.register_command(r"^\s*!quest\s+medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit",
+                              description="Use a medkit to heal yourself or another player")
+        self.register_command(r"^\s*!quest\s+inv(?:entory)?\s*$", self._cmd_inventory, name="inventory",
+                              description="View your medkits and active injuries")
+        self.register_command(r"^\s*!quest\s+ability(?:\s+(.+))?\s*$", self._cmd_ability, name="ability",
+                              description="List or use unlocked abilities")
+        self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
 
-        # Short aliases
-        self.register_command(r"^\s*!q\s*$", self._cmd_quest, name="quest_alias")
-        self.register_command(r"^\s*!p\s*$", self._cmd_profile, name="profile_alias")
-        self.register_command(r"^\s*!l(?:b)?\s*$", self._cmd_leaderboard, name="leaderboard_alias")
+        # Short aliases for frequently-used quest commands
+        self.register_command(r"^\s*!q(?:\s+(.*))?$", self._cmd_quest_master, name="quest_alias")
+        self.register_command(r"^\s*!qe\s*$", self._cmd_quest_easy, name="quest_easy_alias")
+        self.register_command(r"^\s*!qh\s*$", self._cmd_quest_hard, name="quest_hard_alias")
+        self.register_command(r"^\s*!qp(?:\s+(.*))?\s*$", self._cmd_quest_profile_alias, name="quest_profile_alias")
         self.register_command(r"^\s*!qi\s*$", self._cmd_inventory, name="quest_inventory_alias")
-        self.register_command(r"^\s*!search\s*$", self._cmd_search, name="search_alias")
-        self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit_legacy")
-        self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory_legacy")
+        self.register_command(r"^\s*!qs(?:\s+(.*))?\s*$", self._cmd_quest_search_alias, name="quest_search_alias")
+        self.register_command(r"^\s*!qm\s*$", self._cmd_quest_medic_alias, name="quest_medic_alias")
+        self.register_command(r"^\s*!qu(?:\s+(.*))?\s*$", self._cmd_quest_use_alias, name="quest_use_alias")
+        self.register_command(r"^\s*!qt\s*$", self._cmd_quest_leaderboard_alias, name="quest_leaderboard_alias")
+        self.register_command(r"^\s*!qc(?:\s+(.*))?\s*$", self._cmd_quest_class_alias, name="quest_class_alias")
+
+        # Legacy aliases for backwards compatibility
+        self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping_legacy")
         self.register_command(r"^\s*!mob\s*$", self._cmd_mob_start, name="mob_legacy")
         self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join_legacy")
+        self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit_legacy")
+        self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory_legacy")
 
-    # Core Command Handlers
-    def _cmd_quest_info(self, connection, event, msg, username, match):
-        """Show basic quest info and quick stats."""
-        user_id = self.bot.get_user_id(username)
-        player = self.core.get_player(user_id)
+    def _format_timedelta(self, future_datetime: datetime) -> str:
+        """Formats the time remaining until a future datetime."""
+        delta = future_datetime - datetime.now(UTC)
+        seconds = int(delta.total_seconds())
+        if seconds < 0: return "recovered"
+        
+        hours, remainder = divmod(seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        
+        parts = []
+        if hours > 0: parts.append(f"{hours}h")
+        if minutes > 0: parts.append(f"{minutes}m")
+        return " ".join(parts) if parts else "less than a minute"
 
-        # Basic stats
-        energy_status = self.energy.format_energy_bar(user_id)
-        injuries_text = self.status.format_injury_status(user_id)
-        challenge_info = self.challenges.get_challenge_path_info(user_id)
+    def _to_roman(self, number: int) -> str:
+        """Convert an integer to a Roman numeral (supports 1-3999)."""
+        if not isinstance(number, int) or number <= 0:
+            return str(number)
+        numerals = [
+            (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+            (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+            (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")
+        ]
+        result = []
+        remaining = min(number, 3999)
+        for value, symbol in numerals:
+            while remaining >= value:
+                result.append(symbol)
+                remaining -= value
+        return "".join(result)
 
-        # Quick summary
-        response = f"⚔️ **{self.bot.title_for(username)}'s Quest Status**\n"
-        response += f"📊 Level {player['level']} (Prestige {player.get('prestige', 0)}) - {player['xp']} XP\n"
-        response += f"{energy_status}\n"
-        response += f"🏆 Wins: {player['wins']} | Losses: {player['losses']} | Streak: {player['streak']}\n"
+    def get_legend_suffix_for_user(self, user_id: str) -> Optional[str]:
+        """Return the legend suffix for a user if they have transcended."""
+        try:
+            players = self.get_state("players", {})
+            player = players.get(user_id)
+            if not isinstance(player, dict):
+                return None
+            transcendence = player.get("transcendence", 0)
+            if transcendence <= 0:
+                return None
+            return "(Legend)" if transcendence == 1 else f"(Legend {self._to_roman(transcendence)})"
+        except Exception:
+            return None
 
-        if injuries_text:
-            response += f"🩹 {injuries_text}\n"
+    def _get_active_legend_bosses(self) -> List[Dict[str, Any]]:
+        """Return a list of legends currently eligible to appear as bosses."""
+        legend_state = self.get_state("legend_bosses", {}) or {}
+        players = self.get_state("players", {}) or {}
+        active_legends: List[Dict[str, Any]] = []
 
-        if challenge_info:
-            response += f"{challenge_info}\n"
+        for user_id, entry in legend_state.items():
+            player = players.get(user_id)
+            if not isinstance(player, dict):
+                continue
+            transcendence = player.get("transcendence", entry.get("transcendence", 0))
+            if transcendence <= 0:
+                continue
+            active_legends.append({
+                "user_id": user_id,
+                "username": player.get("name", entry.get("username", "Unknown Legend")),
+                "transcendence": transcendence
+            })
 
-        # Show available actions
-        response += f"\n**Commands:** !quest (adventure) | !search | !inv | !profile"
+        return active_legends
 
-        self.safe_reply(connection, event, response)
+    def _build_legend_boss_monster(self, legend_entry: Dict[str, Any], channel: str, player_level: int) -> Tuple[Dict[str, Any], int]:
+        """Build a monster dict representing a legend boss."""
+        transcendence = max(1, legend_entry.get("transcendence", 1))
+        level_cap = self.get_config_value("level_cap", channel, default=20)
+        base_level = max(level_cap + 5, player_level + 5)
+        monster_level = base_level + (transcendence - 1) * 3
 
-    def _cmd_profile(self, connection, event, msg, username, match):
-        """Show detailed player profile."""
-        user_id = self.bot.get_user_id(username)
-        profile = self.core.format_player_profile(user_id)
+        legend_suffix = "(Legend)" if transcendence == 1 else f"(Legend {self._to_roman(transcendence)})"
+        monster_name = f"{legend_entry.get('username', 'Unknown')} {legend_suffix}"
 
-        # Add inventory info
-        inventory_text = self.items.format_inventory_display(user_id)
-        profile += f"\n\n{inventory_text}"
+        base_xp = 250 + (transcendence - 1) * 100
 
-        self.safe_reply(connection, event, profile)
+        monster = {
+            "name": monster_name,
+            "xp_win_min": base_xp,
+            "xp_win_max": base_xp + 150,
+            "type": "legend_boss",
+            "legend_transcendence": transcendence,
+            "legend_user_id": legend_entry.get("user_id")
+        }
+        return monster, monster_level
 
-    def _cmd_leaderboard(self, connection, event, msg, username, match):
-        """Show the quest leaderboard."""
-        leaderboard = self.core.get_leaderboard(limit=10)
+    def _select_dungeon_loadout(self, count: int = 3) -> List[Dict[str, Any]]:
+        """Select a random set of dungeon items."""
+        if not DUNGEON_ITEMS:
+            return []
+        count = max(1, min(count, len(DUNGEON_ITEMS)))
+        return random.sample(DUNGEON_ITEMS, k=count)
 
-        if not leaderboard:
-            self.safe_reply(connection, event, "No players on the leaderboard yet!")
-            return
+    def _get_dungeon_state(self, player: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure the player has a dungeon state block."""
+        state = player.setdefault("dungeon_state", {})
+        state.setdefault("equipped_items", [])
+        state.setdefault("last_equipped", None)
+        state.setdefault("last_run", None)
+        return state
 
-        response = "🏆 **Quest Leaderboard** (Top 10)\n"
-        response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-
-        for i, (user_id, player_data) in enumerate(leaderboard, 1):
-            nick = self.bot.get_user_nick(user_id)
-            prestige = player_data.get('prestige', 0)
-            level = player_data.get('level', 1)
-            xp = player_data.get('xp', 0)
-            wins = player_data.get('wins', 0)
-
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i:2d}."
-            prestige_text = f"★{prestige} " if prestige > 0 else "   "
-
-            response += f"{medal} {prestige_text}{nick:<20} Lvl {level:<2} ({xp:<4} XP) Wins: {wins}\n"
-
-        self.safe_reply(connection, event, response)
-
-    def _cmd_legacy(self, connection, event, msg, username, match):
-        """Show the Legacy Hall of Fame."""
-        from .quest_legacy import QuestLegacy
-        legacy = QuestLegacy(self.bot, self.state_manager)
-
-        hall_of_fame = legacy.get_legacy_hall_of_fame()
-
-        if not hall_of_fame:
-            self.safe_reply(connection, event, "No players have transcended yet! Be the first to reach prestige 10 and use `!quest transcend`.")
-            return
-
-        response = "🌟 **Legacy Hall of Fame** 🌟\n"
-        response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        response += "Players who have transcended and live on as Legacy Bosses!\n\n"
-
-        for i, legacy_info in enumerate(hall_of_fame, 1):
-            username = legacy_info["username"]
-            title = legacy_info["title"]
-            original_class = legacy_info["original_class"]
-            transcend_num = legacy_info["transcendence_number"]
-            defeat_count = legacy_info["defeat_count"]
-            total_wins = legacy_info["total_wins"]
-            created_at = legacy_info["created_at"]
-
-            # Format date
-            try:
-                from datetime import datetime
-                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-                date_str = dt.strftime("%Y-%m-%d")
-            except:
-                date_str = "Unknown"
-
-            response += f"**{i}. {username} {title}**\n"
-            response += f"   Class: {original_class} | Transcendence #{transcend_num}\n"
-            response += f"   Legacy Wins: {total_wins} | Defeated as Boss: {defeat_count} times\n"
-            response += f"   Transcended: {date_str}\n"
-
-            # Show last defeated by info
-            if legacy_info.get("last_defeated_by"):
-                last_defeat = legacy_info["last_defeated_by"]
-                response += f"   Last defeated by: {last_defeat['username']}\n"
-
-            response += "\n"
-
-        response += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        response += "Legacy Bosses can appear in random encounters. Defeating them grants bonus XP!"
-
-        self.safe_reply(connection, event, response)
-
-    def _cmd_prestige(self, connection, event, msg, username, match):
-        """Handle prestige command."""
-        user_id = self.bot.get_user_id(username)
-        args = match.group(1) if match.group(1) else ""
-
-        # Check for challenge prestige
-        is_challenge = args.lower() == "challenge"
-        if is_challenge:
-            return self._handle_challenge_prestige(connection, event, username, user_id)
-
-        # Normal prestige
-        success, message = self.core.handle_prestige(user_id)
-
-        if success:
-            # Reset energy
-            self.energy.reset_energy_on_prestige(user_id)
-            # Clear any active injuries
-            self.status.heal_injuries(user_id, all_injuries=True)
-
-        self.safe_reply(connection, event, message)
-
-    def _cmd_transcend(self, connection, event, msg, username, match):
-        """Handle transcend command for prestige 10 players."""
-        user_id = self.bot.get_user_id(username)
-
-        # Import here to avoid circular imports
-        from .quest_legacy import QuestLegacy
-        legacy = QuestLegacy(self.bot, self.state_manager)
-
-        # Check if player can transcend
-        can_transcend, message = legacy.can_transcend(user_id)
-        if not can_transcend:
-            self.safe_reply(connection, event, message)
-            return
-
-        # Create the legacy boss
-        success, message = legacy.create_legacy_boss(user_id, username)
-        if not success:
-            self.safe_reply(connection, event, message)
-            return
-
-        # Reset the player
-        reset_success, reset_message = legacy.reset_player_for_transcendence(user_id)
-        if not reset_success:
-            self.safe_reply(connection, event, f"Legacy boss created but reset failed: {reset_message}")
-            return
-
-        # Reset energy after transcendence
-        self.energy.reset_energy_on_prestige(user_id)
-        # Clear any active injuries
-        self.status.heal_injuries(user_id, all_injuries=True)
-
-        # Send transcendence message
-        full_message = f"🌟 **{message}**\n\n{reset_message}\n\nYou now live on as a Legend that other players may encounter in their adventures!"
-        self.safe_reply(connection, event, full_message)
-
-    def _cmd_class(self, connection, event, msg, username, match):
-        """Handle class assignment."""
-        user_id = self.bot.get_user_id(username)
-        class_name = match.group(1)
-
-        if not class_name:
-            # Show available classes
-            available_classes = self.core.get_available_classes()
-            player = self.core.get_player(user_id)
-            current_class = player.get("class", "None")
-
-            response = f"🎭 **Class System**\n"
-            response += f"Current Class: {current_class}\n\n"
-            response += f"Available Classes: {', '.join(available_classes)}\n\n"
-            response += f"Usage: !quest class <classname>"
-
-            self.safe_reply(connection, event, response)
-            return
-
-        # Assign class
-        success, message = self.core.assign_class(user_id, class_name.strip())
-        self.safe_reply(connection, event, message)
-
-    # Quest Command Handlers
-    def _cmd_quest(self, connection, event, msg, username, match):
-        """Handle solo quest command (normal difficulty)."""
-        self._handle_solo_quest(connection, event, username, "normal")
-
-    def _cmd_quest_easy(self, connection, event, msg, username, match):
-        """Handle easy quest command."""
-        self._handle_solo_quest(connection, event, username, "easy")
-
-    def _cmd_quest_hard(self, connection, event, msg, username, match):
-        """Handle hard quest command."""
-        self._handle_solo_quest(connection, event, username, "hard")
-
-    def _cmd_search(self, connection, event, msg, username, match):
-        """Handle search command."""
-        user_id = self.bot.get_user_id(username)
-
-        # Check if player is injured
-        if self.status.has_active_injuries(user_id):
-            injuries = self.status.get_injury_list(user_id)
-            if len(injuries) == 1:
-                self.safe_reply(connection, event, f"You're still recovering from {injuries[0]}! Searching while injured is dangerous.")
-            else:
-                self.safe_reply(connection, event, f"You're still recovering from: {', '.join(injuries)}! Searching while injured is dangerous.")
-            return
-
-        # Perform search
-        result = self.items.perform_search(user_id)
-
-        if result["success"]:
-            if result["type"] == "injury":
-                # Apply injury
-                injury_result = self.status.apply_injury_from_search(user_id)
-                self.safe_reply(connection, event, injury_result["message"])
-            else:
-                # Show search result
-                location = self.story.get_search_location_description(event.target)
-                response = f"You search through {location}... {result['message']}"
-                self.safe_reply(connection, event, response)
+    def _apply_dungeon_failure_penalty(self, player: Dict[str, Any]) -> None:
+        """Apply the penalty for failing inside the dungeon."""
+        current_level = player.get("level", 1)
+        if current_level > 1:
+            player["level"] = current_level - 1
+            player["xp"] = 0
+            player["xp_to_next_level"] = self._calculate_xp_for_level(player["level"])
         else:
-            self.safe_reply(connection, event, result["message"])
+            player["xp"] = 0
+            player["xp_to_next_level"] = self._calculate_xp_for_level(current_level)
+        player["win_streak"] = 0
 
-    def _cmd_inventory(self, connection, event, msg, username, match):
-        """Show player inventory."""
-        user_id = self.bot.get_user_id(username)
-        inventory_text = self.items.format_inventory_display(user_id)
-        self.safe_reply(connection, event, inventory_text)
 
-    def _cmd_use_item(self, connection, event, msg, username, match):
-        """Handle using items."""
-        user_id = self.bot.get_user_id(username)
-        item_name = match.group(1).strip().lower()
+    def _check_and_clear_injury(self, player_data: Dict[str, Any]) -> Tuple[Dict[str, Any], Optional[str]]:
+        """Checks if a player's injuries have expired and clears them if so."""
+        # Migrate old single injury format to list
+        if 'active_injury' in player_data:
+            old_injury = player_data['active_injury']
+            player_data['active_injuries'] = [old_injury]
+            del player_data['active_injury']
 
-        # Parse target for medkit
-        target_arg = None
-        if item_name.startswith("medkit "):
-            target_arg = item_name[7:].strip()
-            item_name = "medkit"
+        if 'active_injuries' in player_data and player_data['active_injuries']:
+            now = datetime.now(UTC)
+            expired_injuries = []
+            active_injuries = []
 
-        # Use item
-        kwargs = {}
-        if target_arg:
-            target_user_id = self.bot.get_user_id(target_arg)
-            if target_user_id:
-                kwargs["target_user_id"] = target_user_id
+            for injury in player_data['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    if now >= expires_at:
+                        expired_injuries.append(injury['name'])
+                    else:
+                        active_injuries.append(injury)
+                except (ValueError, TypeError):
+                    # Invalid injury, skip it
+                    pass
 
-        result = self.items.use_item(user_id, item_name, **kwargs)
+            player_data['active_injuries'] = active_injuries
 
-        if result["success"]:
-            if result.get("xp_reward"):
-                # Grant XP if applicable
-                self.core.grant_xp(user_id, result["xp_reward"])
+            if expired_injuries:
+                if len(expired_injuries) == 1:
+                    return player_data, f"You have recovered from your {expired_injuries[0]}."
+                else:
+                    return player_data, f"You have recovered from: {', '.join(expired_injuries)}."
 
-        self.safe_reply(connection, event, result["message"])
+        return player_data, None
+        
+    def _apply_injury(self, user_id: str, username: str, channel: str, is_medic_quest: bool = False, injury_reduction: float = 0.0) -> Optional[str]:
+        """Applies a random injury to a player upon defeat. Max 2 of each injury type."""
+        injury_config = self.get_config_value("injury_system", channel, default={})
+        if not injury_config.get("enabled"): return None
 
-    def _cmd_medkit(self, connection, event, msg, username, match):
-        """Handle medkit command."""
-        user_id = self.bot.get_user_id(username)
-        target_arg = match.group(1) if match.group(1) else None
+        # Don't apply injuries during medic quests
+        if is_medic_quest:
+            return None
 
-        # Use medkit via items system
-        kwargs = {}
-        if target_arg:
-            target_user_id = self.bot.get_user_id(target_arg)
-            if target_user_id:
-                kwargs["target_user_id"] = target_user_id
+        injury_chance = injury_config.get("injury_chance_on_loss", 0.75)
+        # Apply injury reduction from armor
+        injury_chance = max(0.0, injury_chance * (1.0 - injury_reduction))
+        if random.random() > injury_chance: return None
 
-        result = self.items.use_item(user_id, "medkit", **kwargs)
+        possible_injuries = injury_config.get("injuries", [])
+        if not possible_injuries: return None
 
-        if result["success"] and result.get("xp_reward"):
-            # Grant XP for healing
-            self.core.grant_xp(user_id, result["xp_reward"])
+        injury = random.choice(possible_injuries)
 
-        self.safe_reply(connection, event, result["message"])
+        players = self.get_state("players")
+        player = self._get_player(user_id, username)
 
-    def _cmd_ability(self, connection, event, msg, username, match):
-        """Handle ability commands."""
-        user_id = self.bot.get_user_id(username)
-        args_str = match.group(1) if match.group(1) else ""
+        # Migrate old format if needed
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
 
-        if not args_str:
-            # Show available abilities
-            abilities_text = self.challenges.format_abilities_display(user_id)
-            self.safe_reply(connection, event, abilities_text)
-            return
+        # Initialize injuries list if not present
+        if 'active_injuries' not in player:
+            player['active_injuries'] = []
 
-        # Use ability
-        ability_name = args_str.strip()
-        success, message = self.challenges.use_ability(user_id, username, ability_name)
+        # Check if player already has 2 of this injury type
+        injury_count = sum(1 for inj in player['active_injuries'] if inj['name'] == injury['name'])
+        if injury_count >= 2:
+            return f"You narrowly avoid another {injury['name']}!"
 
-        if success:
-            # Make announcement to channel
-            self.safe_say(message, event.target)
+        # Apply the injury
+        duration = timedelta(hours=injury.get("duration_hours", 1))
+        expires_at = datetime.now(UTC) + duration
+
+        new_injury = {
+            "name": injury['name'],
+            "description": injury['description'],
+            "expires_at": expires_at.isoformat(),
+            "effects": injury.get('effects', {})
+        }
+
+        player['active_injuries'].append(new_injury)
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        if injury_count == 1:
+            return f"You have sustained another {injury['name']}! {injury['description']}"
         else:
-            self.safe_reply(connection, event, message)
+            return f"You have sustained an injury: {injury['name']}! {injury['description']}"
 
-    # Group Content Handlers
-    def _cmd_mob_start(self, connection, event, msg, username, match):
-        """Handle mob start command."""
-        user_id = self.bot.get_user_id(username)
-        success, message = self.combat.start_mob_encounter(username, user_id, event.target)
-        self.safe_reply(connection, event, message)
 
-    def _cmd_mob_join(self, connection, event, msg, username, match):
-        """Handle mob join command."""
-        user_id = self.bot.get_user_id(username)
-        success, message = self.combat.join_mob_encounter(username, user_id, event.target)
-        self.safe_reply(connection, event, message)
+    def _calculate_xp_for_level(self, level: int) -> int:
+        """Safely calculates XP required for a level using the configured formula."""
+        xp_formula = self.get_config_value("xp_curve_formula", default="level * 100")
 
-    def _cmd_mob_ping(self, connection, event, msg, username, match):
-        """Handle mob ping toggle."""
-        user_id = self.bot.get_user_id(username)
-        action = match.group(1)
-        message = self.combat.toggle_mob_ping(user_id, username, event.target, action)
-        self.safe_reply(connection, event, message)
+        # Safe formula parser: only allow level variable and basic arithmetic
+        # Supports: level * N, level + N, or combinations with parentheses
+        try:
+            # Replace 'level' with the actual value in a safe way
+            safe_expr = xp_formula.replace('level', str(level))
+            # Only allow numbers, operators, spaces, and parentheses
+            if not re.match(r'^[0-9\s\+\-\*/\.\(\)]+$', safe_expr):
+                self.log_debug(f"Invalid XP formula: {xp_formula}, using default")
+                return level * 100
+            # Use safe calculation instead of eval
+            result = self._safe_calculate(safe_expr)
+            return int(result)
+        except Exception as e:
+            self.log_debug(f"Error calculating XP formula '{xp_formula}': {e}, using default")
+            return level * 100
 
-    # Admin Command Handlers
-    def _cmd_quest_reload(self, connection, event, msg, username, match):
-        """Reload quest content and challenge paths."""
-        success, message = self.admin.reload_quest_content()
-        self.safe_reply(connection, event, message)
+    def _get_prestige_win_bonus(self, prestige: int) -> float:
+        """Calculate win chance bonus from prestige level."""
+        if prestige == 0:
+            return 0.0
+        elif prestige <= 3:
+            return 0.05  # Prestige 1-3: +5%
+        elif prestige <= 6:
+            return 0.10  # Prestige 4-6: +10%
+        elif prestige <= 9:
+            return 0.15  # Prestige 7-9: +15%
+        else:  # prestige == 10
+            return 0.20  # Prestige 10: +20%
 
-    def _cmd_quest_stats(self, connection, event, msg, username, match):
-        """Show quest system statistics."""
-        report = self.admin.format_admin_report()
-        # Send in chunks to avoid IRC message length limits
-        lines = report.split('\n')
-        chunk = []
-        for line in lines:
-            chunk.append(line)
-            if len(chunk) >= 20:  # Send chunks of 20 lines
-                self.safe_reply(connection, event, '\n'.join(chunk))
-                chunk = []
-        if chunk:
-            self.safe_reply(connection, event, '\n'.join(chunk))
+    def _get_prestige_xp_bonus(self, prestige: int) -> float:
+        """Calculate XP multiplier from prestige level."""
+        if prestige < 2:
+            return 1.0  # No bonus for prestige 0-1
+        elif prestige < 5:
+            return 1.25  # Prestige 2-4: +25%
+        elif prestige < 8:
+            return 1.50  # Prestige 5-7: +50%
+        elif prestige < 10:
+            return 1.75  # Prestige 8-9: +75%
+        else:  # prestige == 10
+            return 2.0  # Prestige 10: +100% (double XP)
 
-    def _cmd_heal_all(self, connection, event, msg, username, match):
-        """Heal all injured players."""
-        healed_count, message = self.admin.heal_all_players(event.target)
-        self.safe_reply(connection, event, message)
+    def _get_prestige_energy_bonus(self, prestige: int) -> int:
+        """Calculate max energy bonus from prestige level."""
+        if prestige < 3:
+            return 0  # No bonus for prestige 0-2
+        elif prestige < 6:
+            return 1  # Prestige 3-5: +1 energy
+        elif prestige < 9:
+            return 2  # Prestige 6-8: +2 energy
+        else:  # prestige >= 9
+            return 3  # Prestige 9-10: +3 energy
 
-    def _cmd_energy_all(self, connection, event, msg, username, match):
-        """Restore energy for all players."""
-        restored_count, message = self.admin.restore_all_energy(event.target)
-        self.safe_reply(connection, event, message)
+    def _get_player_max_energy(self, player_data: Dict[str, Any], channel: Optional[str] = None) -> int:
+        """Return the max energy for a player, including prestige bonuses."""
+        base_max = self.get_config_value("energy_system.max_energy", channel, default=10)
+        prestige_level = player_data.get("prestige", 0) if isinstance(player_data, dict) else 0
+        return base_max + self._get_prestige_energy_bonus(prestige_level)
 
-    # Challenge Admin Commands
-    def _cmd_challenge_activate(self, connection, event, msg, username, match):
-        """Activate a challenge path."""
-        path_name = match.group(1)
-        success, message = self.challenges.activate_challenge_path(path_name)
-        self.safe_reply(connection, event, message)
+    def _safe_calculate(self, expr: str) -> float:
+        """Safely evaluates a simple mathematical expression without eval()."""
+        # Remove whitespace
+        expr = expr.replace(" ", "")
 
-    def _cmd_challenge_deactivate(self, connection, event, msg, username, match):
-        """Deactivate the current challenge path."""
-        success, message = self.challenges.deactivate_challenge_path()
-        self.safe_reply(connection, event, message)
+        # Simple recursive descent parser for basic arithmetic
+        def parse_expr(s, pos):
+            left, pos = parse_term(s, pos)
+            while pos < len(s) and s[pos] in ('+', '-'):
+                op = s[pos]
+                pos += 1
+                right, pos = parse_term(s, pos)
+                left = operator.add(left, right) if op == '+' else operator.sub(left, right)
+            return left, pos
 
-    def _cmd_challenge_list(self, connection, event, msg, username, match):
-        """List all challenge paths."""
-        paths_list, active_path = self.challenges.list_challenge_paths()
+        def parse_term(s, pos):
+            left, pos = parse_factor(s, pos)
+            while pos < len(s) and s[pos] in ('*', '/'):
+                op = s[pos]
+                pos += 1
+                right, pos = parse_factor(s, pos)
+                left = operator.mul(left, right) if op == '*' else operator.truediv(left, right)
+            return left, pos
 
-        if not paths_list:
-            self.safe_reply(connection, event, "No challenge paths defined.")
-            return
-
-        response = "🎯 **Challenge Paths:**\n"
-        for path in paths_list:
-            status = "✅ ACTIVE" if path["active"] else "   Available"
-            response += f"{status} {path['name']}: {path['description']}\n"
-
-        self.safe_reply(connection, event, response)
-
-    # Quest System Methods
-    def _handle_solo_quest(self, connection, event, username, difficulty):
-        """Handle a solo quest attempt."""
-        user_id = self.bot.get_user_id(username)
-        player = self.core.get_player(user_id)
-
-        # Check cooldowns
-        if player.get("quest_cooldown") and time.time() < player["quest_cooldown"]:
-            remaining = int(player["quest_cooldown"] - time.time())
-            self.safe_reply(connection, event, f"You're still recovering! Wait {remaining // 60}m {remaining % 60}s before your next quest.")
-            return
-
-        # Check energy
-        energy_check = self.energy.check_energy_for_quest(user_id)
-        if not energy_check["has_energy"]:
-            self.safe_reply(connection, event, f"You don't have enough energy! You need {energy_check['required_energy']} energy but only have {energy_check['current_energy']}.")
-            return
-
-        # Check injuries
-        if self.status.has_active_injuries(user_id):
-            injuries = self.status.get_injury_list(user_id)
-            if len(injuries) == 1:
-                self.safe_reply(connection, event, f"You're still recovering from {injuries[0]}! Use a medkit or rest first.")
+        def parse_factor(s, pos):
+            if pos < len(s) and s[pos] == '(':
+                pos += 1
+                result, pos = parse_expr(s, pos)
+                if pos < len(s) and s[pos] == ')':
+                    pos += 1
+                return result, pos
             else:
-                self.safe_reply(connection, event, f"You're still recovering from: {', '.join(injuries)}! Use a medkit or rest first.")
-            return
+                # Parse number
+                start = pos
+                while pos < len(s) and (s[pos].isdigit() or s[pos] == '.'):
+                    pos += 1
+                if start == pos:
+                    raise ValueError("Expected number")
+                return float(s[start:pos]), pos
 
-        # Get difficulty modifiers
-        diff_mods = self.combat.calculate_combat_difficulty_modifiers(difficulty)
+        try:
+            result, pos = parse_expr(expr, 0)
+            if pos != len(expr):
+                raise ValueError("Unexpected characters in expression")
+            return result
+        except Exception:
+            raise ValueError("Invalid expression")
 
-        # Execute quest
-        self._execute_solo_quest(connection, event, username, user_id, difficulty, diff_mods)
+    def _cmd_dungeon_equip(self, connection, event, msg, username, match):
+        """Equip a random set of dungeon items for the next run."""
+        if not self.is_enabled(event.target):
+            return False
 
-        # Set cooldown
-        cooldown_seconds = self.config.get("cooldown_seconds", 300)
-        player["quest_cooldown"] = time.time() + cooldown_seconds
-        self.state_manager.update_player_data(user_id, player)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+        dungeon_state = self._get_dungeon_state(player)
 
-    def _execute_solo_quest(self, connection, event, username, user_id, difficulty, diff_mods):
-        """Execute a solo quest with the given difficulty."""
-        player = self.core.get_player(user_id)
+        loadout = self._select_dungeon_loadout()
+        dungeon_state["equipped_items"] = [item["key"] for item in loadout]
+        dungeon_state["last_equipped"] = datetime.now(UTC).isoformat()
 
-        # Consume energy
-        self.energy.consume_energy(user_id, 1)
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
 
-        # Generate quest narrative
-        story_intro = self.story.format_quest_intro(username, "the foe", difficulty, event.target)
-
-        # Get monster
-        monster = self.combat.get_random_monster(player["level"] + diff_mods["level_modifier"])
-        if not monster:
-            self.safe_reply(connection, event, "No suitable monsters found for your level!")
-            return
-
-        # Calculate win chance
-        base_win_chance = self.combat.calculate_win_chance(
-            player["level"],
-            monster["min_level"] + diff_mods["level_modifier"],
-            prestige_level=player.get("effective_prestige", player.get("prestige", 0))
+        item_names = ", ".join(item["name"] for item in loadout)
+        self.safe_reply(
+            connection,
+            event,
+            f"{username} draws {item_names}. Use !dungeon when you want the DM blow-by-blow; it will be spammy!"
         )
 
-        # Apply injury effects
-        injury_effects = self.status.get_injury_effects(user_id)
-        win_chance = base_win_chance * injury_effects.get("xp_multiplier", 1.0)
-
-        # Apply active effects
-        for effect in player.get("active_effects", []):
-            if effect["type"] == "lucky_charm" and effect.get("expires") == "next_fight":
-                win_bonus = effect.get("win_bonus", 0) / 100
-                win_chance += win_bonus
-
-        # Determine outcome
-        is_win = random.random() < win_chance
-
-        # Send quest intro
-        self.safe_reply(connection, event, story_intro)
-
-        # Process outcome
-        if is_win:
-            self._handle_quest_victory(connection, event, username, user_id, monster, diff_mods)
-        else:
-            self._handle_quest_defeat(connection, event, username, user_id, monster)
-
-        # Check for boss encounter trigger
-        if is_win and not self.state_manager.get_active_mob():
-            self.combat.trigger_boss_encounter(user_id, username, event.target)
-
-    def _handle_quest_victory(self, connection, event, username, user_id, monster, diff_mods):
-        """Handle quest victory."""
-        player = self.core.get_player(user_id)
-
-        # Calculate XP reward
-        base_xp = random.randint(monster["xp_win_min"], monster["xp_win_max"])
-        xp_mult = diff_mods["xp_multiplier"]
-
-        # Apply injury effects
-        injury_effects = self.status.get_injury_effects(user_id)
-        xp_mult *= injury_effects.get("xp_multiplier", 1.0)
-
-        # Apply active effects
-        for effect in player.get("active_effects", []):
-            if effect["type"] == "xp_scroll" and effect.get("expires") == "next_win":
-                xp_mult = effect.get("xp_multiplier", 1.5)
-
-        # Grant XP and handle level up
-        new_level, leveled_up = self.core.grant_xp(user_id, int(base_xp * xp_mult), xp_mult)
-
-        # Update stats
-        player["wins"] += 1
-        player["streak"] += 1
-        if player["streak"] > player["max_streak"]:
-            player["max_streak"] = player["streak"]
-
-        # Process active effects
-        self._process_active_effects(player, is_win=True)
-
-        # Update max energy on level up
-        if leveled_up:
-            self.energy.update_max_energy_on_level_up(user_id, new_level)
-
-        self.state_manager.update_player_data(user_id, player)
-
-        # Send victory message
-        victory_text = self.story.get_victory_flavor_text(monster["name"])
-        total_xp = int(base_xp * xp_mult)
-        response = f"{victory_text} +{total_xp} XP"
-
-        if leveled_up:
-            level_up_msg = self.story.get_level_up_message(new_level)
-            response += f"\n{level_up_msg}"
-
-        if player["streak"] > 1:
-            response += f"\n🔥 Win streak: {player['streak']}!"
-
-        # Check for challenge completion
-        completed, messages = self.challenges.check_challenge_completion(user_id, username)
-        if completed:
-            response += "\n" + "\n".join(messages)
-
-        self.safe_reply(connection, event, response)
-
-    def _handle_quest_defeat(self, connection, event, username, user_id, monster):
-        """Handle quest defeat."""
-        player = self.core.get_player(user_id)
-
-        # Update stats
-        player["losses"] += 1
-        player["streak"] = 0
-
-        # Deduct XP
-        xp_loss_percentage = self.config.get("xp_loss_percentage", 0.25)
-        xp_for_current_level = self.core.calculate_xp_for_level(player["level"])
-        max_xp_loss = int((player["xp"] - xp_for_current_level) * xp_loss_percentage)
-        actual_xp_loss = self.core.deduct_xp(user_id, max_xp_loss)
-
-        # Apply injury
-        injury_reduction = self.status.get_injury_reduction(user_id)
-        injury_msg = self.status.apply_injury(user_id, username, event.target, injury_reduction=injury_reduction)
-
-        # Process active effects
-        self._process_active_effects(player, is_win=False)
-
-        self.state_manager.update_player_data(user_id, player)
-
-        # Send defeat message
-        defeat_text = self.story.get_defeat_flavor_text(monster["name"])
-        response = f"{defeat_text}"
-
-        if actual_xp_loss > 0:
-            response += f" Lost {actual_xp_loss} XP."
-
-        if injury_msg:
-            response += f" {injury_msg}"
-
-        self.safe_reply(connection, event, response)
-
-    def _process_active_effects(self, player, is_win):
-        """Process active effects after combat."""
-        remaining_effects = []
-
-        for effect in player.get("active_effects", []):
-            keep_effect = True
-
-            if effect["type"] == "lucky_charm" and effect.get("expires") == "next_fight":
-                keep_effect = False  # Consume effect
-            elif effect["type"] == "xp_scroll" and effect.get("expires") == "next_win" and is_win:
-                keep_effect = False  # Consume effect
-            elif effect["type"] == "armor_shard":
-                remaining_fights = effect.get("remaining_fights", 0) - 1
-                if remaining_fights > 0:
-                    effect["remaining_fights"] = remaining_fights
+        if self.get_config_value("dungeon.dm_loadout_summary", event.target, default=True):
+            summary_lines = ["Dungeon Loadout:"]
+            for item in loadout:
+                counter_rooms = [
+                    DUNGEON_ROOMS_BY_ID[room_id]["name"]
+                    for room_id in item.get("counters", [])
+                    if room_id in DUNGEON_ROOMS_BY_ID
+                ]
+                if counter_rooms:
+                    summary_lines.append(f"- {item['name']}: counters {', '.join(counter_rooms)}")
                 else:
-                    keep_effect = False  # Consume effect
+                    summary_lines.append(f"- {item['name']}: {item['description']}")
+            summary_lines.append("Use !dungeon to begin. Final results still land in-channel.")
+            self.safe_privmsg(username, "\n".join(summary_lines))
 
-            if keep_effect:
-                remaining_effects.append(effect)
+        return True
 
-        player["active_effects"] = remaining_effects
+    def _cmd_dungeon_run(self, connection, event, msg, username, match):
+        """Run the ten-room dungeon, DMing each step to the player."""
+        if not self.is_enabled(event.target):
+            return False
 
-    def _handle_challenge_prestige(self, connection, event, username, user_id):
-        """Handle challenge path prestige."""
-        player = self.core.get_player(user_id)
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+        dungeon_state = self._get_dungeon_state(player)
+        equipped_keys = dungeon_state.get("equipped_items", [])
 
-        # Check if player meets requirements
-        if player["level"] < self.config.get("level_cap", 20):
-            self.safe_reply(connection, event, "You must reach level 20 before entering a challenge path!")
-            return
+        if not equipped_keys:
+            self.safe_reply(connection, event,
+                            f"{self.bot.title_for(username)}, you need to !equip before taking on the dungeon.")
+            return True
 
-        # Enter challenge path
-        success, message = self.challenges.enter_challenge_path(user_id, username)
+        channel = event.target
+        start_time = datetime.now(UTC).isoformat()
+        dungeon_state["last_run"] = {
+            "started": start_time,
+            "channel": channel,
+            "completed": False,
+            "final_room": None,
+            "success": None
+        }
+
+        self.safe_reply(connection, event,
+                        f"{username}, starting your dungeon crawl now—check your DMs for the blow-by-blow.")
+        self.safe_privmsg(username, f"--- Entering the Tenfold Depths ({TOTAL_DUNGEON_ROOMS} rooms) ---")
+
+        final_room_index = 0
+        for index, room in enumerate(DUNGEON_ROOMS, start=1):
+            final_room_index = index
+            room_header = f"Room {index}/{TOTAL_DUNGEON_ROOMS}: {room['name']}"
+            self.safe_privmsg(username, room_header)
+            self.safe_privmsg(username, room["intro"])
+
+            counter_key = next((key for key in equipped_keys if key in room.get("counter_items", [])), None)
+
+            if counter_key and room.get("bypass_text"):
+                self.safe_privmsg(username, room["bypass_text"])
+                continue
+
+            monster = room["monster"]
+            monster_level = max(1, player.get("level", 1) + monster.get("level_offset", 0))
+
+            base_win_chance = self._calculate_win_chance(
+                player.get("level", 1),
+                monster_level,
+                prestige_level=player.get("prestige", 0)
+            )
+            base_win_chance += monster.get("win_chance_adjust", 0.0)
+
+            min_win = self.get_config_value("combat.min_win_chance", channel, default=0.05)
+            max_win = self.get_config_value("combat.max_win_chance", channel, default=0.95)
+            base_win_chance = max(min_win, min(max_win, base_win_chance))
+
+            base_xp = monster.get("xp_reward", 0)
+            win_chance, _, effect_msgs = self._apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=False)
+            for msg_text in effect_msgs:
+                if msg_text:
+                    self.safe_privmsg(username, msg_text)
+
+            win = random.random() < win_chance
+
+            if win:
+                _, xp_award, xp_effect_msgs = self._apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=True)
+                self.safe_privmsg(username, f"You defeat the {monster['name']}! (Win chance: {win_chance:.0%})")
+                for msg_text in xp_effect_msgs:
+                    if msg_text:
+                        self.safe_privmsg(username, msg_text)
+
+                player["last_fight"] = {
+                    "monster_name": monster["name"],
+                    "monster_level": monster_level,
+                    "win": True
+                }
+
+                if xp_award > 0:
+                    xp_messages = self._grant_xp(user_id, username, xp_award, is_win=True)
+                    for xp_msg in xp_messages:
+                        self.safe_privmsg(username, xp_msg)
+            else:
+                self.safe_privmsg(username, f"The {monster['name']} overwhelms you! (Win chance: {win_chance:.0%})")
+                player["last_fight"] = {
+                    "monster_name": monster["name"],
+                    "monster_level": monster_level,
+                    "win": False
+                }
+                self._apply_dungeon_failure_penalty(player)
+                self._consume_combat_effects(player, False)
+
+                dungeon_state["last_run"].update({
+                    "completed": True,
+                    "final_room": index,
+                    "success": False,
+                    "ended": datetime.now(UTC).isoformat()
+                })
+                dungeon_state["equipped_items"] = []
+
+                players = self.get_state("players")
+                players[user_id] = player
+                self.set_state("players", players)
+                self.save_state()
+
+                self.safe_reply(connection, event,
+                                f"{username} was defeated in room {index} ({room['name']}) and loses a level. The dungeon closes.")
+                return True
+
+            self._consume_combat_effects(player, win)
+
+        dungeon_state["last_run"].update({
+            "completed": True,
+            "final_room": final_room_index,
+            "success": True,
+            "ended": datetime.now(UTC).isoformat()
+        })
+        dungeon_state["equipped_items"] = []
+
+        player["inventory"][DUNGEON_REWARD_KEY] += 1
+        player["last_fight"] = {
+            "monster_name": DUNGEON_ROOMS[-1]["monster"]["name"],
+            "monster_level": player.get("level", 1) + DUNGEON_ROOMS[-1]["monster"].get("level_offset", 0),
+            "win": True
+        }
+
+        self.safe_privmsg(username, f"You conquer the Heart of the Abyss! A {DUNGEON_REWARD_NAME} materializes in your hands.")
+        self.safe_privmsg(username, DUNGEON_REWARD_EFFECT_TEXT)
+
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        self.safe_reply(connection, event,
+                        f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed a {DUNGEON_REWARD_NAME}! {DUNGEON_REWARD_EFFECT_TEXT}")
+        return True
+
+    def _get_player(self, user_id: str, username: str) -> Dict[str, Any]:
+        players = self.get_state("players", {})
+        player = players.get(user_id)
+
+        if not isinstance(player, dict):
+            player = {"name": username, "level": 1, "xp": 0}
+
+        max_energy = self._get_player_max_energy(player)
+
+        player.setdefault("xp_to_next_level", self._calculate_xp_for_level(player.get("level", 1)))
+        player.setdefault("last_fight", None)
+        player.setdefault("last_win_date", None)
+        player.setdefault("energy", max_energy)
+        player.setdefault("win_streak", 0)
+        player.setdefault("prestige", 0)  # Prestige level
+        player.setdefault("transcendence", 0)  # Number of times transcended
+
+        # Inventory system
+        player.setdefault("inventory", {
+            "medkits": 0,
+            "energy_potions": 0,
+            "lucky_charms": 0,
+            "armor_shards": 0,
+            "xp_scrolls": 0,
+            "dungeon_relics": 0
+        })
+        # Ensure new inventory keys exist for legacy players
+        player["inventory"].setdefault("dungeon_relics", 0)
+
+        # Migrate old medkits format
+        if "medkits" in player and isinstance(player["medkits"], int):
+            player["inventory"]["medkits"] = player["medkits"]
+            del player["medkits"]
+
+        # Active effects (buffs/debuffs with expiry)
+        player.setdefault("active_effects", [])
+
+        # Unlocked abilities and cooldowns
+        player.setdefault("unlocked_abilities", [])
+        player.setdefault("ability_cooldowns", {})
+
+        # Challenge path stats (for completion tracking)
+        player.setdefault("challenge_stats", {
+            "medkits_used_this_prestige": 0
+        })
+
+        # Dungeon run metadata
+        player.setdefault("dungeon_state", {
+            "equipped_items": [],
+            "last_equipped": None,
+            "last_run": None
+        })
+
+        player["name"] = username
+
+        return player
+
+    def _grant_xp(self, user_id: str, username: str, amount: int, is_win: bool = False, is_crit: bool = False) -> List[str]:
+        player, messages, total_xp_gain = self._get_player(user_id, username), [], int(amount)
+        today = datetime.now(UTC).date().isoformat()
+
+        # Check if player is at level cap
+        level_cap = self.get_config_value("level_cap", default=20)
+        if player.get("level", 1) >= level_cap:
+            messages.append(f"You are at the level cap ({level_cap}). Use !quest prestige to reset and gain permanent bonuses!")
+            return messages
+
+        # Apply prestige XP bonus
+        prestige_xp_mult = self._get_prestige_xp_bonus(player.get("prestige", 0))
+        if prestige_xp_mult > 1.0:
+            total_xp_gain = int(total_xp_gain * prestige_xp_mult)
+
+        # Critical hit bonus (2x XP)
+        if is_crit:
+            total_xp_gain *= 2
+            messages.append("CRITICAL HIT! XP doubled!")
+
+        # Win streak bonus (10% per streak, max 5 streaks = 50%)
+        if is_win:
+            current_streak = player.get("win_streak", 0)
+            if current_streak > 0:
+                max_streak_bonus = self.get_config_value("max_streak_bonus", default=5)
+                streak_bonus_mult = 1 + (min(current_streak, max_streak_bonus) * 0.10)
+                old_xp = total_xp_gain
+                total_xp_gain = int(total_xp_gain * streak_bonus_mult)
+                messages.append(f"{current_streak}-win streak bonus! (+{total_xp_gain - old_xp} XP)")
+
+            # Increment streak
+            player["win_streak"] = current_streak + 1
+
+        first_win_bonus = self.get_config_value("first_win_bonus_xp", default=50)
+
+        if is_win and player.get("last_win_date") != today:
+            total_xp_gain += first_win_bonus
+            player["last_win_date"] = today
+            messages.append(f"You receive a 'First Victory of the Day' bonus of {first_win_bonus} XP!")
+
+        # Migrate old format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Apply all injury XP multipliers
+        if 'active_injuries' in player:
+            total_xp_mult = 1.0
+            for injury in player['active_injuries']:
+                xp_mult = injury.get('effects', {}).get('xp_multiplier', 1.0)
+                total_xp_mult *= xp_mult
+
+            if total_xp_mult != 1.0:
+                total_xp_gain = int(total_xp_gain * total_xp_mult)
+                if total_xp_mult < 1.0:
+                    messages.append(f"Your injuries reduce your XP gain...")
+
+        player["xp"] += total_xp_gain
+        leveled_up = False
+
+        while player["xp"] >= player["xp_to_next_level"] and player["level"] < level_cap:
+            player["xp"] -= player["xp_to_next_level"]
+            player["level"] += 1
+            player["xp_to_next_level"] = self._calculate_xp_for_level(player["level"])
+            leveled_up = True
+
+        # Cap XP at level cap
+        if player["level"] >= level_cap:
+            player["xp"] = 0
+            player["xp_to_next_level"] = 0
+
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+
+        if leveled_up:
+            if player["level"] >= level_cap:
+                messages.append(f"*** LEVEL {player['level']} ACHIEVED - MAXIMUM POWER! ***")
+
+                # Check if player completed a challenge path
+                challenge_path = player.get("challenge_path")
+                if challenge_path:
+                    completion_result = self._check_challenge_completion(user_id, username, player, challenge_path)
+                    if completion_result:
+                        messages.extend(completion_result)
+                    else:
+                        messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
+                else:
+                    messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
+            else:
+                messages.append(f"Congratulations, you have reached Level {player['level']}!")
+        return messages
+
+    def _deduct_xp(self, user_id: str, username: str, amount: int):
+        player = self._get_player(user_id, username)
+        player["xp"] = max(0, player["xp"] - int(amount))
+        # Reset win streak on loss
+        player["win_streak"] = 0
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+
+    def _calculate_win_chance(self, player_level: float, monster_level: int, energy_modifier: float = 0.0, group_modifier: float = 0.0, prestige_level: int = 0) -> float:
+        base_win = self.get_config_value("combat.base_win_chance", default=0.5)
+        level_mod = self.get_config_value("combat.win_chance_level_modifier", default=0.1)
+        min_win = self.get_config_value("combat.min_win_chance", default=0.05)
+        max_win = self.get_config_value("combat.max_win_chance", default=0.95)
+
+        # Add prestige bonus
+        prestige_modifier = self._get_prestige_win_bonus(prestige_level)
+
+        level_diff = player_level - monster_level
+        chance = base_win + (level_diff * level_mod) + energy_modifier + group_modifier + prestige_modifier
+        return max(min_win, min(max_win, chance))
+
+    def _get_action_text(self, user_id: str) -> str:
+        player_classes = self.get_state("player_classes", {})
+        player_class = player_classes.get(user_id)
+        classes_config = self._get_content("classes", default={})
+
+        if player_class and player_class in classes_config:
+            return random.choice(classes_config[player_class].get("actions", ["..."]))
+
+        story_beats = self._get_content("story_beats", default={})
+        return random.choice(story_beats.get('actions', ["..."]))
+
+    def _cmd_quest_master(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target): return False
+
+        args_str = (match.group(1) or "").strip()
+        args = args_str.split()
+
+        difficulty_mods = self.get_config_value("difficulty", default={})
+        if not args_str or args[0].lower() in difficulty_mods:
+            return self._handle_solo_quest(connection, event, username, args[0] if args else "normal")
+
+        subcommand = args[0].lower()
+        if subcommand == "search":
+            return self._handle_search(connection, event, username, args[1:])
+        elif subcommand == "medic":
+            return self._handle_medic_quest(connection, event, username)
+        elif subcommand == "profile":
+            return self._handle_profile(connection, event, username, args[1:])
+        elif subcommand == "story":
+            return self._handle_story(connection, event, username)
+        elif subcommand == "class":
+            return self._handle_class(connection, event, username, args[1:])
+        elif subcommand in ("top", "leaderboard"):
+            return self._handle_leaderboard(connection, event)
+        elif subcommand == "prestige":
+            return self._handle_prestige(connection, event, username, args[1:])
+        elif subcommand == "use":
+            return self._handle_use_item(connection, event, username, args[1:])
+        else:
+            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <search|use|medic|profile|story|class|top|prestige>'.")
+            return True
+
+    def _cmd_quest_easy(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_solo_quest(connection, event, username, "easy")
+
+    def _cmd_quest_hard(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_solo_quest(connection, event, username, "hard")
+
+    def _cmd_quest_transcend(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_transcend(connection, event, username)
+
+    def _cmd_quest_profile_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_profile(connection, event, username, args)
+
+    def _cmd_quest_search_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_search(connection, event, username, args)
+
+    def _cmd_quest_medic_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_medic_quest(connection, event, username)
+
+    def _cmd_quest_use_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_use_item(connection, event, username, args)
+
+    def _cmd_quest_leaderboard_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        return self._handle_leaderboard(connection, event)
+
+    def _cmd_quest_class_alias(self, connection, event, msg, username, match):
+        if not self.is_enabled(event.target):
+            return False
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+        args = args_str.split() if args_str else []
+        return self._handle_class(connection, event, username, args)
+
+    def _handle_profile(self, connection, event, username, args):
+        target_user_nick = args[0] if args else username
+        user_id = self.bot.get_user_id(target_user_nick)
+        player = self._get_player(user_id, target_user_nick)
+        
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+            players_state = self.get_state("players")
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+
+        title = self.bot.title_for(player["name"])
+        player_class = self.get_state("player_classes", {}).get(user_id, "None")
+        prestige_level = player.get("prestige", 0)
+        challenge_path = player.get("challenge_path")
+        max_energy = self._get_player_max_energy(player, event.target)
+        transcendence_level = player.get("transcendence", 0)
+
+        legend_suffix = ""
+        if transcendence_level > 0:
+            legend_suffix = " (Legend)" if transcendence_level == 1 else f" (Legend {self._to_roman(transcendence_level)})"
+
+        # Build profile header with prestige and challenge path
+        if prestige_level > 0:
+            prestige_text = f"Prestige {prestige_level}"
+            if challenge_path:
+                path_data = self.challenge_paths.get("paths", {}).get(challenge_path, {})
+                path_name = path_data.get("name", challenge_path)
+                prestige_text = f"{prestige_text} [{path_name}]"
+            profile_parts = [f"Profile for {title}{legend_suffix}: Level {player['level']} ({prestige_text})"]
+        else:
+            profile_parts = [f"Profile for {title}{legend_suffix}: Level {player['level']}"]
+
+        # Add XP (unless at level cap)
+        level_cap = self.get_config_value("level_cap", event.target, default=20)
+        if player['level'] < level_cap:
+            profile_parts.append(f"XP: {player['xp']}/{player['xp_to_next_level']}")
+        else:
+            profile_parts.append(f"XP: MAX (use !quest prestige to ascend)")
+
+        profile_parts.append(f"Class: {player_class.capitalize()}")
+
+        if self.get_config_value("energy_system.enabled", event.target, default=True):
+            profile_parts.append(f"Energy: {player['energy']}/{max_energy}")
+
+        # Show medkit count
+        medkit_count = player.get("medkits", 0)
+        if medkit_count > 0:
+            profile_parts.append(f"Medkits: {medkit_count}")
+        relic_count = player.get("inventory", {}).get(DUNGEON_REWARD_KEY, 0)
+        if relic_count > 0:
+            profile_parts.append(f"{DUNGEON_REWARD_NAME}s: {relic_count}")
+        if transcendence_level > 0:
+            profile_parts.append(f"Transcendence: {'Legend' if transcendence_level == 1 else self._to_roman(transcendence_level)}")
+
+        # Migrate old format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_strs = []
+            for injury in player['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    time_left = self._format_timedelta(expires_at)
+                    injury_strs.append(f"{injury['name']} ({time_left})")
+                except (ValueError, TypeError):
+                    injury_strs.append(injury['name'])
+
+            if injury_strs:
+                profile_parts.append(f"Status: Injured ({', '.join(injury_strs)})")
+
+        self.safe_reply(connection, event, " | ".join(profile_parts))
+        return True
+
+    def _handle_story(self, connection, event, username):
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+        world_lore = self._get_content("world_lore", default=[])
+        lore = random.choice(world_lore) if world_lore else "The world is vast."
+        
+        history = ""
+        if (last_fight := player.get("last_fight")):
+            outcome = "victorious against" if last_fight['win'] else "defeated by"
+            history = f" You last remember being {outcome} a Level {last_fight['monster_level']} {last_fight['monster_name']}."
+            
+        self.safe_reply(connection, event, f"{lore}{history}")
+        return True
+
+    def _handle_class(self, connection, event, username, args):
+        user_id = self.bot.get_user_id(username)
+        chosen_class = args[0].lower() if args else ""
+        player_classes = self.get_state("player_classes", {})
+        classes_config = self._get_content("classes", default={})
+
+        if not chosen_class:
+            current_class = player_classes.get(user_id, "no class")
+            available_classes = ", ".join(classes_config.keys())
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your current class is: {current_class}. Available: {available_classes}.")
+            return True
+        if chosen_class not in classes_config:
+            self.safe_reply(connection, event, f"My apologies, that is not a recognized class.")
+            return True
+        
+        player_classes[user_id] = chosen_class
+        self.set_state("player_classes", player_classes)
+        self.save_state()
+        self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
+        return True
+
+    def _check_challenge_completion(self, user_id: str, username: str, player: Dict[str, Any], challenge_path_id: str) -> Optional[List[str]]:
+        """Check if player completed challenge path requirements and grant rewards."""
+        path_data = self.challenge_paths.get("paths", {}).get(challenge_path_id)
+        if not path_data:
+            return None
+
+        completion = path_data.get("completion_conditions", {})
+        if not completion:
+            return None
+
+        # Check if completion conditions are met
+        completed = True
+        failure_reason = None
+
+        if completion.get("no_medkits_used"):
+            medkits_used = player.get("challenge_stats", {}).get("medkits_used_this_prestige", 0)
+            if medkits_used > 0:
+                completed = False
+                failure_reason = f"You used {medkits_used} medkit(s) during this prestige."
+
+        if not completed:
+            messages = [
+                "You reached level 20, but you did not complete the challenge requirements.",
+                failure_reason,
+                "You can still use !quest prestige to continue, but you won't earn the challenge rewards."
+            ]
+            return messages
+
+        # Player completed the challenge! Grant rewards
+        messages = [
+            f"*** CHALLENGE COMPLETED: {path_data['name']}! ***",
+            "You have demonstrated incredible skill and dedication!"
+        ]
+
+        rewards = path_data.get("rewards", {})
+
+        # Unlock ability
+        if "ability_unlock" in rewards:
+            ability_id = rewards["ability_unlock"]
+            if ability_id not in player.get("unlocked_abilities", []):
+                player["unlocked_abilities"].append(ability_id)
+
+                ability_data = self.challenge_paths.get("abilities", {}).get(ability_id, {})
+                ability_name = ability_data.get("name", ability_id)
+                messages.append(f"NEW ABILITY UNLOCKED: {ability_name}!")
+                messages.append(f"Use !quest ability {ability_data.get('command', ability_id)} to activate it.")
+
+        # Save player state
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        messages.append("Use !quest prestige to ascend to your next prestige level.")
+        return messages
+
+    def _handle_prestige(self, connection, event, username, args):
+        """Handle prestige - reset to level 1 with permanent bonuses."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if player is at level cap
+        level_cap = self.get_config_value("level_cap", default=20)
+        if player.get("level", 1) < level_cap:
+            self.safe_reply(connection, event, f"You must reach level {level_cap} before you can prestige. Current level: {player['level']}")
+            return True
+
+        # Check for challenge prestige
+        is_challenge = args and args[0].lower() == "challenge"
+
+        if is_challenge:
+            return self._handle_challenge_prestige(connection, event, username, user_id, player)
+
+        # Normal prestige
+        # Check if already at max prestige
+        max_prestige = self.get_config_value("max_prestige", default=10)
+        current_prestige = player.get("prestige", 0)
+        if current_prestige >= max_prestige:
+            self.safe_reply(connection, event,
+                            f"You are already at maximum prestige ({max_prestige})! You are a legend! "
+                            "Use !quest transcend to reset everything and ascend into legendary status.")
+            return True
+
+        # Calculate new prestige level
+        new_prestige = current_prestige + 1
+
+        # Reset player to level 1 (but keep medkits!)
+        player["level"] = 1
+        player["xp"] = 0
+        player["xp_to_next_level"] = self._calculate_xp_for_level(1)
+        player["prestige"] = new_prestige
+        player["win_streak"] = 0
+        # medkits are preserved through prestige
+        player["active_injuries"] = []
+        if "active_injury" in player:
+            del player["active_injury"]
+
+        # Save player state
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        # Build prestige announcement
+        win_bonus = self._get_prestige_win_bonus(new_prestige)
+        xp_bonus = self._get_prestige_xp_bonus(new_prestige)
+        energy_bonus = self._get_prestige_energy_bonus(new_prestige)
+
+        bonus_parts = []
+        if win_bonus > 0:
+            bonus_parts.append(f"+{int(win_bonus * 100)}% win chance")
+        if xp_bonus > 1.0:
+            bonus_parts.append(f"{int((xp_bonus - 1.0) * 100)}% bonus XP")
+        if energy_bonus > 0:
+            bonus_parts.append(f"+{energy_bonus} max energy")
+
+        bonus_text = ", ".join(bonus_parts) if bonus_parts else "preparing for future bonuses"
+
+        self.safe_reply(connection, event, f"*** {self.bot.title_for(username)} HAS ASCENDED TO PRESTIGE {new_prestige}! ***")
+        self.safe_reply(connection, event, f"Reborn at Level 1 with permanent bonuses: {bonus_text}")
+        self.safe_reply(connection, event, f"The cycle begins anew, but you are forever changed...")
+
+        return True
+
+    def _handle_transcend(self, connection, event, username):
+        """Allow a max-prestige player to transcend and become a legend boss."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        level_cap = self.get_config_value("level_cap", event.target, default=20)
+        if player.get("level", 1) < level_cap:
+            self.safe_reply(connection, event,
+                            f"You must reach level {level_cap} before you can transcend. Current level: {player['level']}.")
+            return True
+
+        max_prestige = self.get_config_value("max_prestige", event.target, default=10)
+        if player.get("prestige", 0) < max_prestige:
+            self.safe_reply(connection, event,
+                            f"You must achieve Prestige {max_prestige} before you can transcend. Current prestige: {player.get('prestige', 0)}.")
+            return True
+
+        max_transcendence = self.get_config_value("max_transcendence", event.target, default=None)
+        current_transcendence = player.get("transcendence", 0)
+        if isinstance(max_transcendence, int) and max_transcendence > 0 and current_transcendence >= max_transcendence:
+            self.safe_reply(connection, event,
+                            f"You have already reached the maximum transcendence ({max_transcendence}). Your legend is complete.")
+            return True
+
+        new_transcendence = current_transcendence + 1
+
+        # Reset player stats to base values
+        player["transcendence"] = new_transcendence
+        player["prestige"] = 1
+        player["level"] = 1
+        player["xp"] = 0
+        player["xp_to_next_level"] = self._calculate_xp_for_level(1)
+        player["win_streak"] = 0
+        player["last_fight"] = None
+        player["last_win_date"] = None
+        player["active_effects"] = []
+        player["active_injuries"] = []
+        if "active_injury" in player:
+            del player["active_injury"]
+        player["challenge_path"] = None
+        player["challenge_stats"] = {
+            "medkits_used_this_prestige": 0
+        }
+        player["inventory"] = {
+            "medkits": 0,
+            "energy_potions": 0,
+            "lucky_charms": 0,
+            "armor_shards": 0,
+            "xp_scrolls": 0,
+            DUNGEON_REWARD_KEY: 0
+        }
+        if "medkits" in player:
+            del player["medkits"]
+        player["energy"] = self._get_player_max_energy(player, event.target)
+        player["dungeon_state"] = {
+            "equipped_items": [],
+            "last_equipped": None,
+            "last_run": None
+        }
+        player["ability_cooldowns"] = {}
+        player["unlocked_abilities"] = []
+
+        # Clear class back to default
+        player_classes = self.get_state("player_classes", {})
+        if user_id in player_classes:
+            del player_classes[user_id]
+            self.set_state("player_classes", player_classes)
+
+        # Persist player changes
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+
+        legend_bosses = self.get_state("legend_bosses", {})
+        legend_bosses[user_id] = {
+            "user_id": user_id,
+            "username": player["name"],
+            "transcendence": new_transcendence,
+            "created_at": datetime.now(UTC).isoformat()
+        }
+        self.set_state("legend_bosses", legend_bosses)
+
+        self.save_state()
+
+        legend_suffix = "(Legend)" if new_transcendence == 1 else f"(Legend {self._to_roman(new_transcendence)})"
+
+        self.safe_reply(connection, event,
+                        f"*** {username} transcends the mortal cycle and becomes {legend_suffix}! Their legend will haunt future mobs. ***")
+        self.safe_reply(connection, event,
+                        "You have been reborn at Level 1, Prestige 1. Your stats have been reset to their base values.")
+        self.safe_privmsg(username,
+                          "You now stalk the world as a Legend-tier boss. Future !mob encounters may summon you—good luck to the mortals!")
+
+        return True
+
+    def _handle_challenge_prestige(self, connection, event, username, user_id, player):
+        """Handle challenge path prestige - special alternate progression."""
+        # Check if a challenge path is active
+        active_path_id = self.challenge_paths.get("active_path")
+        if not active_path_id:
+            self.safe_reply(connection, event, "No challenge path is currently available. Use normal !quest prestige instead.")
+            return True
+
+        path_data = self.challenge_paths["paths"].get(active_path_id)
+        if not path_data:
+            self.safe_reply(connection, event, "Challenge path configuration error. Contact an administrator.")
+            return True
+
+        # Check requirements
+        current_prestige = player.get("prestige", 0)
+        min_prestige = path_data.get("requirements", {}).get("min_prestige", 0)
+        max_prestige = path_data.get("requirements", {}).get("max_prestige", 10)
+
+        if current_prestige < min_prestige:
+            self.safe_reply(connection, event, f"You need at least Prestige {min_prestige} to enter this challenge path.")
+            return True
+
+        if current_prestige >= max_prestige:
+            self.safe_reply(connection, event, f"You have exceeded the maximum prestige ({max_prestige}) for this challenge path.")
+            return True
+
+        # Reset player for challenge path
+        new_prestige = current_prestige + 1
+        player["level"] = 1
+        player["xp"] = 0
+        player["xp_to_next_level"] = self._calculate_xp_for_level(1)
+        player["prestige"] = new_prestige
+        player["win_streak"] = 0
+        player["active_injuries"] = []
+        player["challenge_path"] = active_path_id  # Track which path they're on
+
+        # Reset challenge stats for new prestige
+        player["challenge_stats"] = {
+            "medkits_used_this_prestige": 0
+        }
+
+        if "active_injury" in player:
+            del player["active_injury"]
+
+        # Save player state
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+
+        # Announce challenge prestige
+        self.safe_reply(connection, event, f"*** {self.bot.title_for(username)} HAS ENTERED THE CHALLENGE PATH: {path_data['name']}! ***")
+        self.safe_reply(connection, event, f"Prestige {new_prestige} - {path_data['description']}")
+
+        # Show special rules
+        if "special_rules" in path_data and path_data["special_rules"]:
+            for rule in path_data["special_rules"]:
+                self.safe_reply(connection, event, f"  - {rule}")
+
+        self.safe_reply(connection, event, "Your journey takes a new and dangerous turn...")
+
+        return True
+
+    def _handle_leaderboard(self, connection, event):
+        """Display top 10 players by prestige, level, and XP."""
+        players = self.get_state("players", {})
+
+        if not players:
+            self.safe_reply(connection, event, "No players have embarked on quests yet.")
+            return True
+
+        # Sort by prestige (desc), then level (desc), then XP (desc)
+        sorted_players = sorted(
+            [(uid, p) for uid, p in players.items() if isinstance(p, dict)],
+            key=lambda x: (x[1].get("prestige", 0), x[1].get("level", 1), x[1].get("xp", 0)),
+            reverse=True
+        )[:10]
+
+        self.safe_reply(connection, event, "Quest Leaderboard - Top 10 Adventurers:")
+        for idx, (uid, player) in enumerate(sorted_players, 1):
+            name = player.get("name", "Unknown")
+            level = player.get("level", 1)
+            xp = player.get("xp", 0)
+            prestige = player.get("prestige", 0)
+            transcendence = player.get("transcendence", 0)
+            streak = player.get("win_streak", 0)
+
+            # Format prestige indicator
+            prestige_str = f"P{prestige} " if prestige > 0 else ""
+            if transcendence > 0:
+                legend_tag = "Legend" if transcendence == 1 else f"Legend {self._to_roman(transcendence)}"
+                prestige_str = f"{legend_tag} " + prestige_str
+            streak_indicator = f" [Streak: {streak}]" if streak > 0 else ""
+
+            self.safe_reply(connection, event, f"{idx}. {name} - {prestige_str}Level {level} ({xp} XP){streak_indicator}")
+
+        return True
+
+    def _handle_solo_quest(self, connection, event, username, difficulty):
+        cooldown = self.get_config_value("cooldown_seconds", event.target, default=300)
+        if not self.check_user_cooldown(username, "quest_solo", cooldown):
+            self.safe_reply(connection, event, f"You are still recovering, {self.bot.title_for(username)}.")
+            return True
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+        
+        energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+        if energy_enabled and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted for a quest, {self.bot.title_for(username)}. You must rest.")
+            return True
+            
+        difficulty_mods = self.get_config_value("difficulty", event.target, default={})
+        diff_mod = difficulty_mods.get(difficulty, {"level_mod": 1, "xp_mult": 1.0})
+        player_level = player['level']
+
+        monster_spawn_chance = self.get_config_value("monster_spawn_chance", event.target, default=0.8)
+        monsters = self._get_content("monsters", event.target, default=[])
+        story_beats = self._get_content("story_beats", event.target, default={})
+
+        if random.random() > monster_spawn_chance:
+            self.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence.")
+            for m in self._grant_xp(user_id, username, 10): self.safe_reply(connection, event, m)
+            return True
+
+        # Check for boss encounter (levels 17-20, 10% chance)
+        boss_encounter_chance = self.get_config_value("boss_encounter_chance", event.target, default=0.10)
+        boss_min_level = self.get_config_value("boss_encounter_min_level", event.target, default=17)
+        boss_max_level = self.get_config_value("boss_encounter_max_level", event.target, default=20)
+
+        if boss_min_level <= player_level <= boss_max_level and random.random() < boss_encounter_chance:
+            return self._trigger_boss_encounter(connection, event, username, user_id, player, energy_enabled)
+
+        if energy_enabled: player["energy"] -= 1
+        
+        target_monster_level = player_level + diff_mod["level_mod"]
+        possible_monsters = [m for m in monsters if isinstance(m, dict) and m['min_level'] <= target_monster_level <= m['max_level']]
+        if not possible_monsters:
+            self.safe_reply(connection, event, "The lands are eerily quiet... no suitable monsters could be found.")
+            if energy_enabled: player["energy"] += 1
+            return True
+            
+        monster = random.choice(possible_monsters)
+        monster_level = max(1, random.randint(min(player_level - 1, player_level + diff_mod["level_mod"]), max(player_level - 1, player_level + diff_mod["level_mod"])))
+
+        # Check for rare spawn
+        rare_spawn_chance = self.get_config_value("rare_spawn_chance", event.target, default=0.10)
+        is_rare = random.random() < rare_spawn_chance
+        rare_xp_mult = self.get_config_value("rare_spawn_xp_multiplier", event.target, default=2.0)
+
+        monster_prefix = "[RARE] " if is_rare else ""
+        monster_name_with_level = f"{monster_prefix}Level {monster_level} {monster['name']}"
+        action_text = self._get_action_text(user_id)
+
+        story = f"{random.choice(story_beats.get('openers',[]))} {action_text}".format(user=username, monster=monster_name_with_level)
+        self.safe_reply(connection, event, story)
+
+        if is_rare:
+            self.safe_say(f"A rare {monster['name']} has appeared! {username} engages in combat!", event.target)
+        time.sleep(1.5)
+        
+        energy_xp_mult, energy_win_chance_mod = 1.0, 0.0
+        applied_penalty_msgs = []
+        if energy_enabled:
+            energy_penalties = self.get_config_value("energy_system.penalties", event.target, default=[])
+            # Check all penalties and apply the most severe (lowest threshold) that matches
+            for penalty in sorted(energy_penalties, key=lambda x: x['threshold'], reverse=True):
+                if player["energy"] <= penalty["threshold"]:
+                    energy_xp_mult = penalty.get("xp_multiplier", 1.0)
+                    energy_win_chance_mod = penalty.get("win_chance_modifier", 0.0)
+                    # Don't break - let lower thresholds override
+
+            # Generate message after finding final penalty values
+            if energy_xp_mult < 1.0:
+                applied_penalty_msgs.append("you will gain less experience")
+            if energy_win_chance_mod < 0.0:
+                applied_penalty_msgs.append("you are less effective in battle")
+
+            if applied_penalty_msgs:
+                self.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(applied_penalty_msgs)}).")
+
+        base_win_chance = self._calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
+
+        # Calculate base XP
+        xp_level_mult = self.get_config_value("xp_level_multiplier", event.target, default=2)
+        base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
+        total_xp = (base_xp + player_level * xp_level_mult) * diff_mod["xp_mult"] * energy_xp_mult
+
+        # Apply rare spawn multiplier
+        if is_rare:
+            total_xp *= rare_xp_mult
+
+        # Apply active effects (lucky charm, xp scroll) - pass placeholder for is_win
+        win_chance_modified, xp_modified, effect_msgs = self._apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=False)
+
+        # Show effect messages before combat
+        for msg in effect_msgs:
+            if "lucky charm" in msg.lower():  # Only show lucky charm pre-combat
+                self.safe_reply(connection, event, msg)
+
+        # Determine combat result
+        win = random.random() < win_chance_modified
+        player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
+
+        # Re-apply effects now that we know the outcome (for XP scroll)
+        _, total_xp, xp_effect_msgs = self._apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=win)
+
+        # Check for critical hit
+        crit_chance = self.get_config_value("crit_chance", event.target, default=0.15)
+        is_crit = win and random.random() < crit_chance
+
+        if win:
+            self.safe_reply(connection, event, f"Victory! (Win chance: {win_chance_modified:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp)} XP.")
+            # Show XP scroll message if it activated
+            for msg in xp_effect_msgs:
+                if "scroll" in msg.lower():
+                    self.safe_reply(connection, event, msg)
+            for m in self._grant_xp(user_id, username, total_xp, is_win=True, is_crit=is_crit): self.safe_reply(connection, event, m)
+        else:
+            xp_loss_perc = self.get_config_value("xp_loss_percentage", event.target, default=0.25)
+            xp_loss = total_xp * xp_loss_perc
+            self.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance_modified:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
+            self._deduct_xp(user_id, username, xp_loss)
+
+            # Apply injury with armor reduction
+            injury_reduction = self._get_injury_reduction(player)
+            injury_msg = self._apply_injury(user_id, username, event.target, injury_reduction=injury_reduction)
+            if injury_msg:
+                self.safe_reply(connection, event, injury_msg)
+
+        # Consume active effects after combat
+        self._consume_combat_effects(player, is_win=win)
+
+        players = self.get_state("players")
+        players[user_id] = player
+        self.set_state("players", players)
+        self.save_state()
+        return True
+
+    def _trigger_boss_encounter(self, connection, event, username, user_id, player, energy_enabled):
+        """Trigger a random boss encounter that acts like a mob fight."""
+        # Check if there's already an active mob
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if active_mob:
+                # If there's already a mob, just do a normal quest instead
+                self.log_debug("Boss encounter skipped - active mob already exists")
+                return False  # Fall through to normal quest logic
+
+            # Select a boss monster
+            boss_monsters = self._get_content("boss_monsters", event.target, default=[])
+            suitable_bosses = [b for b in boss_monsters if isinstance(b, dict) and b.get("min_level", 1) <= player["level"]]
+
+            if not suitable_bosses:
+                # No suitable boss, fall through to normal quest
+                self.log_debug("No suitable boss monsters found")
+                return False
+
+            boss = random.choice(suitable_bosses)
+            boss_level = max(player["level"], player["level"] + 3)  # Boss is at least 3 levels higher
+
+            # Deduct energy from initiator
+            if energy_enabled and player["energy"] > 0:
+                player["energy"] -= 1
+
+            # Create the boss encounter (similar to mob)
+            # Use longer timer for random boss encounters to give more time for people to join
+            join_window_seconds = self.get_config_value("boss_join_window_seconds", event.target, default=300)
+            close_time = time.time() + join_window_seconds
+
+            mob_data = {
+                "channel": event.target,
+                "monster": boss,
+                "monster_level": boss_level,
+                "is_rare": False,
+                "is_boss": True,  # Mark this as a boss encounter
+                "participants": [{"user_id": user_id, "username": username}],
+                "initiator": username,
+                "close_epoch": close_time
+            }
+
+            self.set_state("active_mob", mob_data)
+
+            # Save player state
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+
+            # Schedule mob window close
+            schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
+
+            # Announce the boss encounter!
+            join_minutes = join_window_seconds // 60
+            self.safe_say(f"\u26a0\ufe0f BOSS ENCOUNTER! \u26a0\ufe0f", event.target)
+            self.safe_say(f"{username} has stumbled upon a [BOSS] Level {boss_level} {boss['name']}!", event.target)
+            self.safe_say(f"This is too powerful to face alone! Others can !quest join (or !join) within {join_minutes} minutes!", event.target)
+
+            # Ping users who opted in for mob notifications
+            mob_pings = self.get_state("mob_pings", {})
+            if event.target in mob_pings and mob_pings[event.target]:
+                ping_names = list(mob_pings[event.target].values())
+                if ping_names:
+                    self.safe_say(f"BOSS alert: {', '.join(ping_names)}", event.target)
+
+            return True
+
+    def _cmd_mob_ping(self, connection, event, msg, username, match):
+        """Toggle mob ping notifications for the user."""
+        if not self.is_enabled(event.target):
+            return False
+
+        action = match.group(1).lower()  # "on" or "off"
+        channel = event.target
+        user_id = self.bot.get_user_id(username)
+
+        # Get mob ping list per channel (store as dict with user_id -> username)
+        mob_pings = self.get_state("mob_pings", {})
+        if channel not in mob_pings:
+            mob_pings[channel] = {}
+
+        if action == "on":
+            if user_id not in mob_pings[channel]:
+                mob_pings[channel][user_id] = username
+                self.set_state("mob_pings", mob_pings)
+                self.save_state()
+                self.safe_reply(connection, event, f"{username}, you will now be notified when mob encounters start.")
+            else:
+                # Update username in case it changed
+                mob_pings[channel][user_id] = username
+                self.set_state("mob_pings", mob_pings)
+                self.save_state()
+                self.safe_reply(connection, event, f"{username}, you are already receiving mob notifications.")
+        else:  # off
+            if user_id in mob_pings[channel]:
+                del mob_pings[channel][user_id]
+                self.set_state("mob_pings", mob_pings)
+                self.save_state()
+                self.safe_reply(connection, event, f"{username}, you will no longer be notified of mob encounters.")
+            else:
+                self.safe_reply(connection, event, f"{username}, you were not receiving mob notifications.")
+
+        return True
+
+    def _cmd_mob_start(self, connection, event, msg, username, match):
+        """Start a mob encounter that others can join."""
+        if not self.is_enabled(event.target):
+            return False
+
+        with self.mob_lock:
+            # Check global cooldown for mob encounters (per channel)
+            mob_cooldown = self.get_config_value("mob_cooldown_seconds", event.target, default=3600)  # 1 hour default
+            if not self.check_rate_limit(f"mob_spawn_{event.target}", mob_cooldown):
+                self.safe_reply(connection, event, "A mob encounter was recently completed. Please wait before summoning another.")
+                return True
+            active_mob = self.get_state("active_mob")
+            if active_mob:
+                self.safe_reply(connection, event, "A mob encounter is already active! Use !quest join (or !join) to participate.")
+                return True
+
+            user_id = self.bot.get_user_id(username)
+            player = self._get_player(user_id, username)
+
+            # Check energy
+            energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+            if energy_enabled and player["energy"] < 1:
+                self.safe_reply(connection, event, f"You are too exhausted for a mob quest, {self.bot.title_for(username)}.")
+                return True
+
+            # Attempt to spawn a legend boss first
+            legend_candidates = self._get_active_legend_bosses()
+            legend_spawn_chance = self.get_config_value("legend_boss.spawn_chance", event.target, default=0.15)
+            legend_info = None
+            is_legend_spawn = False
+            monster = None
+            is_rare = False
+
+            if legend_candidates and random.random() < legend_spawn_chance:
+                legend_info = random.choice(legend_candidates)
+                monster, monster_level = self._build_legend_boss_monster(legend_info, event.target, player['level'])
+                is_legend_spawn = True
+            else:
+                # Select a normal mob monster
+                monsters = self._get_content("monsters", event.target, default=[])
+                avg_level = player['level']
+                possible_monsters = [m for m in monsters if isinstance(m, dict) and m['min_level'] <= avg_level + 5]
+
+                if not possible_monsters:
+                    self.safe_reply(connection, event, "No suitable mob encounter found.")
+                    return True
+
+                monster = random.choice(possible_monsters)
+                monster_level = max(player['level'], avg_level + 3)
+
+                # Check for rare spawn
+                rare_spawn_chance = self.get_config_value("rare_spawn_chance", event.target, default=0.10)
+                is_rare = random.random() < rare_spawn_chance
+
+            join_window_seconds = self.get_config_value("mob_join_window_seconds", event.target, default=60)
+            close_time = time.time() + join_window_seconds
+
+            mob_data = {
+                "channel": event.target,
+                "monster": monster,
+                "monster_level": monster_level,
+                "is_rare": is_rare,
+                "participants": [{"user_id": user_id, "username": username}],
+                "initiator": username,
+                "close_epoch": close_time
+            }
+            if is_legend_spawn and legend_info:
+                mob_data["is_boss"] = True
+                mob_data["is_legend"] = True
+                mob_data["legend_user_id"] = legend_info["user_id"]
+                mob_data["legend_transcendence"] = legend_info.get("transcendence", 1)
+
+            self.set_state("active_mob", mob_data)
+            self.save_state()
+
+            # Schedule mob window close
+            schedule.every(join_window_seconds).seconds.do(self._close_mob_window).tag(f"{self.name}-mob_close")
+
+            legend_prefix = "[LEGEND] " if mob_data.get("is_legend") else ""
+            rare_prefix = "[RARE] " if is_rare and not mob_data.get("is_legend") else ""
+            self.safe_reply(connection, event, f"{username} has summoned a {legend_prefix}{rare_prefix}Level {monster_level} {monster['name']}! Others can !quest join (or !join) within {join_window_seconds} seconds!")
+
+            if mob_data.get("is_legend"):
+                self.safe_say(f"A LEGENDARY boss has emerged: {monster['name']}! Rally the realm with !quest join.", event.target)
+            elif is_rare:
+                self.safe_say(f"A rare mob encounter has appeared! Use !quest join (or !join) to participate!", event.target)
+
+            # Ping users who opted in for mob notifications
+            mob_pings = self.get_state("mob_pings", {})
+            if event.target in mob_pings and mob_pings[event.target]:
+                ping_names = list(mob_pings[event.target].values())
+                if ping_names:
+                    self.safe_say(f"Mob alert: {', '.join(ping_names)}", event.target)
+
+            return True
+
+    def _cmd_mob_join(self, connection, event, msg, username, match):
+        """Join an active mob encounter."""
+        if not self.is_enabled(event.target):
+            return False
+
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if not active_mob:
+                self.safe_reply(connection, event, "No active mob encounter to join.")
+                return True
+
+            if active_mob["channel"] != event.target:
+                self.safe_reply(connection, event, "The mob encounter is in another channel.")
+                return True
+
+            user_id = self.bot.get_user_id(username)
+
+            # Check if already in party
+            if any(p["user_id"] == user_id for p in active_mob["participants"]):
+                self.safe_reply(connection, event, "You are already in the party!")
+                return True
+
+            # Check energy
+            player = self._get_player(user_id, username)
+            energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+            if energy_enabled and player["energy"] < 1:
+                self.safe_reply(connection, event, f"You are too exhausted to join, {self.bot.title_for(username)}.")
+                return True
+
+            # Add to party
+            active_mob["participants"].append({"user_id": user_id, "username": username})
+            self.set_state("active_mob", active_mob)
+            self.save_state()
+
+            party_size = len(active_mob["participants"])
+            self.safe_reply(connection, event, f"{username} joins the party! ({party_size} adventurers ready)")
+            return True
+
+    def _close_mob_window(self):
+        """Execute the mob encounter after the join window closes."""
+        with self.mob_lock:
+            active_mob = self.get_state("active_mob")
+            if not active_mob:
+                schedule.clear(self.name)
+                return
+
+            channel = active_mob["channel"]
+            monster = active_mob["monster"]
+            monster_level = active_mob["monster_level"]
+            participants = active_mob["participants"]
+            party_size = len(participants)
+
+            # Clear the active mob and scheduled task
+            self.set_state("active_mob", None)
+            schedule.clear(self.name)
+
+            # Calculate win chance based on party size
+            is_boss = active_mob.get("is_boss", False)
+            is_legend = active_mob.get("is_legend", False)
+
+            if is_boss:
+                # Boss encounters are much harder!
+                # 1 person = 1%, 2 = 10%, 3 = 40%, 4 = 70%, 5+ = 85%
+                win_chance_map = {1: 0.01, 2: 0.10, 3: 0.40, 4: 0.70}
+                win_chance = win_chance_map.get(party_size, 0.85)  # 5+ people = 85%
+            else:
+                # Normal mob encounters
+                # 1 person = 5%, 2 = 25%, 3 = 75%, 4+ = 95%
+                win_chance_map = {1: 0.05, 2: 0.25, 3: 0.75}
+                win_chance = win_chance_map.get(party_size, 0.95)  # 4+ people = 95%
+
+            win = random.random() < win_chance
+
+            # Check if rare spawn
+            is_rare = active_mob.get("is_rare", False)
+            rare_xp_mult = self.get_config_value("rare_spawn_xp_multiplier", channel, default=2.0)
+
+            boss_prefix = "[BOSS] " if is_boss else ""
+            legend_prefix = "[LEGEND] " if is_legend else ""
+            rare_prefix = "[RARE] " if is_rare and not is_legend else ""
+            monster_name = f"{boss_prefix}{legend_prefix}{rare_prefix}Level {monster_level} {monster['name']}"
+
+            # Deduct energy from all participants
+            energy_enabled = self.get_config_value("energy_system.enabled", channel, default=True)
+            players_state = self.get_state("players", {})
+
+            for p in participants:
+                player = self._get_player(p["user_id"], p["username"])
+                if energy_enabled and player["energy"] > 0:
+                    player["energy"] -= 1
+                players_state[p["user_id"]] = player
+
+            self.set_state("players", players_state)
+
+            # Announce outcome
+            party_names = ", ".join([p["username"] for p in participants])
+            self.safe_say(f"The party ({party_names}) engages the {monster_name}!", channel)
+            time.sleep(1.5)
+
+            xp_level_mult = self.get_config_value("xp_level_multiplier", channel, default=2)
+            base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))
+
+            if win:
+                # Victory - distribute XP
+                total_xp = (base_xp + monster_level * xp_level_mult) * 1.5  # Bonus for mob
+
+                # Apply boss multiplier (bosses give way more XP!)
+                if is_boss:
+                    boss_xp_mult = self.get_config_value("boss_xp_multiplier", channel, default=2.5)
+                    total_xp *= boss_xp_mult
+                if is_legend:
+                    legend_xp_mult = self.get_config_value("legend_boss.xp_multiplier", channel, default=3.0)
+                    total_xp *= legend_xp_mult
+
+                # Apply rare spawn multiplier
+                if is_rare:
+                    total_xp *= rare_xp_mult
+
+                # Check for critical hit (shared for whole party)
+                crit_chance = self.get_config_value("crit_chance", channel, default=0.15)
+                is_crit = random.random() < crit_chance
+
+                if is_legend:
+                    self.safe_say(f"Victory! (Win chance: {win_chance:.0%}) The legendary foe {monster_name} is defeated! Each adventurer gains {int(total_xp)} XP!", channel)
+                else:
+                    self.safe_say(f"Victory! (Win chance: {win_chance:.0%}) The {monster_name} falls! Each adventurer gains {int(total_xp)} XP!", channel)
+
+                for p in participants:
+                    xp_msgs = self._grant_xp(p["user_id"], p["username"], total_xp, is_win=True, is_crit=is_crit)
+                    for m in xp_msgs:
+                        self.safe_say(f"{p['username']}: {m}", channel)
+            else:
+                # Defeat - lose XP and potentially get injured
+                xp_loss_perc = self.get_config_value("xp_loss_percentage", channel, default=0.25)
+                xp_loss = (base_xp + monster_level * xp_level_mult) * xp_loss_perc
+                if is_legend:
+                    legend_loss_mult = self.get_config_value("legend_boss.xp_loss_multiplier", channel, default=1.5)
+                    xp_loss *= legend_loss_mult
+                    self.safe_say(f"Defeat! (Win chance: {win_chance:.0%}) The legend {monster_name} overwhelms the party! Each member loses {int(xp_loss)} XP.", channel)
+                else:
+                    self.safe_say(f"Defeat! (Win chance: {win_chance:.0%}) The party has been overwhelmed! Each member loses {int(xp_loss)} XP.", channel)
+
+                for p in participants:
+                    self._deduct_xp(p["user_id"], p["username"], xp_loss)
+                    injury_msg = self._apply_injury(p["user_id"], p["username"], channel)
+                    if injury_msg:
+                        self.safe_say(f"{p['username']}: {injury_msg}", channel)
+
+            self.save_state()
+
+            self.set_state("active_mob", None)
+            schedule.clear(self.name)
+
+        return schedule.CancelJob
+
+    # ===== ACTIVE EFFECTS SYSTEM =====
+
+    def _apply_active_effects_to_combat(self, player: Dict[str, Any], base_win_chance: float, base_xp: int, is_win: bool) -> Tuple[float, int, List[str]]:
+        """
+        Apply active effects to combat, return (modified_win_chance, modified_xp, messages).
+        """
+        messages = []
+        win_chance = base_win_chance
+        xp = base_xp
+
+        # Mythic relic - guarantee victory for remaining solo fights
+        for effect in player.get("active_effects", []):
+            if effect.get("type") == "dungeon_relic" and effect.get("remaining_auto_wins", 0) > 0:
+                win_chance = max(win_chance, 1.0)
+                if not effect.get("triggered_this_fight"):
+                    effect["triggered_this_fight"] = True
+                    messages.append(f"The {DUNGEON_REWARD_NAME} blazes with power, guaranteeing victory!")
+                break
+
+        # Lucky charm - boost win chance
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "lucky_charm" and effect.get("expires") == "next_fight":
+                win_bonus = effect.get("win_bonus", 0) / 100.0
+                win_chance += win_bonus
+                messages.append(f"Your lucky charm glows! (+{effect.get('win_bonus', 0)}% win chance)")
+
+        # XP scroll - boost XP on wins
+        if is_win:
+            for effect in player.get("active_effects", []):
+                if effect["type"] == "xp_scroll" and effect.get("expires") == "next_win":
+                    xp_mult = effect.get("xp_multiplier", 1.0)
+                    xp = int(xp * xp_mult)
+                    messages.append(f"The XP scroll activates! ({xp_mult}x XP)")
+
+        return (win_chance, xp, messages)
+
+    def _consume_combat_effects(self, player: Dict[str, Any], is_win: bool):
+        """Remove expired combat effects after a fight."""
+        effects_to_remove = []
+
+        for i, effect in enumerate(player.get("active_effects", [])):
+            # Remove effects that expire on any fight
+            if effect.get("expires") == "next_fight":
+                effects_to_remove.append(i)
+            # Remove effects that expire on win
+            elif is_win and effect.get("expires") == "next_win":
+                effects_to_remove.append(i)
+            # Decrement fight-based effects
+            elif effect["type"] == "armor_shard" and "remaining_fights" in effect:
+                effect["remaining_fights"] -= 1
+                if effect["remaining_fights"] <= 0:
+                    effects_to_remove.append(i)
+            elif effect["type"] == "dungeon_relic":
+                if effect.get("triggered_this_fight"):
+                    effect["remaining_auto_wins"] = max(0, effect.get("remaining_auto_wins", 0) - 1)
+                    effect.pop("triggered_this_fight", None)
+                    if effect["remaining_auto_wins"] <= 0:
+                        effects_to_remove.append(i)
+                else:
+                    effect.pop("triggered_this_fight", None)
+
+        # Remove in reverse order to avoid index issues
+        for i in sorted(effects_to_remove, reverse=True):
+            player["active_effects"].pop(i)
+
+    def _get_injury_reduction(self, player: Dict[str, Any]) -> float:
+        """Get total injury chance reduction from active effects."""
+        reduction = 0.0
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "armor_shard":
+                reduction += effect.get("injury_reduction", 0.0)
+        return min(reduction, 0.90)  # Cap at 90% reduction
+
+    # ===== SEARCH SYSTEM =====
+
+    def _perform_single_search(self, player: Dict[str, Any], event) -> Dict[str, Any]:
+        """
+        Perform a single search and return the result.
+        Returns: {"type": str, "item": str, "message": str, "xp_change": int}
+        """
+        roll = random.random()
+        result = {"type": "nothing", "item": None, "message": "", "xp_change": 0}
+
+        # Get search probabilities from config
+        medkit_chance = self.get_config_value("search_system.medkit_chance", event.target, default=0.25)
+        energy_potion_chance = self.get_config_value("search_system.energy_potion_chance", event.target, default=0.15)
+        lucky_charm_chance = self.get_config_value("search_system.lucky_charm_chance", event.target, default=0.15)
+        armor_shard_chance = self.get_config_value("search_system.armor_shard_chance", event.target, default=0.10)
+        xp_scroll_chance = self.get_config_value("search_system.xp_scroll_chance", event.target, default=0.10)
+        injury_chance = self.get_config_value("search_system.injury_chance", event.target, default=0.05)
+        # Remaining probability is "nothing"
+
+        cumulative = 0.0
+
+        # Medkit
+        cumulative += medkit_chance
+        if roll < cumulative:
+            player["inventory"]["medkits"] += 1
+            result = {"type": "item", "item": "medkit", "message": "a MEDKIT", "xp_change": 0}
+            return result
+
+        # Energy Potion
+        cumulative += energy_potion_chance
+        if roll < cumulative:
+            player["inventory"]["energy_potions"] += 1
+            result = {"type": "item", "item": "energy_potion", "message": "an ENERGY POTION", "xp_change": 0}
+            return result
+
+        # Lucky Charm
+        cumulative += lucky_charm_chance
+        if roll < cumulative:
+            player["inventory"]["lucky_charms"] += 1
+            result = {"type": "item", "item": "lucky_charm", "message": "a LUCKY CHARM", "xp_change": 0}
+            return result
+
+        # Armor Shard
+        cumulative += armor_shard_chance
+        if roll < cumulative:
+            player["inventory"]["armor_shards"] += 1
+            result = {"type": "item", "item": "armor_shard", "message": "an ARMOR SHARD", "xp_change": 0}
+            return result
+
+        # XP Scroll
+        cumulative += xp_scroll_chance
+        if roll < cumulative:
+            player["inventory"]["xp_scrolls"] += 1
+            result = {"type": "item", "item": "xp_scroll", "message": "an XP SCROLL", "xp_change": 0}
+            return result
+
+        # Minor Injury
+        cumulative += injury_chance
+        if roll < cumulative:
+            # Lose 1 energy and small XP
+            player["energy"] = max(0, player["energy"] - 1)
+            xp_loss = random.randint(5, 15)
+            result = {"type": "injury", "item": None, "message": "INJURED! Lost 1 energy", "xp_change": -xp_loss}
+            return result
+
+        # Nothing found (default)
+        result = {"type": "nothing", "item": None, "message": "nothing of value", "xp_change": 0}
+        return result
+
+    def _handle_search(self, connection, event, username, args):
+        """Handle search command - search for items using energy."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if search is enabled
+        if not self.get_config_value("search_system.enabled", event.target, default=True):
+            self.safe_reply(connection, event, "Searching is not available at this time.")
+            return True
+
+        # Parse number of searches
+        num_searches = 1
+        if args:
+            try:
+                num_searches = int(args[0])
+                if num_searches < 1:
+                    self.safe_reply(connection, event, "You must search at least once!")
+                    return True
+                if num_searches > 20:
+                    self.safe_reply(connection, event, "You can search at most 20 times at once!")
+                    return True
+            except ValueError:
+                self.safe_reply(connection, event, "Please provide a valid number of searches (e.g., !quest search 5)")
+                return True
+
+        # Check energy
+        energy_cost_per_search = self.get_config_value("search_system.energy_cost", event.target, default=1)
+        total_energy_cost = energy_cost_per_search * num_searches
+
+        if player["energy"] < total_energy_cost:
+            self.safe_reply(connection, event, f"You need {total_energy_cost} energy to search {num_searches} time(s). You have {player['energy']}.")
+            return True
+
+        # Check and clear expired injury
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+
+        # Migrate old injury format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Check if player is injured
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_names = [inj['name'] for inj in player['active_injuries']]
+            if len(injury_names) == 1:
+                self.safe_reply(connection, event, f"You are still recovering from your {injury_names[0]}. Rest or use a medkit to heal.")
+            else:
+                self.safe_reply(connection, event, f"You are still recovering from: {', '.join(injury_names)}. Rest or use a medkit to heal.")
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+            return True
+
+        # Deduct energy upfront
+        player["energy"] -= total_energy_cost
+
+        # Perform searches
+        results = []
+        total_xp_change = 0
+        for _ in range(num_searches):
+            search_result = self._perform_single_search(player, event)
+            results.append(search_result)
+            total_xp_change += search_result["xp_change"]
+
+        # Apply XP change if any
+        if total_xp_change < 0:
+            self._deduct_xp(user_id, username, abs(total_xp_change))
+
+        # Save player state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        # Build result message
+        if num_searches == 1:
+            result = results[0]
+            msg = f"You search the area and find {result['message']}!"
+            if result["xp_change"] < 0:
+                msg += f" (Lost {abs(result['xp_change'])} XP)"
+            self.safe_reply(connection, event, msg)
+        else:
+            # Summarize multiple searches
+            item_counts = {
+                "medkit": 0,
+                "energy_potion": 0,
+                "lucky_charm": 0,
+                "armor_shard": 0,
+                "xp_scroll": 0,
+                "nothing": 0,
+                "injury": 0
+            }
+
+            for result in results:
+                if result["type"] == "item":
+                    item_counts[result["item"]] += 1
+                elif result["type"] == "nothing":
+                    item_counts["nothing"] += 1
+                elif result["type"] == "injury":
+                    item_counts["injury"] += 1
+
+            # Build summary
+            found_items = []
+            if item_counts["medkit"] > 0:
+                found_items.append(f"{item_counts['medkit']} medkit(s)")
+            if item_counts["energy_potion"] > 0:
+                found_items.append(f"{item_counts['energy_potion']} energy potion(s)")
+            if item_counts["lucky_charm"] > 0:
+                found_items.append(f"{item_counts['lucky_charm']} lucky charm(s)")
+            if item_counts["armor_shard"] > 0:
+                found_items.append(f"{item_counts['armor_shard']} armor shard(s)")
+            if item_counts["xp_scroll"] > 0:
+                found_items.append(f"{item_counts['xp_scroll']} XP scroll(s)")
+
+            msg = f"After {num_searches} searches, you found: "
+            if found_items:
+                msg += ", ".join(found_items)
+            else:
+                msg += "nothing of value"
+
+            if item_counts["nothing"] > 0:
+                msg += f" ({item_counts['nothing']} empty search(es))"
+            if item_counts["injury"] > 0:
+                msg += f" (Injured {item_counts['injury']} time(s), lost {abs(total_xp_change)} XP)"
+
+            self.safe_reply(connection, event, msg)
+
+        return True
+
+    def _handle_use_item(self, connection, event, username, args):
+        """Handle using items from inventory."""
+        if not args:
+            self.safe_reply(connection, event, "Usage: !quest use <item> - Available items: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
+            return True
+
+        item_name = args[0].lower()
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Map user-friendly names to inventory keys
+        item_map = {
+            "medkit": "medkits",
+            "energy_potion": "energy_potions",
+            "potion": "energy_potions",
+            "lucky_charm": "lucky_charms",
+            "charm": "lucky_charms",
+            "armor_shard": "armor_shards",
+            "armor": "armor_shards",
+            "xp_scroll": "xp_scrolls",
+            "scroll": "xp_scrolls",
+            "dungeon_relic": DUNGEON_REWARD_KEY,
+            "relic": DUNGEON_REWARD_KEY
+        }
+
+        if item_name not in item_map:
+            self.safe_reply(connection, event, f"Unknown item: {item_name}. Available: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
+            return True
+
+        inventory_key = item_map[item_name]
+
+        # Check if player has the item
+        if player["inventory"][inventory_key] < 1:
+            self.safe_reply(connection, event, f"You don't have any {item_name.replace('_', ' ')}s!")
+            return True
+
+        # Use the item
+        if inventory_key == "medkits":
+            # Medkit - heal injuries
+            # Migrate old format
+            if 'active_injury' in player:
+                player['active_injuries'] = [player['active_injury']]
+                del player['active_injury']
+
+            if not player.get('active_injuries') or len(player['active_injuries']) == 0:
+                self.safe_reply(connection, event, "You are not injured! Save your medkit for when you need it.")
+                return True
+
+            player["inventory"]["medkits"] -= 1
+            injury_healed = player['active_injuries'].pop(0)
+            self.safe_reply(connection, event, f"You use a medkit to heal your {injury_healed['name']}. You feel much better! ({player['inventory']['medkits']} medkits remaining)")
+
+        elif inventory_key == "energy_potions":
+            # Energy potion - restore 2-4 energy
+            max_energy = self._get_player_max_energy(player, event.target)
+
+            if player["energy"] >= max_energy:
+                self.safe_reply(connection, event, "Your energy is already full! Save the potion for later.")
+                return True
+
+            energy_restore = random.randint(2, 4)
+            player["inventory"]["energy_potions"] -= 1
+            old_energy = player["energy"]
+            player["energy"] = min(max_energy, player["energy"] + energy_restore)
+            actual_restore = player["energy"] - old_energy
+            self.safe_reply(connection, event, f"You drink the energy potion and feel refreshed! +{actual_restore} energy ({player['energy']}/{max_energy}). ({player['inventory']['energy_potions']} potions remaining)")
+
+        elif inventory_key == "lucky_charms":
+            # Lucky charm - add active effect for next fight
+            player["inventory"]["lucky_charms"] -= 1
+            # Check if already has lucky charm effect
+            has_charm = any(eff["type"] == "lucky_charm" for eff in player["active_effects"])
+            if has_charm:
+                self.safe_reply(connection, event, "You already have a lucky charm active! The effects don't stack.")
+                player["inventory"]["lucky_charms"] += 1  # Refund
+                return True
+
+            win_bonus = random.randint(10, 20)
+            player["active_effects"].append({
+                "type": "lucky_charm",
+                "win_bonus": win_bonus,
+                "expires": "next_fight"
+            })
+            self.safe_reply(connection, event, f"You activate the lucky charm! Your next fight will have +{win_bonus}% win chance. ({player['inventory']['lucky_charms']} charms remaining)")
+
+        elif inventory_key == "armor_shards":
+            # Armor shard - reduce injury chance for 3 fights
+            player["inventory"]["armor_shards"] -= 1
+            has_armor = any(eff["type"] == "armor_shard" for eff in player["active_effects"])
+            if has_armor:
+                self.safe_reply(connection, event, "You already have armor protection active! The effects don't stack.")
+                player["inventory"]["armor_shards"] += 1  # Refund
+                return True
+
+            player["active_effects"].append({
+                "type": "armor_shard",
+                "injury_reduction": 0.30,
+                "remaining_fights": 3
+            })
+            self.safe_reply(connection, event, f"You equip the armor shard! Injury chance reduced by 30% for the next 3 fights. ({player['inventory']['armor_shards']} shards remaining)")
+
+        elif inventory_key == "xp_scrolls":
+            # XP scroll - 1.5x XP on next win
+            player["inventory"]["xp_scrolls"] -= 1
+            has_scroll = any(eff["type"] == "xp_scroll" for eff in player["active_effects"])
+            if has_scroll:
+                self.safe_reply(connection, event, "You already have an XP scroll active! The effects don't stack.")
+                player["inventory"]["xp_scrolls"] += 1  # Refund
+                return True
+
+            player["active_effects"].append({
+                "type": "xp_scroll",
+                "xp_multiplier": 1.5,
+                "expires": "next_win"
+            })
+            self.safe_reply(connection, event, f"You read the XP scroll! Your next victory will grant 1.5x XP. ({player['inventory']['xp_scrolls']} scrolls remaining)")
+        elif inventory_key == DUNGEON_REWARD_KEY:
+            # Mythic relic - guarantee a set number of solo victories
+            player["inventory"][DUNGEON_REWARD_KEY] -= 1
+            existing = next((eff for eff in player["active_effects"] if eff.get("type") == "dungeon_relic"), None)
+            if existing:
+                existing["remaining_auto_wins"] = existing.get("remaining_auto_wins", 0) + DUNGEON_REWARD_CHARGES
+                existing.pop("triggered_this_fight", None)
+                total_charges = existing["remaining_auto_wins"]
+                self.safe_reply(
+                    connection,
+                    event,
+                    f"The {DUNGEON_REWARD_NAME} flares brighter! You now have {total_charges} guaranteed solo quest victories banked."
+                )
+            else:
+                player["active_effects"].append({
+                    "type": "dungeon_relic",
+                    "remaining_auto_wins": DUNGEON_REWARD_CHARGES
+                })
+                self.safe_reply(
+                    connection,
+                    event,
+                    f"The {DUNGEON_REWARD_NAME} hums with power. Your next {DUNGEON_REWARD_CHARGES} solo quests (including !dungeon rooms) are automatic victories."
+                )
+
+        # Save player state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        return True
+
+    # ===== MEDIC QUEST SYSTEM =====
+
+    def _handle_medic_quest(self, connection, event, username):
+        """Handle medic quests - fight for medkits instead of XP."""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if medic quests are enabled
+        if not self.get_config_value("medic_quests.enabled", event.target, default=True):
+            self.safe_reply(connection, event, "Medic quests are not available at this time.")
+            return True
+
+        # Check energy
+        energy_enabled = self.get_config_value("energy_system.enabled", event.target, default=True)
+        if energy_enabled and player["energy"] < 1:
+            self.safe_reply(connection, event, f"You are too exhausted for a quest, {self.bot.title_for(username)}.")
+            return True
+
+        # Check and clear expired injury
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+
+        # Migrate old format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Check if player is injured
+        if 'active_injuries' in player and player['active_injuries']:
+            injury_names = [inj['name'] for inj in player['active_injuries']]
+            if len(injury_names) == 1:
+                self.safe_reply(connection, event, f"You are still recovering from your {injury_names[0]}. Rest or use !quest medkit (or !medkit) to heal.")
+            else:
+                self.safe_reply(connection, event, f"You are still recovering from: {', '.join(injury_names)}. Rest or use !quest medkit (or !medkit) to heal.")
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+            return True
+
+        # Deduct energy
+        if energy_enabled:
+            player["energy"] = max(0, player["energy"] - 1)
+
+        # Select monster
+        monsters = self._get_content("monsters", event.target, default=[])
+        suitable_monsters = [m for m in monsters if isinstance(m, dict) and m.get("min_level", 1) <= player["level"]]
+        if not suitable_monsters:
+            suitable_monsters = monsters
+
+        if not suitable_monsters:
+            self.safe_reply(connection, event, "No suitable monsters found for medic quest.")
+            return True
+
+        monster = random.choice(suitable_monsters)
+        monster_level = max(1, player["level"] + random.randint(-2, 2))
+
+        # Calculate combat with energy penalties
+        energy_win_chance_mod = 0.0
+        if energy_enabled:
+            energy_penalties = self.get_config_value("energy_system.penalties", event.target, default=[])
+            for penalty in sorted(energy_penalties, key=lambda x: x['threshold'], reverse=True):
+                if player["energy"] <= penalty["threshold"]:
+                    energy_win_chance_mod = penalty.get("win_chance_modifier", 0.0)
+
+        win_chance = self._calculate_win_chance(player["level"], monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
+        won = random.random() < win_chance
+
+        # Get action text and format it with user and monster placeholders
+        action_template = self._get_action_text(user_id)
+        monster_name_with_level = f"Level {monster_level} {monster['name']}"
+        action = action_template.format(user=username, monster=monster_name_with_level)
+
+        if won:
+            # Victory - check for medkit drop
+            drop_chance = self.get_config_value("medic_quests.medkit_drop_chance", event.target, default=0.25)
+            got_medkit = random.random() < drop_chance
+
+            if got_medkit:
+                player["medkits"] = player.get("medkits", 0) + 1
+                result_msg = f"{action}. Victory! You found a MEDKIT! (Total: {player['medkits']})"
+            else:
+                result_msg = f"{action}. Victory! No medkit found this time."
+
+        else:
+            # Defeat - chance of injury
+            result_msg = f"{action}. Defeat!"
+
+            # Apply injury (injury_chance is already handled inside _apply_injury)
+            injury_msg = self._apply_injury(user_id, username, event.target, is_medic_quest=True)
+            if injury_msg:
+                result_msg += f" {injury_msg}"
+
+        # Save player state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        self.safe_reply(connection, event, result_msg)
+        return True
+
+    def _cmd_medkit(self, connection, event, msg, username, match):
+        """Use a medkit to heal yourself or another player."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_arg = (match.group(1) or "").strip() if match else ""
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check if player has medkits (check both old and new format)
+        medkit_count = player.get("inventory", {}).get("medkits", 0) or player.get("medkits", 0)
+        if medkit_count < 1:
+            self.safe_reply(connection, event, f"You don't have any medkits, {self.bot.title_for(username)}. Try !quest search to find one!")
+            return True
+
+        # Determine target
+        if not target_arg:
+            # Self-heal
+            return self._medkit_self_heal(connection, event, username, user_id, player)
+        else:
+            # Heal another player
+            return self._medkit_heal_other(connection, event, username, user_id, player, target_arg)
+
+    def _medkit_self_heal(self, connection, event, username, user_id, player):
+        """Use medkit on self."""
+        # Migrate old format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        if 'active_injuries' not in player or not player['active_injuries']:
+            self.safe_reply(connection, event, f"You're not injured, {self.bot.title_for(username)}!")
+            return True
+
+        injury_names = [inj['name'] for inj in player['active_injuries']]
+        injury_count = len(injury_names)
+
+        # Remove all injuries
+        player['active_injuries'] = []
+
+        # Deduct medkit (use new inventory system)
+        player["inventory"]["medkits"] -= 1
+
+        # Track medkit usage for challenge paths
+        if "challenge_stats" not in player:
+            player["challenge_stats"] = {}
+        player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
+
+        # Grant partial XP
+        base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
+        self_heal_multiplier = self.get_config_value("medic_quests.self_heal_xp_multiplier", event.target, default=0.75)
+        xp_reward = int(base_xp * self_heal_multiplier)
+
+        xp_messages = self._grant_xp(user_id, username, xp_reward, is_win=False, is_crit=False)
+
+        # Save state
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        if injury_count == 1:
+            response = f"{self.bot.title_for(username)} uses a medkit and recovers from {injury_names[0]}! (+{xp_reward} XP)"
+        else:
+            response = f"{self.bot.title_for(username)} uses a medkit and recovers from all injuries ({', '.join(injury_names)})! (+{xp_reward} XP)"
+
+        if xp_messages:
+            response += " " + " ".join(xp_messages)
+
+        self.safe_reply(connection, event, response)
+        return True
+
+    def _medkit_heal_other(self, connection, event, username, user_id, player, target_nick):
+        """Use medkit on another player."""
+        target_id = self.bot.get_user_id(target_nick)
+        target_player = self._get_player(target_id, target_nick)
+
+        # Check if target is on a no-medkit challenge path
+        target_challenge_path = target_player.get("challenge_path")
+        if target_challenge_path:
+            path_data = self.challenge_paths.get("paths", {}).get(target_challenge_path, {})
+            completion = path_data.get("completion_conditions", {})
+            if completion.get("no_medkits_used"):
+                path_name = path_data.get("name", target_challenge_path)
+                self.safe_reply(connection, event, f"{target_nick} is on the {path_name} challenge and cannot be healed with medkits!")
+                return True
+
+        # Migrate old format
+        if 'active_injury' in target_player:
+            target_player['active_injuries'] = [target_player['active_injury']]
+            del target_player['active_injury']
+
+        # Check if target is injured
+        if 'active_injuries' not in target_player or not target_player['active_injuries']:
+            self.safe_reply(connection, event, f"{target_nick} is not injured!")
+            return True
+
+        injury_names = [inj['name'] for inj in target_player['active_injuries']]
+        injury_count = len(injury_names)
+
+        # Remove all target's injuries
+        target_player['active_injuries'] = []
+
+        # Deduct medkit from healer (use new inventory system)
+        player["inventory"]["medkits"] -= 1
+
+        # Track medkit usage for challenge paths
+        if "challenge_stats" not in player:
+            player["challenge_stats"] = {}
+        player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
+
+        # Grant MASSIVE XP to healer
+        base_xp = self.get_config_value("base_xp_reward", event.target, default=50)
+        altruistic_multiplier = self.get_config_value("medic_quests.altruistic_heal_xp_multiplier", event.target, default=3.0)
+        xp_reward = int(base_xp * altruistic_multiplier)
+
+        xp_messages = self._grant_xp(user_id, username, xp_reward, is_win=True, is_crit=False)
+
+        # Save both players
+        players_state = self.get_state("players", {})
+        players_state[user_id] = player
+        players_state[target_id] = target_player
+        self.set_state("players", players_state)
+        self.save_state()
+
+        if injury_count == 1:
+            response = f"{self.bot.title_for(username)} uses a medkit to heal {target_nick}'s {injury_names[0]}! Such selflessness is rewarded with +{xp_reward} XP!"
+        else:
+            response = f"{self.bot.title_for(username)} uses a medkit to heal all of {target_nick}'s injuries ({', '.join(injury_names)})! Such selflessness is rewarded with +{xp_reward} XP!"
+
+        if xp_messages:
+            response += " " + " ".join(xp_messages)
+
+        self.safe_reply(connection, event, response)
+        return True
+
+    def _cmd_inventory(self, connection, event, msg, username, match):
+        """Show player's medkits and injuries."""
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        # Check and clear expired injury
+        player, recovery_msg = self._check_and_clear_injury(player)
+        if recovery_msg:
+            self.safe_reply(connection, event, recovery_msg)
+            players_state = self.get_state("players", {})
+            players_state[user_id] = player
+            self.set_state("players", players_state)
+            self.save_state()
+
+        title = self.bot.title_for(username)
+        inventory = player.get("inventory", {})
+
+        # Build inventory display
+        items = []
+        if inventory.get("medkits", 0) > 0:
+            items.append(f"Medkits: {inventory['medkits']}")
+        if inventory.get("energy_potions", 0) > 0:
+            items.append(f"Energy Potions: {inventory['energy_potions']}")
+        if inventory.get("lucky_charms", 0) > 0:
+            items.append(f"Lucky Charms: {inventory['lucky_charms']}")
+        if inventory.get("armor_shards", 0) > 0:
+            items.append(f"Armor Shards: {inventory['armor_shards']}")
+        if inventory.get("xp_scrolls", 0) > 0:
+            items.append(f"XP Scrolls: {inventory['xp_scrolls']}")
+        if inventory.get(DUNGEON_REWARD_KEY, 0) > 0:
+            items.append(f"{DUNGEON_REWARD_NAME}s: {inventory[DUNGEON_REWARD_KEY]}")
+
+        if not items:
+            items_msg = "No items (try !quest search)"
+        else:
+            items_msg = ", ".join(items)
+
+        # Active effects
+        effects = []
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "lucky_charm":
+                effects.append(f"Lucky Charm (+{effect.get('win_bonus', 0)}% win)")
+            elif effect["type"] == "armor_shard":
+                effects.append(f"Armor ({effect.get('remaining_fights', 0)} fights)")
+            elif effect["type"] == "xp_scroll":
+                effects.append("XP Scroll (next win)")
+            elif effect["type"] == "dungeon_relic":
+                charges = effect.get("remaining_auto_wins", 0)
+                suffix = "win" if charges == 1 else "wins"
+                effects.append(f"{DUNGEON_REWARD_NAME} ({charges} guaranteed {suffix})")
+
+        # Migrate old format
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        # Active injuries
+        injuries = []
+        if 'active_injuries' in player and player['active_injuries']:
+            for injury in player['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    time_left = self._format_timedelta(expires_at)
+                    injuries.append(f"{injury['name']} ({time_left})")
+                except (ValueError, TypeError):
+                    injuries.append(injury['name'])
+
+        # Build final message
+        self.safe_reply(connection, event, f"{title}'s Inventory: {items_msg}")
+        if effects:
+            self.safe_reply(connection, event, f"Active Effects: {', '.join(effects)}")
+        if injuries:
+            self.safe_reply(connection, event, f"Injuries: {', '.join(injuries)}")
+        elif not effects:
+            self.safe_reply(connection, event, "Status: Healthy")
+
+        return True
+
+    def _cmd_ability(self, connection, event, msg, username, match):
+        """List or use unlocked abilities."""
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id, username)
+
+        args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
+
+        # If no args, list abilities
+        if not args_str:
+            return self._list_abilities(connection, event, username, player)
+
+        # Otherwise, try to use an ability
+        ability_name = args_str.lower()
+        return self._use_ability(connection, event, username, user_id, player, ability_name)
+
+    def _list_abilities(self, connection, event, username, player):
+        """List all unlocked abilities for a player."""
+        unlocked = player.get("unlocked_abilities", [])
+
+        if not unlocked:
+            self.safe_reply(connection, event, f"{username}, you haven't unlocked any abilities yet. Complete challenge paths to earn them!")
+            return True
+
+        self.safe_reply(connection, event, f"{username}'s Unlocked Abilities:")
+
+        abilities_data = self.challenge_paths.get("abilities", {})
+        for ability_id in unlocked:
+            ability = abilities_data.get(ability_id, {})
+            ability_name = ability.get("name", ability_id)
+            description = ability.get("description", "No description")
+            command = ability.get("command", ability_id)
+
+            # Check cooldown
+            cooldowns = player.get("ability_cooldowns", {})
+            if ability_id in cooldowns:
+                cooldown_expires = datetime.fromisoformat(cooldowns[ability_id])
+                now = datetime.now(UTC)
+                if now < cooldown_expires:
+                    time_left = self._format_timedelta(cooldown_expires)
+                    self.safe_reply(connection, event, f"  !quest ability {command} - {description} [Cooldown: {time_left}]")
+                    continue
+
+            self.safe_reply(connection, event, f"  !quest ability {command} - {description} [READY]")
+
+        return True
+
+    def _use_ability(self, connection, event, username, user_id, player, ability_name):
+        """Use an unlocked ability."""
+        # Check if player has this ability unlocked
+        unlocked = player.get("unlocked_abilities", [])
+        abilities_data = self.challenge_paths.get("abilities", {})
+
+        # Find the ability by command name
+        ability_id = None
+        ability_data = None
+        for aid, adata in abilities_data.items():
+            if adata.get("command", "").lower() == ability_name:
+                ability_id = aid
+                ability_data = adata
+                break
+
+        if not ability_id or ability_id not in unlocked:
+            self.safe_reply(connection, event, f"You don't have the '{ability_name}' ability unlocked.")
+            return True
+
+        # Check cooldown
+        cooldowns = player.get("ability_cooldowns", {})
+        if ability_id in cooldowns:
+            cooldown_expires = datetime.fromisoformat(cooldowns[ability_id])
+            now = datetime.now(UTC)
+            if now < cooldown_expires:
+                time_left = self._format_timedelta(cooldown_expires)
+                self.safe_reply(connection, event, f"That ability is on cooldown for {time_left}.")
+                return True
+
+        # Execute the ability
+        effect = ability_data.get("effect")
+        success = self._execute_ability_effect(connection, event, username, user_id, effect, ability_data)
 
         if success:
-            # Reset energy
-            self.energy.reset_energy_on_prestige(user_id)
-            # Clear injuries
-            self.status.heal_injuries(user_id, all_injuries=True)
+            # Set cooldown
+            cooldown_hours = ability_data.get("cooldown_hours", 24)
+            cooldown_expires = datetime.now(UTC) + timedelta(hours=cooldown_hours)
+            player["ability_cooldowns"][ability_id] = cooldown_expires.isoformat()
 
-        self.safe_reply(connection, event, message)
+            # Save player state
+            players = self.get_state("players")
+            players[user_id] = player
+            self.set_state("players", players)
+            self.save_state()
+
+            # Announce to channel
+            announcement = ability_data.get("announcement", "{user} uses {ability}!")
+            announcement = announcement.format(user=self.bot.title_for(username), ability=ability_data.get("name"))
+            self.safe_say(announcement, event.target)
+
+        return True
+
+    def _execute_ability_effect(self, connection, event, username, user_id, effect, ability_data):
+        """Execute the actual effect of an ability."""
+        if effect == "heal_all_injuries":
+            # Heal all injuries for all players in channel
+            players = self.get_state("players", {})
+            healed_count = 0
+
+            for pid, pdata in players.items():
+                if isinstance(pdata, dict):
+                    if pdata.get("active_injuries") and len(pdata.get("active_injuries", [])) > 0:
+                        pdata["active_injuries"] = []
+                        healed_count += 1
+                        players[pid] = pdata
+
+            self.set_state("players", players)
+            self.save_state()
+
+            if healed_count > 0:
+                self.safe_say(f"{healed_count} player(s) have been healed!", event.target)
+            return True
+
+        elif effect == "restore_party_energy":
+            # Restore energy to all players
+            players = self.get_state("players", {})
+            energy_amount = ability_data.get("effect_data", {}).get("energy_amount", 5)
+            restored_count = 0
+
+            for pid, pdata in players.items():
+                if isinstance(pdata, dict):
+                    max_energy = self._get_player_max_energy(pdata, event.target)
+                    old_energy = pdata.get("energy", 0)
+                    pdata["energy"] = min(max_energy, old_energy + energy_amount)
+                    if pdata["energy"] > old_energy:
+                        restored_count += 1
+                    players[pid] = pdata
+
+            self.set_state("players", players)
+            self.save_state()
+
+            if restored_count > 0:
+                self.safe_say(f"{restored_count} player(s) restored energy!", event.target)
+            return True
+
+        elif effect == "party_buff_win_chance":
+            # Add a timed buff to all players
+            # This would require more complex buff tracking - placeholder for now
+            self.safe_say("Party buff applied! (Full implementation pending)", event.target)
+            return True
+
+        return False
+
+    def _cmd_challenge_activate(self, connection, event, msg, username, match):
+        """Activate a challenge path by name (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        path_name = match.group(1)
+
+        if path_name not in self.challenge_paths.get("paths", {}):
+            self.safe_reply(connection, event, f"Challenge path '{path_name}' not found. Use !quest challenge list to see available paths.")
+            return True
+
+        path_data = self.challenge_paths["paths"][path_name]
+
+        if not path_data.get("enabled", False):
+            self.safe_reply(connection, event, f"Challenge path '{path_name}' is not enabled in the config.")
+            return True
+
+        # Activate the path
+        self.challenge_paths["active_path"] = path_name
+        self._save_challenge_paths()
+
+        self.safe_reply(connection, event, f"Challenge path activated: {path_data['name']}")
+        self.safe_reply(connection, event, f"Players at level 20 can now use !quest prestige challenge to enter this path.")
+        return True
+
+    def _cmd_challenge_deactivate(self, connection, event, msg, username, match):
+        """Deactivate the current challenge path (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        if not self.challenge_paths.get("active_path"):
+            self.safe_reply(connection, event, "No challenge path is currently active.")
+            return True
+
+        old_path = self.challenge_paths["active_path"]
+        self.challenge_paths["active_path"] = None
+        self._save_challenge_paths()
+
+        self.safe_reply(connection, event, f"Challenge path '{old_path}' has been deactivated. Normal prestige is now available.")
+        return True
+
+    def _cmd_challenge_list(self, connection, event, msg, username, match):
+        """List all available challenge paths (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        paths = self.challenge_paths.get("paths", {})
+        active_path = self.challenge_paths.get("active_path")
+
+        if not paths:
+            self.safe_reply(connection, event, "No challenge paths defined.")
+            return True
+
+        self.safe_reply(connection, event, "Available Challenge Paths:")
+        for path_id, path_data in paths.items():
+            status = "[ACTIVE]" if path_id == active_path else "[inactive]"
+            enabled = "enabled" if path_data.get("enabled", False) else "DISABLED"
+            self.safe_reply(connection, event, f"  {status} {path_id}: {path_data.get('name', 'Unnamed')} ({enabled})")
+
+        if active_path:
+            self.safe_reply(connection, event, f"Current active path: {active_path}")
+        else:
+            self.safe_reply(connection, event, "No path currently active (normal prestige only)")
+
+        return True
+
+    def _cmd_challenge_reload(self, connection, event, msg, username, match):
+        """Reload challenge paths from file (admin only)."""
+        if not self.is_enabled(event.target):
+            return False
+
+        old_path_count = len(self.challenge_paths.get("paths", {}))
+        self.challenge_paths = self._load_challenge_paths()
+        new_path_count = len(self.challenge_paths.get("paths", {}))
+
+        self.safe_reply(connection, event, f"Challenge paths reloaded from challenge_paths.json")
+        self.safe_reply(connection, event, f"Paths: {old_path_count} -> {new_path_count}")
+        return True
+
+    def _cmd_quest_reload(self, connection, event, msg, username, match):
+        """Reload quest content from quest_content.json file."""
+        if not self.is_enabled(event.target):
+            return False
+
+        old_monster_count = len(self.content.get("monsters", []))
+        old_story_count = len(self.content.get("story_beats", {}).get("openers", []))
+
+        # Reload content
+        self.content = self._load_content()
+
+        new_monster_count = len(self.content.get("monsters", []))
+        new_story_count = len(self.content.get("story_beats", {}).get("openers", []))
+
+        self.safe_reply(connection, event, f"Quest content reloaded from quest_content.json")
+        self.safe_reply(connection, event, f"Monsters: {old_monster_count} -> {new_monster_count} | Story openers: {old_story_count} -> {new_story_count}")
+        return True

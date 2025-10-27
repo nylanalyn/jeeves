@@ -1,125 +1,125 @@
 {
   "theme": {
-    "name": "halloween",
-    "background": "#04050d",
-    "foreground": "#f8fafc",
-    "accent": "#f97316",
-    "accent_text": "#0b0f1b",
-    "card_background": "#0c101d",
-    "card_border": "#f97316",
-    "table_header": "#131a2b",
-    "table_stripe": "#13192a",
-    "link": "#fb923c",
-    "link_hover": "#fbbf24",
+    "name": "noir_november",
+    "background": "#070708",
+    "foreground": "#f2f2f2",
+    "accent": "#c5a880",
+    "accent_text": "#111113",
+    "card_background": "#121316",
+    "card_border": "#c5a880",
+    "table_header": "#1d1e22",
+    "table_stripe": "#151619",
+    "link": "#d8c3a5",
+    "link_hover": "#f1dcc1",
     "prestige_tiers": [
       {
         "max": 3,
-        "icon": "\u2605",
-        "class": "tier-star",
-        "color": "#fb923c",
+        "icon": "\ud83d\udcdc",
+        "class": "tier-casefile",
+        "color": "#c5a880",
         "repeat": 3,
         "banner": null
       },
       {
         "max": 6,
-        "icon": "\u2620",
-        "class": "tier-skull",
-        "color": "#facc15",
+        "icon": "\ud83d\udd0d",
+        "class": "tier-magnifier",
+        "color": "#f2f2f2",
         "repeat": 3,
-        "banner": "shroud"
+        "banner": "shadow"
       },
       {
         "max": null,
-        "icon": "\ud83c\udfc5",
-        "class": "tier-laurel",
-        "color": "#a855f7",
+        "icon": "\ud83d\udee1\ufe0f",
+        "class": "tier-shield",
+        "color": "#ffd166",
         "repeat": 2,
-        "banner": "laurel"
+        "banner": "badge"
       }
     ]
   },
   "world_lore": [
-    "The old manor has stood empty for decades. The locals say it watches those who pass by.",
-    "Some nights, when the fog rolls in thick, travelers report seeing figures that vanish when approached.",
-    "The graveyard keeper swears the tombstones are never in quite the same positions as he left them.",
-    "They say the woods remember every soul lost within them, and some still wander, searching for the way out.",
-    "In the basement of the abandoned hospital, there are operating rooms that smell faintly of ether... even now."
+    "The city hums with secrets\u2014every flickering neon sign another confession waiting to be heard.",
+    "Rain-slick cobblestones remember every deal that ever went south in this part of town.",
+    "Cigarette smoke curls through the blinds like a whisper, promising trouble on the other side.",
+    "Detectives vanish in this city, not because of bullets, but because they ask the wrong questions.",
+    "Some nights the moon stays hidden; even the sky knows better than to witness what happens here."
   ],
   "story_beats": {
     "openers": [
-      "{user} hears a scratching sound from within the walls and investigates, finding a {monster}.",
-      "{user} notices their reflection moving independently and turns to face a {monster}.",
-      "Following a trail of bloody footprints, {user} confronts a {monster} in the shadows.",
-      "{user} feels a chill run down their spine as they realize they're being stalked by a {monster}.",
-      "The candlelight flickers and dies, leaving {user} alone in the dark with a {monster}."
+      "{user} pushes open the agency door and finds a {monster} leaning on their desk like it owns the place.",
+      "Down a crooked alley lit by one buzzing streetlamp, {user} squares up against a {monster}.",
+      "{user}'s stakeout ends when the sedan door opens and a {monster} steps out with bad intentions.",
+      "A tip scrawled on a cocktail napkin leads {user} to a midnight rendezvous with a {monster}.",
+      "The police tape flutters in the wind as {user} realizes the real threat is the {monster} still lurking nearby."
     ],
     "actions": [
-      "{user} grabs a makeshift weapon and prepares to defend themselves against the {monster}.",
-      "{user} recites protective words they half-remember and advances on the {monster}.",
-      "With trembling hands, {user} stands their ground against the {monster}.",
-      "{user} fights down their terror and confronts the {monster} directly.",
-      "Summoning their courage, {user} engages the {monster} in a desperate struggle."
+      "{user} adjusts their fedora, thumb brushes the safety, and stares the {monster} down.",
+      "{user} mutters a dry quip, flashes the badge, and moves in on the {monster}.",
+      "Knuckles cracked and trench coat flaring, {user} makes the first move on the {monster}.",
+      "{user} studies the {monster}'s tell\u2014a twitch, a glance\u2014and prepares to strike first.",
+      "The city taught {user} to trust their instincts; they slip into the neon haze after the {monster}."
     ]
   },
   "monsters": [
     {
-      "name": "Restless Spirit",
+      "name": "Two-Bit Hoodlum",
       "min_level": 1,
       "max_level": 3,
       "xp_win_min": 15,
       "xp_win_max": 30
     },
     {
-      "name": "Shadow Stalker",
+      "name": "Crooked Cop",
       "min_level": 2,
       "max_level": 5,
       "xp_win_min": 20,
       "xp_win_max": 40
     },
     {
-      "name": "Ghoul",
+      "name": "Speakeasy Goon",
       "min_level": 4,
       "max_level": 8,
       "xp_win_min": 35,
       "xp_win_max": 70
     },
     {
-      "name": "Possessed Doll",
+      "name": "Blackmailer",
       "min_level": 6,
       "max_level": 10,
       "xp_win_min": 50,
       "xp_win_max": 100
     },
     {
-      "name": "Wendigo",
+      "name": "Bookie's Enforcer",
       "min_level": 8,
       "max_level": 12,
       "xp_win_min": 70,
       "xp_win_max": 130
     },
     {
-      "name": "Vengeful Revenant",
+      "name": "Crime Boss's Right Hand",
       "min_level": 10,
       "max_level": 15,
       "xp_win_min": 100,
       "xp_win_max": 180
     },
     {
-      "name": "Crawling Chaos",
+      "name": "Dirty Politician",
       "min_level": 14,
       "max_level": 18,
       "xp_win_min": 150,
       "xp_win_max": 250
     },
     {
-      "name": "Ancient Lich",
+      "name": "Mafia Hitman",
       "min_level": 16,
       "max_level": 22,
       "xp_win_min": 200,
       "xp_win_max": 350
     },
     {
-      "name": "Eldritch Abomination",
+      "name": "Crime Syndicate Kingpin",
       "min_level": 20,
       "max_level": 28,
       "xp_win_min": 300,
@@ -128,21 +128,21 @@
   ],
   "boss_monsters": [
     {
-      "name": "The Bride in Black",
+      "name": "The Crime Lord",
       "min_level": 10,
       "max_level": 20,
       "xp_win_min": 500,
       "xp_win_max": 1000
     },
     {
-      "name": "The Headless Horseman",
+      "name": "The Femme Fatale",
       "min_level": 15,
       "max_level": 25,
       "xp_win_min": 800,
       "xp_win_max": 1500
     },
     {
-      "name": "Dracula, Lord of the Night",
+      "name": "The Big Cheese",
       "min_level": 20,
       "max_level": 30,
       "xp_win_min": 1200,
@@ -150,28 +150,28 @@
     }
   ],
   "classes": {
-    "hunter": {
-      "description": "A seasoned monster hunter who knows the old ways.",
+    "detective": {
+      "description": "A hardboiled private eye with a map of the city's sins etched into their memory.",
       "actions": [
-        "{user} loads silver rounds and takes aim at the {monster}.",
-        "{user} draws a blessed blade and charges the {monster}.",
-        "With practiced precision, {user} strikes at the {monster}'s weakness."
+        "{user} keeps their silhouette framed in the doorway, revolver steady on the {monster}.",
+        "The case files whisper clues as {user} pieces together the {monster}'s next move.",
+        "This ain't their first tail; {user} already has the {monster} pegged."
       ]
     },
-    "occultist": {
-      "description": "A practitioner of forbidden knowledge and dark rituals.",
+    "reporter": {
+      "description": "An ink-stained sleuth chasing the byline that blows the whole city wide open.",
       "actions": [
-        "{user} traces eldritch symbols in the air, binding the {monster}.",
-        "{user} chants in a dead language, channeling power against the {monster}.",
-        "Drawing from ancient tomes, {user} unleashes a curse upon the {monster}."
+        "{user} flips open a battered notebook, every scribble a leverage point against the {monster}.",
+        "{user} calls in a favor at the Tribune and exposes the {monster}'s cover story.",
+        "The public needs the truth, and {user} will drag it out of the {monster} if they have to."
       ]
     },
-    "survivor": {
-      "description": "Someone who has escaped death too many times to count.",
+    "fixer": {
+      "description": "A connected operator who knows which palms to grease and which shins to break.",
       "actions": [
-        "{user} uses guerrilla tactics to outmaneuver the {monster}.",
-        "{user} exploits the environment to trap the {monster}.",
-        "Thinking quickly, {user} turns the tables on the {monster}."
+        "{user} makes a quiet call; by the time it connects, the {monster} is already surrounded.",
+        "{user} flashes a knowing grin\u2014they've got dirt on the {monster}'s entire outfit.",
+        "Years of favors pay off when {user}'s network closes the trap on the {monster}."
       ]
     }
   }

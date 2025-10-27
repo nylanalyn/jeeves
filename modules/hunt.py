@@ -210,6 +210,40 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, f"Unknown admin command '{admin_subcommand}'.")
             return True
 
+    def _get_animals_config(self) -> List[Dict[str, Any]]:
+        return self.get_config_value("animals", default=[]) or []
+
+    def _get_animal_score_name(self, animal: Dict[str, Any]) -> str:
+        return str(animal.get("score_key") or animal.get("score_name") or animal.get("name", "animal")).lower()
+
+    def _get_animal_display_name(self, animal: Dict[str, Any]) -> str:
+        return animal.get("display_name") or animal.get("name", "Animal")
+
+    def _lookup_display_name(self, score_name: str) -> str:
+        score = str(score_name).lower()
+        for entry in self._get_animals_config():
+            candidate = entry.get("score_key") or entry.get("score_name") or entry.get("name")
+            if candidate and str(candidate).lower() == score:
+                return entry.get("display_name") or entry.get("name", score_name.title())
+        return score_name.title()
+
+    def _normalize_animal_key(self, name: str) -> str:
+        """Normalize user-supplied animal names to their canonical score key."""
+        normalized = str(name).lower()
+        for entry in self._get_animals_config():
+            score = str(entry.get("score_key") or entry.get("score_name") or entry.get("name", "")).lower()
+            display = str(entry.get("display_name") or entry.get("name", "")).lower()
+            if normalized in (score, display):
+                return score
+        return normalized
+
+    def _format_score_label(self, score_key: str) -> str:
+        if "_" not in score_key:
+            return score_key.title()
+        base, action = score_key.rsplit("_", 1)
+        display = self._lookup_display_name(base)
+        return f"{display} {action.capitalize()}"
+
     def _handle_admin_spawn(self, connection, event, username):
         if not self.bot.is_admin(event.source): return True
         return self._cmd_admin_spawn(connection, event, "", username, None)
@@ -231,7 +265,7 @@ class Hunt(SimpleCommandModule):
             self.log_debug(f"_schedule_next_spawn: cleared {cleared_count} existing spawn job(s)")
 
         allowed_channels = self.get_config_value("allowed_channels", default=[])
-        animals = self.get_config_value("animals", default=[])
+        animals = self._get_animals_config()
         if not allowed_channels or not animals:
             return
 
@@ -278,7 +312,7 @@ class Hunt(SimpleCommandModule):
             self._spawn_job_token = None
             self.log_debug(f"_spawn_animal called (target_channel={target_channel}, cleared {pending_jobs} pending job(s))")
 
-            animals = self.get_config_value("animals", default=[])
+            animals = self._get_animals_config()
             if not animals:
                 self.log_debug("No animals configured, scheduling next spawn")
                 self._schedule_next_spawn()
@@ -311,8 +345,10 @@ class Hunt(SimpleCommandModule):
                 return False
 
             animal = random.choice(animals).copy()
+            animal["score_name"] = self._get_animal_score_name(animal)
+            animal["display_name"] = self._get_animal_display_name(animal)
             animal['spawned_at'] = datetime.now(UTC).isoformat()
-            self.log_debug(f"Selected animal: {animal.get('name', 'unknown')}")
+            self.log_debug(f"Selected animal: {animal.get('display_name', animal.get('name', 'unknown'))}")
 
             self.set_state("active_animal", animal)
             self.set_state("next_spawn_time", None)
@@ -334,7 +370,7 @@ class Hunt(SimpleCommandModule):
             self.log_debug("_end_hunt: no active_animal found")
             return True
 
-        self.log_debug(f"_end_hunt: processing animal '{active_animal.get('name', 'unknown')}'")
+        self.log_debug(f"_end_hunt: processing animal '{active_animal.get('display_name', active_animal.get('name', 'unknown'))}'")
         # Calculate time to catch
         time_to_catch_str = ""
         if 'spawned_at' in active_animal:
@@ -346,7 +382,8 @@ class Hunt(SimpleCommandModule):
             except (ValueError, TypeError):
                 self.log_debug("Could not parse spawn time for active animal.")
 
-        animal_name = active_animal.get("name", "animal").lower()
+        display_name = self._get_animal_display_name(active_animal)
+        animal_score_name = self._get_animal_score_name(active_animal)
         user_id = self.bot.get_user_id(username)
 
         # Special handling for user "dead" - they MURDER animals
@@ -356,7 +393,7 @@ class Hunt(SimpleCommandModule):
 
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
-        score_key = f"{animal_name}_{action}"
+        score_key = f"{animal_score_name}_{action}"
         user_scores[score_key] = user_scores.get(score_key, 0) + 1
         scores[user_id] = user_scores
 
@@ -367,16 +404,16 @@ class Hunt(SimpleCommandModule):
 
         # Special murder messages for user "dead"
         if is_dead and action == "murdered":
-            murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=animal_name)
+            murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=display_name.lower())
             self.safe_reply(connection, event, murder_msg + time_to_catch_str + ".")
         else:
             msg_key = "hug_message" if action == "hugged" else "hunt_message"
             custom_msg = active_animal.get(msg_key)
 
             if custom_msg:
-                self.safe_reply(connection, event, custom_msg.format(username=self.bot.title_for(username)) + time_to_catch_str + ".")
+                self.safe_reply(connection, event, custom_msg.format(username=self.bot.title_for(username), animal=display_name) + time_to_catch_str + ".")
             else:
-                self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {animal_name}{time_to_catch_str}.")
+                self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {display_name}{time_to_catch_str}.")
 
         self.log_debug(f"_end_hunt: complete, scheduling next spawn")
         self._schedule_next_spawn()
@@ -415,7 +452,8 @@ class Hunt(SimpleCommandModule):
             
         key_to_release = random.choice(releasable)
         animal_name = key_to_release.replace(score_suffix, "")
-        
+        display_name = self._lookup_display_name(animal_name)
+
         user_scores[key_to_release] -= 1
         if user_scores[key_to_release] == 0:
             del user_scores[key_to_release]
@@ -424,7 +462,7 @@ class Hunt(SimpleCommandModule):
         self.save_state()
 
         self.log_debug(f"_cmd_release: {username} released a {animal_name}, spawning replacement in {event.target}")
-        self.safe_reply(connection, event, random.choice(self.RELEASE_MESSAGES).format(title=self.bot.title_for(username), animal_name=animal_name.capitalize()))
+        self.safe_reply(connection, event, random.choice(self.RELEASE_MESSAGES).format(title=self.bot.title_for(username), animal_name=display_name))
         self._spawn_animal(target_channel=event.target)
         return True
 
@@ -435,7 +473,7 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, f"{self.bot.title_for(target_user_nick)} has not yet interacted with any animals.")
             return True
             
-        parts = [f"{k.replace('_', ' ').capitalize()}: {v}" for k, v in sorted(scores.items()) if v > 0]
+        parts = [f"{self._format_score_label(k)}: {v}" for k, v in sorted(scores.items()) if v > 0]
         if not parts:
              self.safe_reply(connection, event, f"{self.bot.title_for(target_user_nick)} has not yet interacted with any animals.")
              return True
@@ -486,7 +524,7 @@ class Hunt(SimpleCommandModule):
         user_id = self.bot.get_user_id(target_user)
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
-        score_key = f"{animal_name.lower()}_{action}"
+        score_key = f"{self._normalize_animal_key(animal_name)}_{action}"
         
         user_scores[score_key] = user_scores.get(score_key, 0) + int(amount_str)
         scores[user_id] = user_scores

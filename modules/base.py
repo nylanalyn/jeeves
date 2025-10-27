@@ -248,13 +248,38 @@ class ModuleBase(ABC):
             return users_module.has_flavor_enabled(username)
         return True  # Default to flavor enabled if users module not available
 
+    def _noirify_text(self, text: str) -> str:
+        """Apply a light noir patina to outgoing messages."""
+        replacements = [
+            (r"\bVery well\b", "Alright, here's the play"),
+            (r"\bVery good\b", "Not bad, gumshoe"),
+            (r"\bAs you wish\b", "If that's your angle"),
+            (r"\bMy apologies\b", "Sorry to break it to you"),
+            (r"\bI must insist\b", "Listen up"),
+            (r"\bGood heavens\b", "Would you look at that"),
+            (r"\bPardon me\b", "Pardon the interruption"),
+            (r"\bAttention, please\b", "Heads up"),
+            (r"\bIf you insist\b", "If that's how you want it"),
+            (r"\bI trust\b", "Let's hope"),
+            (r"\bDo try\b", "Try"),
+            (r"\bcreature\b", "suspect"),
+            (r"\bCreature\b", "Suspect"),
+            (r"\banimal\b", "suspect"),
+            (r"\bAnimal\b", "Suspect"),
+        ]
+
+        noir_line = text
+        for pattern, repl in replacements:
+            noir_line = re.sub(pattern, repl, noir_line)
+        return noir_line
+
     def safe_reply(self, connection, event, text: str) -> bool:
         try:
             lines = text.splitlines()
             if not lines:
                 lines = [text]
             for line in lines:
-                sanitized = line.replace("\r", "")
+                sanitized = self._noirify_text(line.replace("\r", ""))
                 if not sanitized:
                     sanitized = " "
                 connection.privmsg(event.target, sanitized)
@@ -270,7 +295,7 @@ class ModuleBase(ABC):
             if not lines:
                 lines = [text]
             for line in lines:
-                sanitized = line.replace("\r", "")
+                sanitized = self._noirify_text(line.replace("\r", ""))
                 if not sanitized:
                     sanitized = " "
                 self.bot.connection.privmsg(target, sanitized)
@@ -285,7 +310,7 @@ class ModuleBase(ABC):
             if not lines:
                 lines = [text]
             for line in lines:
-                sanitized = line.replace("\r", "")
+                sanitized = self._noirify_text(line.replace("\r", ""))
                 if not sanitized:
                     sanitized = " "
                 self.bot.connection.privmsg(username, sanitized)

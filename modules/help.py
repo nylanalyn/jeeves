@@ -79,13 +79,13 @@ class Help(SimpleCommandModule):
         """Constructs the public reply, adding the reference URL if it's configured."""
         reference_url = self.get_config_value("reference_url", channel)
         if reference_url:
-            return f"{base_message} For a comprehensive public reference, you may also consult the household records at: {reference_url}"
+            return f"{base_message} If you need more ink on the case, thumb through the public files: {reference_url}"
         return base_message
 
     def _cmd_help_public(self, connection, event, msg, username, match):
         """Handles !help in a channel by sending a PM."""
         self._handle_help_request(username, event.source)
-        base_msg = f"{self.bot.title_for(username)}, I have sent you a list of my commands privately."
+        base_msg = f"Check your private wire, {self.bot.title_for(username)}—the command roster's waiting there."
         reply = self._construct_public_reply(base_msg, event.target)
         self.safe_reply(connection, event, reply)
         return True
@@ -98,11 +98,11 @@ class Help(SimpleCommandModule):
         help_lines = self._get_command_help(command, is_admin)
         if help_lines:
             self._handle_help_request(username, event.source, command)
-            base_msg = f"{self.bot.title_for(username)}, I have sent you the details for that command privately."
+            base_msg = f"Details on `{command}` are on your private line, {self.bot.title_for(username)}."
             reply = self._construct_public_reply(base_msg, event.target)
             self.safe_reply(connection, event, reply)
         else:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I am not familiar with that command.")
+            self.safe_reply(connection, event, f"Can't find that command in my files, {self.bot.title_for(username)}.")
         return True
 
     def on_privmsg(self, connection, event):
@@ -136,15 +136,14 @@ class Help(SimpleCommandModule):
                 for line in help_lines:
                     self.safe_privmsg(username, line)
             else:
-                self.safe_privmsg(username, f"I am not familiar with the command '{command}'.")
+                self.safe_privmsg(username, f"No entry for '{command}' in the casebook.")
         else:
             cmd_list = self._get_command_list(is_admin)
-            self.safe_privmsg(username, f"Available commands: {cmd_list}")
+            self.safe_privmsg(username, f"Available leads: {cmd_list}")
             note = " (commands marked with * have admin-only subcommands)" if is_admin else ""
-            self.safe_privmsg(username, f"Use 'help <command>' for more details.{note}")
+            self.safe_privmsg(username, f"Ask 'help <command>' for the deep dive.{note}")
         
         last_times = self.get_state("last_help_time", {})
         last_times[user_id] = time.time()
         self.set_state("last_help_time", last_times)
         self.save_state()
-

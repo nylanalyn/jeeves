@@ -6,41 +6,41 @@ from pathlib import Path
 
 
 DEFAULT_THEME: Dict[str, Any] = {
-    "name": "haunted-hollow",
-    "background": "#0a0a0f",
-    "foreground": "#e0e0e0",
-    "accent": "#ff6b35",
-    "accent_text": "#0a0a0f",
-    "card_background": "#1a1a24",
-    "card_border": "#ff6b35",
-    "table_header": "#1f1f2e",
-    "table_stripe": "#15151f",
-    "link": "#ff8c42",
-    "link_hover": "#ffa552",
+    "name": "noir_november",
+    "background": "#070708",
+    "foreground": "#f2f2f2",
+    "accent": "#c5a880",
+    "accent_text": "#111113",
+    "card_background": "#121316",
+    "card_border": "#c5a880",
+    "table_header": "#1d1e22",
+    "table_stripe": "#151619",
+    "link": "#d8c3a5",
+    "link_hover": "#f1dcc1",
     "prestige_tiers": [
         {
             "max": 3,
-            "icon": "🎃",
-            "class": "tier-pumpkin",
-            "color": "#ff6b35",
+            "icon": "📜",
+            "class": "tier-casefile",
+            "color": "#c5a880",
             "repeat": 3,
             "banner": None,
         },
         {
             "max": 6,
-            "icon": "☠",
-            "class": "tier-skull",
-            "color": "#9d4edd",
+            "icon": "🔍",
+            "class": "tier-magnifier",
+            "color": "#f2f2f2",
             "repeat": 3,
-            "banner": "CURSED",
+            "banner": "shadow",
         },
         {
-            "max": 10,
-            "icon": "👑",
-            "class": "tier-crown",
-            "color": "#c084fc",
-            "repeat": 4,
-            "banner": "OVERLORD",
+            "max": None,
+            "icon": "🛡️",
+            "class": "tier-shield",
+            "color": "#ffd166",
+            "repeat": 2,
+            "banner": "badge",
         },
     ],
 }
@@ -80,7 +80,8 @@ class ThemeManager:
         """Get prestige tier information for a given prestige level."""
         # Iterate forward through tiers to find the first tier that fits
         for tier in self.theme["prestige_tiers"]:
-            if prestige <= tier["max"]:
+            max_val = tier.get("max")
+            if max_val is None or prestige <= max_val:
                 return tier
         # If prestige exceeds all tiers, return the highest tier
         return self.theme["prestige_tiers"][-1]

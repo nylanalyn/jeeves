@@ -35,14 +35,14 @@ class Intro(SimpleCommandModule):
         is_admin = self.bot.is_admin(event.source)
 
         if user_id in introduced_users and not is_admin:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but the introduction is for newcomers.")
+            self.safe_reply(connection, event, f"Already gave you the rundown, {self.bot.title_for(username)}. This brief is reserved for fresh faces.")
             return True
 
         intro_lines = [
-            "Greetings. I am Jeeves, the household's dutiful butler.",
-            "My services are enhanced if you set your preferences with `!gender <identity>` and `!location <city, country>`.",
-            "Common services include: `!weather`, `!time`, `!fortune`, and `!yt <query>`.",
-            "For a full list of my capabilities, please use the `!help` command."
+            "Name's Jeeves. I keep the lights on and the secrets filed in locked cabinets.",
+            "Tune the experience with `!gender <identity>` and `!location <city, country>` so I can tailor the briefing.",
+            "Need intel? Try `!weather`, `!time`, `!fortune`, or shake down the wires with `!yt <query>`.",
+            "If you want the full case file, ask `!help` and I'll slide it across the desk."
         ]
         
         if is_admin:
@@ -51,7 +51,7 @@ class Intro(SimpleCommandModule):
         else:
             for line in intro_lines:
                 self.safe_privmsg(username, line)
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent you my introduction privately.")
+            self.safe_reply(connection, event, f"Check your private line, {self.bot.title_for(username)}—the dossier's waiting there.")
 
         if not is_admin and user_id not in introduced_users:
             introduced_users.append(user_id)

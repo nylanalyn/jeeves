@@ -70,9 +70,25 @@ class Users(SimpleCommandModule):
             self.get_user_id(new_nick)
             return
 
+        # Check if the new nickname is already mapped to a DIFFERENT user
+        existing_user_id = nick_map.get(lower_new)
+        if existing_user_id and existing_user_id != user_id:
+            # Don't overwrite someone else's nickname mapping
+            self.log_debug(f"Nick change blocked: {old_nick} -> {new_nick}. '{new_nick}' already belongs to user {existing_user_id}")
+            # Still add it to this user's seen_nicks, but don't update the mapping
+            user_map = self.get_state("user_map", {})
+            user_profile = user_map.get(user_id)
+            if user_profile:
+                if lower_new not in user_profile["seen_nicks"]:
+                    user_profile["seen_nicks"].append(lower_new)
+                user_map[user_id] = user_profile
+                self.set_state("user_map", user_map)
+                self.save_state()
+            return
+
         # Link the new nick to the existing user ID
         nick_map[lower_new] = user_id
-        
+
         user_map = self.get_state("user_map", {})
         user_profile = user_map.get(user_id)
         if user_profile:

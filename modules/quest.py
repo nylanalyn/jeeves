@@ -1227,6 +1227,64 @@ class Quest(SimpleCommandModule):
                 profile_parts.append(f"Status: Injured ({', '.join(injury_strs)})")
 
         self.safe_reply(connection, event, " | ".join(profile_parts))
+
+        # Show full inventory
+        inventory = player.get("inventory", {})
+
+        # Build inventory display
+        items = []
+        if inventory.get("medkits", 0) > 0:
+            items.append(f"Medkits: {inventory['medkits']}")
+        if inventory.get("energy_potions", 0) > 0:
+            items.append(f"Energy Potions: {inventory['energy_potions']}")
+        if inventory.get("lucky_charms", 0) > 0:
+            items.append(f"Lucky Charms: {inventory['lucky_charms']}")
+        if inventory.get("armor_shards", 0) > 0:
+            items.append(f"Armor Shards: {inventory['armor_shards']}")
+        if inventory.get("xp_scrolls", 0) > 0:
+            items.append(f"XP Scrolls: {inventory['xp_scrolls']}")
+        if inventory.get(DUNGEON_REWARD_KEY, 0) > 0:
+            items.append(f"{DUNGEON_REWARD_NAME}s: {inventory[DUNGEON_REWARD_KEY]}")
+
+        if not items:
+            items_msg = "No items (try !quest search)"
+        else:
+            items_msg = ", ".join(items)
+
+        # Active effects
+        effects = []
+        for effect in player.get("active_effects", []):
+            if effect["type"] == "lucky_charm":
+                effects.append(f"Lucky Charm (+{effect.get('win_bonus', 0)}% win)")
+            elif effect["type"] == "armor_shard":
+                effects.append(f"Armor ({effect.get('remaining_fights', 0)} fights)")
+            elif effect["type"] == "xp_scroll":
+                effects.append("XP Scroll (next win)")
+            elif effect["type"] == "dungeon_relic":
+                charges = effect.get("remaining_auto_wins", 0)
+                suffix = "win" if charges == 1 else "wins"
+                effects.append(f"{DUNGEON_REWARD_NAME} ({charges} guaranteed {suffix})")
+
+        # Active injuries
+        injuries = []
+        if 'active_injuries' in player and player['active_injuries']:
+            for injury in player['active_injuries']:
+                try:
+                    expires_at = datetime.fromisoformat(injury['expires_at'])
+                    time_left = self._format_timedelta(expires_at)
+                    injuries.append(f"{injury['name']} ({time_left})")
+                except (ValueError, TypeError):
+                    injuries.append(injury['name'])
+
+        # Output inventory and status
+        self.safe_reply(connection, event, f"Inventory: {items_msg}")
+        if effects:
+            self.safe_reply(connection, event, f"Active Effects: {', '.join(effects)}")
+        if injuries:
+            self.safe_reply(connection, event, f"Injuries: {', '.join(injuries)}")
+        elif not effects:
+            self.safe_reply(connection, event, "Status: Healthy")
+
         return True
 
     def _handle_story(self, connection, event, username):
@@ -2744,21 +2802,12 @@ class Quest(SimpleCommandModule):
         return True
 
     def _cmd_inventory(self, connection, event, msg, username, match):
-        """Show player's medkits and injuries."""
+        """Show player's inventory items and active effects."""
         if not self.is_enabled(event.target):
             return False
 
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id, username)
-
-        # Check and clear expired injury
-        player, recovery_msg = self._check_and_clear_injury(player)
-        if recovery_msg:
-            self.safe_reply(connection, event, recovery_msg)
-            players_state = self.get_state("players", {})
-            players_state[user_id] = player
-            self.set_state("players", players_state)
-            self.save_state()
 
         title = self.bot.title_for(username)
         inventory = player.get("inventory", {})
@@ -2797,30 +2846,10 @@ class Quest(SimpleCommandModule):
                 suffix = "win" if charges == 1 else "wins"
                 effects.append(f"{DUNGEON_REWARD_NAME} ({charges} guaranteed {suffix})")
 
-        # Migrate old format
-        if 'active_injury' in player:
-            player['active_injuries'] = [player['active_injury']]
-            del player['active_injury']
-
-        # Active injuries
-        injuries = []
-        if 'active_injuries' in player and player['active_injuries']:
-            for injury in player['active_injuries']:
-                try:
-                    expires_at = datetime.fromisoformat(injury['expires_at'])
-                    time_left = self._format_timedelta(expires_at)
-                    injuries.append(f"{injury['name']} ({time_left})")
-                except (ValueError, TypeError):
-                    injuries.append(injury['name'])
-
         # Build final message
         self.safe_reply(connection, event, f"{title}'s Inventory: {items_msg}")
         if effects:
             self.safe_reply(connection, event, f"Active Effects: {', '.join(effects)}")
-        if injuries:
-            self.safe_reply(connection, event, f"Injuries: {', '.join(injuries)}")
-        elif not effects:
-            self.safe_reply(connection, event, "Status: Healthy")
 
         return True
 

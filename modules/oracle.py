@@ -141,8 +141,29 @@ class Oracle(SimpleCommandModule):
             error_msg = f"OpenAI API call failed: {e}\n{traceback.format_exc()}"
             self._record_error(error_msg)
             self.log_debug(error_msg)
-            self.safe_reply(connection, event, "My apologies, I seem to be having trouble with my higher cognitive functions at the moment.")
-        
+
+            # Provide more specific, butlery error messages based on the exception type
+            error_type = type(e).__name__
+            if "Timeout" in error_type or "timeout" in str(e).lower():
+                self.safe_reply(connection, event,
+                    "I do apologize, but it appears the network connection to my cognitive augmentation service is experiencing delays. "
+                    "Perhaps we might try again in a moment?")
+            elif "ConnectionError" in error_type or "connection" in str(e).lower():
+                self.safe_reply(connection, event,
+                    "Terribly sorry, but I seem to be unable to reach my external thought processors at present. "
+                    "The network appears to be having a spot of trouble.")
+            elif "RateLimitError" in error_type or "rate limit" in str(e).lower():
+                self.safe_reply(connection, event,
+                    "My apologies, but I appear to have overtaxed my cognitive facilities. "
+                    "I shall require a brief moment to recover my composure.")
+            elif "AuthenticationError" in error_type or "authentication" in str(e).lower():
+                self.safe_reply(connection, event,
+                    "Most embarrassing, but there seems to be an issue with my credentials. "
+                    "I shall have to inform my administrator.")
+            else:
+                self.safe_reply(connection, event,
+                    "My apologies, I seem to be having trouble with my higher cognitive functions at the moment.")
+
         return True
 
     def _cmd_reset(self, connection, event, msg, username, match):

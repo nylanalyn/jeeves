@@ -18,7 +18,7 @@ from . import quest_combat
 
 def load_content(quest_module) -> Dict[str, Any]:
     """Load quest content from JSON file."""
-    content_file = os.path.join("config", "quest_content.json")
+    content_file = "quest_content.json"
     try:
         with open(content_file, "r") as f:
             return json.load(f)
@@ -32,7 +32,7 @@ def load_content(quest_module) -> Dict[str, Any]:
 
 def load_challenge_paths(quest_module) -> Dict[str, Any]:
     """Load challenge paths configuration."""
-    paths_file = os.path.join("config", "challenge_paths.json")
+    paths_file = "challenge_paths.json"
     try:
         with open(paths_file, "r") as f:
             return json.load(f)
@@ -45,7 +45,7 @@ def load_challenge_paths(quest_module) -> Dict[str, Any]:
 
 def save_challenge_paths(quest_module):
     """Save challenge paths configuration."""
-    paths_file = os.path.join("config", "challenge_paths.json")
+    paths_file = "challenge_paths.json"
     try:
         with open(paths_file, "w") as f:
             json.dump(quest_module.challenge_paths, f, indent=2)

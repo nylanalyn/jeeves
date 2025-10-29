@@ -84,6 +84,39 @@ def load_challenge_paths(paths_file: Path) -> Dict[str, Any]:
         return {"paths": {}, "active_path": None}
 
 
+def load_mob_cooldowns(games_path: Path) -> Dict[str, float]:
+    """Load mob cooldown timestamps from games.json.
+
+    Returns:
+        Dict mapping channel names to cooldown expiry timestamps.
+    """
+    if not games_path.exists():
+        return {}
+
+    try:
+        with open(games_path, 'r') as f:
+            data = json.load(f)
+            if not isinstance(data, dict):
+                return {}
+
+            # Quest data is nested under modules.quest
+            modules = data.get("modules", {})
+            if not isinstance(modules, dict):
+                return {}
+
+            quest_state = modules.get("quest", {})
+            if not isinstance(quest_state, dict):
+                return {}
+
+            cooldowns = quest_state.get("mob_cooldowns", {})
+            if not isinstance(cooldowns, dict):
+                return {}
+
+            return cooldowns
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
 def format_number(num: int) -> str:
     """Format large numbers with commas."""
     return f"{num:,}"
@@ -113,13 +146,21 @@ def calculate_win_rate(wins: int, losses: int) -> str:
 def format_cooldown_timestamp(timestamp: float) -> str:
     """Format cooldown timestamp for display."""
     import time
-    from datetime import datetime, timezone
 
     if timestamp <= time.time():
         return "Ready"
 
-    dt = datetime.fromtimestamp(timestamp, timezone.utc)
-    return dt.strftime("%H:%M:%S")
+    remaining = int(timestamp - time.time())
+    hours = remaining // 3600
+    minutes = (remaining % 3600) // 60
+    seconds = remaining % 60
+
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    elif minutes > 0:
+        return f"{minutes}m {seconds}s"
+    else:
+        return f"{seconds}s"
 
 
 def get_rank_suffix(rank: int) -> str:

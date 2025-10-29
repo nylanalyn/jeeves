@@ -221,6 +221,7 @@ class Quest(SimpleCommandModule):
         self.set_state("active_mob", self.get_state("active_mob", None))
         self.set_state("player_classes", self.get_state("player_classes", {}))
         self.set_state("legend_bosses", self.get_state("legend_bosses", {}))
+        self.set_state("mob_cooldowns", self.get_state("mob_cooldowns", {}))  # Per-channel cooldown timestamps
         self.mob_lock = threading.Lock()
         self.save_state()
         self._is_loaded = False
@@ -1842,6 +1843,12 @@ class Quest(SimpleCommandModule):
             if not self.check_rate_limit(f"mob_spawn_{event.target}", mob_cooldown):
                 self.safe_reply(connection, event, "A mob encounter was recently completed. Please wait before summoning another.")
                 return True
+
+            # Store cooldown expiry timestamp for this channel (for web display)
+            mob_cooldowns = self.get_state("mob_cooldowns", {})
+            mob_cooldowns[event.target] = time.time() + mob_cooldown
+            self.set_state("mob_cooldowns", mob_cooldowns)
+
             active_mob = self.get_state("active_mob")
             if active_mob:
                 self.safe_reply(connection, event, "A mob encounter is already active! Use !quest join (or !join) to participate.")

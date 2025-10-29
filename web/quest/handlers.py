@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .templates import TemplateEngine
 from .themes import ThemeManager
-from .utils import sanitize, validate_search_term, load_quest_state, load_challenge_paths, sort_players_by_prestige
+from .utils import sanitize, validate_search_term, load_quest_state, load_challenge_paths, load_mob_cooldowns, sort_players_by_prestige
 
 
 class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -26,6 +26,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         self.template_engine = TemplateEngine(self.theme_manager)
         self.players, self.classes = self._load_state()
         self.challenge_info = load_challenge_paths(content_path / "challenge_paths.json")
+        self.mob_cooldowns = load_mob_cooldowns(games_path)
         # Now call parent init which will handle the request
         super().__init__(*args, **kwargs)
 
@@ -37,6 +38,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         """Reload quest state."""
         self.players, self.classes = self._load_state()
         self.challenge_info = load_challenge_paths(self.content_path / "challenge_paths.json")
+        self.mob_cooldowns = load_mob_cooldowns(self.games_path)
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003 pylint: disable=redefined-builtin
         """Override to reduce log noise."""
@@ -93,7 +95,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         sorted_players = sort_players_by_prestige(filtered_players)
 
         content = self.template_engine.render_leaderboard(
-            sorted_players, self.classes, search_term, self.challenge_info
+            sorted_players, self.classes, search_term, self.challenge_info, self.mob_cooldowns
         )
 
         html = self.template_engine.render_page(

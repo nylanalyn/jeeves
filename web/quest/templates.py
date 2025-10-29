@@ -2,8 +2,9 @@
 # HTML template generation for quest web UI
 
 from typing import Dict, Any, List, Optional
-from .utils import sanitize, get_rank_suffix, get_medal_emoji, format_xp, calculate_win_rate, format_streak, calculate_level_progress, get_player_display_name
+from .utils import sanitize, get_rank_suffix, get_medal_emoji, format_xp, calculate_win_rate, format_streak, calculate_level_progress, get_player_display_name, format_cooldown_timestamp
 from .themes import ThemeManager
+import time
 
 
 class TemplateEngine:
@@ -199,6 +200,55 @@ class TemplateEngine:
             font-weight: bold;
             margin-bottom: 5px;
             color: #9d4edd;
+        }}
+
+        .cooldown-section {{
+            padding: 20px;
+        }}
+
+        .cooldown-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }}
+
+        .cooldown-card {{
+            background: var(--table_stripe);
+            border: 1px solid var(--card_border);
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }}
+
+        .cooldown-card h4 {{
+            margin-bottom: 8px;
+            color: var(--foreground);
+            font-size: 1em;
+        }}
+
+        .cooldown-value {{
+            font-size: 1.3em;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }}
+
+        .cooldown-ready {{
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }}
+
+        .cooldown-ready .cooldown-value {{
+            color: #10b981;
+        }}
+
+        .cooldown-waiting {{
+            border-color: #f59e0b;
+            background: rgba(245, 158, 11, 0.1);
+        }}
+
+        .cooldown-waiting .cooldown-value {{
+            color: #f59e0b;
         }}
 
         .card {{
@@ -413,7 +463,8 @@ class TemplateEngine:
 </html>"""
 
     def render_leaderboard(self, players: List[Dict[str, Any]], classes: Dict[str, str],
-                          search_term: str = "", challenge_info: Optional[Dict[str, Any]] = None) -> str:
+                          search_term: str = "", challenge_info: Optional[Dict[str, Any]] = None,
+                          mob_cooldowns: Optional[Dict[str, float]] = None) -> str:
         """Render the leaderboard view."""
         content = ""
 
@@ -447,6 +498,29 @@ class TemplateEngine:
             </div>
         </div>
         """
+
+        # Mob cooldowns
+        if mob_cooldowns:
+            cooldown_cards = ""
+            for channel, timestamp in mob_cooldowns.items():
+                cooldown_status = format_cooldown_timestamp(timestamp)
+                is_ready = timestamp <= time.time()
+                status_class = "cooldown-ready" if is_ready else "cooldown-waiting"
+                cooldown_cards += f"""
+                <div class="cooldown-card {status_class}">
+                    <h4>{sanitize(channel)}</h4>
+                    <div class="cooldown-value">{'✓' if is_ready else '⏳'} {cooldown_status}</div>
+                </div>
+                """
+
+            content += f"""
+            <div class="card cooldown-section">
+                <h3 style="margin-bottom: 15px; color: var(--accent);">🎯 Mob Encounter Cooldowns</h3>
+                <div class="cooldown-grid">
+                    {cooldown_cards}
+                </div>
+            </div>
+            """
 
         # Challenge info
         if challenge_info and challenge_info.get("active_path"):

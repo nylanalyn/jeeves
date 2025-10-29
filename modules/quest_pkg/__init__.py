@@ -125,6 +125,21 @@ class Quest(SimpleCommandModule):
                               admin_only=True, description="List all available challenge paths")
         self.register_command(r"^\s*!quest\s+challenge\s+reload\s*$", self._cmd_challenge_reload, name="challenge_reload",
                               admin_only=True, description="Reload challenge paths from file")
+
+        # Admin commands for abilities
+        self.register_command(r"^\s*!quest\s+admin\s+ability\s+grant\s+(\S+)\s+(\S+)\s*$", self._cmd_admin_ability_grant, name="admin_ability_grant",
+                              admin_only=True, description="Grant an ability to a player")
+        self.register_command(r"^\s*!quest\s+admin\s+ability\s+revoke\s+(\S+)\s+(\S+)\s*$", self._cmd_admin_ability_revoke, name="admin_ability_revoke",
+                              admin_only=True, description="Revoke an ability from a player")
+        self.register_command(r"^\s*!quest\s+admin\s+ability\s+list\s+(\S+)\s*$", self._cmd_admin_ability_list, name="admin_ability_list",
+                              admin_only=True, description="List a player's unlocked abilities")
+
+        # Admin commands for challenge paths
+        self.register_command(r"^\s*!quest\s+admin\s+path\s+set\s+(\S+)\s+(\S+)\s*$", self._cmd_admin_path_set, name="admin_path_set",
+                              admin_only=True, description="Set a player's active challenge path")
+        self.register_command(r"^\s*!quest\s+admin\s+path\s+clear\s+(\S+)\s*$", self._cmd_admin_path_clear, name="admin_path_clear",
+                              admin_only=True, description="Clear a player's challenge path")
+
         self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_quest_transcend, name="quest_transcend",
                               description="Transcend beyond prestige to become a legend.")
         self.register_command(r"^\s*!equip\s*$", self._cmd_dungeon_equip, name="dungeon_equip",
@@ -330,4 +345,204 @@ class Quest(SimpleCommandModule):
             return False
         self.challenge_paths = quest_core.load_challenge_paths(self)
         self.safe_reply(connection, event, "Challenge paths reloaded from challenge_paths.json")
+        return True
+
+    # ===== ADMIN COMMANDS FOR ABILITIES =====
+
+    def _cmd_admin_ability_grant(self, connection, event, msg, username, match):
+        """Grant an ability to a player."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+        ability_id = match.group(2)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Check if ability exists
+        abilities = self.challenge_paths.get("abilities", {})
+        if ability_id not in abilities:
+            self.safe_reply(connection, event, f"Ability '{ability_id}' not found. Available: {', '.join(abilities.keys())}")
+            return True
+
+        # Get or create player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+        player.setdefault("unlocked_abilities", [])
+
+        # Grant ability
+        if ability_id in player["unlocked_abilities"]:
+            self.safe_reply(connection, event, f"{target_nick} already has the {ability_id} ability.")
+            return True
+
+        player["unlocked_abilities"].append(ability_id)
+        self.set_state("players", players)
+        self.save_state()
+
+        ability_name = abilities[ability_id].get("name", ability_id)
+        self.safe_reply(connection, event, f"Granted {ability_name} ability to {target_nick}!")
+        return True
+
+    def _cmd_admin_ability_revoke(self, connection, event, msg, username, match):
+        """Revoke an ability from a player."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+        ability_id = match.group(2)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+        unlocked = player.get("unlocked_abilities", [])
+
+        # Revoke ability
+        if ability_id not in unlocked:
+            self.safe_reply(connection, event, f"{target_nick} doesn't have the {ability_id} ability.")
+            return True
+
+        unlocked.remove(ability_id)
+        player["unlocked_abilities"] = unlocked
+        self.set_state("players", players)
+        self.save_state()
+
+        abilities = self.challenge_paths.get("abilities", {})
+        ability_name = abilities.get(ability_id, {}).get("name", ability_id)
+        self.safe_reply(connection, event, f"Revoked {ability_name} ability from {target_nick}.")
+        return True
+
+    def _cmd_admin_ability_list(self, connection, event, msg, username, match):
+        """List a player's unlocked abilities."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+        unlocked = player.get("unlocked_abilities", [])
+
+        if not unlocked:
+            self.safe_reply(connection, event, f"{target_nick} has no unlocked abilities.")
+            return True
+
+        abilities = self.challenge_paths.get("abilities", {})
+        ability_names = [abilities.get(aid, {}).get("name", aid) for aid in unlocked]
+        self.safe_reply(connection, event, f"{target_nick}'s abilities: {', '.join(ability_names)}")
+        return True
+
+    # ===== ADMIN COMMANDS FOR CHALLENGE PATHS =====
+
+    def _cmd_admin_path_set(self, connection, event, msg, username, match):
+        """Set a player's active challenge path."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+        path_id = match.group(2)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Check if path exists
+        paths = self.challenge_paths.get("paths", {})
+        if path_id not in paths:
+            self.safe_reply(connection, event, f"Challenge path '{path_id}' not found. Available: {', '.join(paths.keys())}")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+        old_path = player.get("challenge_path")
+        player["challenge_path"] = path_id
+
+        # Reset challenge stats
+        player["challenge_stats"] = {
+            "medkits_used_this_prestige": 0
+        }
+
+        self.set_state("players", players)
+        self.save_state()
+
+        path_name = paths[path_id].get("name", path_id)
+        if old_path:
+            old_name = paths.get(old_path, {}).get("name", old_path)
+            self.safe_reply(connection, event, f"Changed {target_nick}'s challenge path from {old_name} to {path_name}!")
+        else:
+            self.safe_reply(connection, event, f"Set {target_nick}'s challenge path to {path_name}!")
+        return True
+
+    def _cmd_admin_path_clear(self, connection, event, msg, username, match):
+        """Clear a player's challenge path."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+        old_path = player.get("challenge_path")
+
+        if not old_path:
+            self.safe_reply(connection, event, f"{target_nick} is not on a challenge path.")
+            return True
+
+        player["challenge_path"] = None
+        player["challenge_stats"] = {
+            "medkits_used_this_prestige": 0
+        }
+
+        self.set_state("players", players)
+        self.save_state()
+
+        paths = self.challenge_paths.get("paths", {})
+        old_name = paths.get(old_path, {}).get("name", old_path)
+        self.safe_reply(connection, event, f"Cleared {target_nick}'s challenge path ({old_name}).")
         return True

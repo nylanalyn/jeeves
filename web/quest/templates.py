@@ -106,7 +106,7 @@ class TemplateEngine:
             font-style: italic;
         }}
 
-        .spooky-decoration {{
+        .noir-decoration {{
             font-size: 1.5em;
             animation: float 3s ease-in-out infinite;
             display: inline-block;
@@ -267,7 +267,7 @@ class TemplateEngine:
         }}
 
         .card::before {{
-            content: "🕸️";
+            content: "🔍";
             position: absolute;
             top: -5px;
             right: -5px;
@@ -443,8 +443,8 @@ class TemplateEngine:
 <body>
     <div class="container">
         <div class="header">
-            <h1><span class="spooky-decoration">🦇</span>Jeeves Quest: Haunted Hollow<span class="spooky-decoration">🦇</span></h1>
-            <p>🎃 Venture into the cursed digital realm... if you dare 👻</p>
+            <h1><span class="noir-decoration">🕵️</span>Jeeves Quest: Case Files<span class="noir-decoration">🔍</span></h1>
+            <p>🎩 Investigate the digital mysteries... sleuth awaits 📜</p>
         </div>
 
         <nav class="nav">
@@ -455,8 +455,8 @@ class TemplateEngine:
         {content}
 
         <div class="footer">
-            <p>👻 Powered by Jeeves IRC Bot | Quest System v6.0 🎃</p>
-            <p style="font-size: 0.9em; opacity: 0.6; margin-top: 5px;">Beware the creatures of the night...</p>
+            <p>🕵️ Powered by Jeeves IRC Bot | Quest System v6.0 📜</p>
+            <p style="font-size: 0.9em; opacity: 0.6; margin-top: 5px;">Every mystery has a solution...</p>
         </div>
     </div>
 </body>

@@ -39,7 +39,11 @@
       "Bash(if [ -f debug.log ])",
       "Bash(then tail -100 debug.log)",
       "Bash(else echo \"No debug.log found\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(git branch:*)",
+      "Bash(git reset:*)",
+      "Bash(git worktree:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

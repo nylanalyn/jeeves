@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(git checkout -b challenge-paths)",
+      "Bash(git add -A)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd challenge path system for quest prestige\n\n- Created challenge_paths.json for configuring special prestige paths\n- Added admin commands: !quest challenge activate/deactivate/list/reload\n- Players at level 20 can use !quest prestige challenge\n- Challenge paths stored in player state\n- Profile display shows active challenge path\n- System ready for custom challenge configurations\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git checkout config-refactor)",
+      "Bash(git checkout challenge-paths)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd abilities system for challenge path rewards\n\n- Added abilities definitions in challenge_paths.json (doctor, bloodlust, rally)\n- Implemented !quest ability command to list/use unlocked abilities\n- Added ability cooldown tracking with expiry times\n- Challenge completion tracking at level 20\n- Track medkit usage per prestige for challenge validation\n- Automatic ability unlock on challenge completion\n- Example abilities:\n  * Doctor: Heal all injuries in channel (weekly cooldown)\n  * Rally: Restore 5 energy to all players (48h cooldown)\n  * Bloodlust: Party-wide win chance buff (72h cooldown)\n- Reset challenge stats on new prestige\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nUpdate web UI to display challenge paths and abilities\n\n- Load challenge_paths.json in quest_web.py\n- Show active challenge path on player profiles\n- Display medkit usage stats for challenge tracking\n- Show unlocked abilities table with cooldowns\n- Abilities display: name, effect, cooldown duration, status\n- Challenge path display integrated with prestige info\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(curl -s http://127.0.0.1:8081/)",
+      "Bash(git add quest_web.py)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd quest command reference to web UI\n\n- Added collapsible commands section in header\n- Includes all main quest commands and short aliases\n- Commands displayed in responsive grid layout\n- Show/hide toggle for better UX\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git cherry-pick f4c36af)",
+      "Bash(curl -s http://127.0.0.1:8082/)",
+      "Bash(git check-ignore -v config/config.yaml)",
+      "Bash(git add modules/quest.py config.yaml.default)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd longer timer for random boss encounters\n\n- Added boss_join_window_seconds config (300s = 5 minutes)\n- Random boss encounters now use 5 minute timer vs 60s for !mob\n- Updated announcement to show minutes instead of seconds\n- Gives players more time to join when boss spawns randomly\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git cherry-pick ffb289c)",
+      "Bash(git cherry-pick c851c95)",
+      "Bash(git stash push -m \"hunt double spawn fix\")",
+      "Bash(git stash pop)",
+      "Bash(git add modules/hunt.py)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nFix hunt module double animal spawn bug\n\n- _spawn_animal now returns early if active_animal already exists\n- Reschedules next spawn instead of overwriting existing animal\n- Prevents duplicate announcements and lost animals\n- Logged in debug.log when spawn is skipped\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nImprove hunt module scheduling to prevent duplicate spawns\n\n- Added logging to show how many pending jobs are cleared\n- Log in _schedule_next_spawn shows when old jobs exist\n- Log in _spawn_animal shows race condition detection\n- This helps diagnose the triple-spawn issue seen at 14:36:15\n- Better visibility into scheduler state during execution\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git cherry-pick d8bdbb8)",
+      "Bash(git branch -D main)",
+      "Bash(git branch -m challenge-paths main)",
+      "Bash(git push origin main --force-with-lease)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(git checkout:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)",
+      "Bash(if [ -f debug.log ])",
+      "Bash(then tail -100 debug.log)",
+      "Bash(else echo \"No debug.log found\")",
+      "Bash(fi)"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "sandbox": {
+    "autoAllowBashIfSandboxed": true,
+    "enabled": true
+  }
+}

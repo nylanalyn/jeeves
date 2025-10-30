@@ -410,14 +410,163 @@ def handle_search(quest_module, connection, event, username, args):
 
 
 def handle_use_item(quest_module, connection, event, username, args):
-    """Handle using items from inventory (simplified for now - full implementation in main module)."""
+    """Handle using items from inventory."""
     if not args:
         quest_module.safe_reply(connection, event, "Usage: !quest use <item> - Available items: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
         return True
 
-    # This is a placeholder - the full implementation is in the original quest.py
-    # We'll need to keep this in the main __init__.py file due to its complexity
-    quest_module.safe_reply(connection, event, "Item usage functionality is being refactored. Please use the main quest module.")
+    item_name = args[0].lower()
+    user_id = quest_module.bot.get_user_id(username)
+    player = quest_progression.get_player(quest_module, user_id, username)
+    inventory = player.get("inventory", {})
+
+    # Map user-friendly names to inventory keys
+    item_map = {
+        "medkit": "medkits",
+        "energy_potion": "energy_potions",
+        "potion": "energy_potions",
+        "lucky_charm": "lucky_charms",
+        "charm": "lucky_charms",
+        "armor_shard": "armor_shards",
+        "armor": "armor_shards",
+        "xp_scroll": "xp_scrolls",
+        "scroll": "xp_scrolls",
+        "dungeon_relic": DUNGEON_REWARD_KEY,
+        "relic": DUNGEON_REWARD_KEY
+    }
+
+    if item_name not in item_map:
+        quest_module.safe_reply(connection, event, f"Unknown item: {item_name}. Available: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
+        return True
+
+    inventory_key = item_map[item_name]
+    if inventory.get(inventory_key, 0) < 1:
+        quest_module.safe_reply(connection, event, f"You don't have any {item_name.replace('_', ' ')}s!")
+        return True
+
+    # Ensure active effects list exists for legacy players
+    player.setdefault("active_effects", [])
+
+    if inventory_key == "medkits":
+        # Medkit heals the oldest injury first
+        if "active_injury" in player:
+            player["active_injuries"] = [player["active_injury"]]
+            del player["active_injury"]
+
+        injuries = player.get("active_injuries", [])
+        if not injuries:
+            quest_module.safe_reply(connection, event, "You are not injured! Save your medkit for when you need it.")
+            return True
+
+        player["inventory"]["medkits"] -= 1
+        injury_healed = injuries.pop(0)
+        quest_module.safe_reply(
+            connection,
+            event,
+            f"You use a medkit to heal your {injury_healed['name']}. You feel much better! ({player['inventory']['medkits']} medkits remaining)"
+        )
+
+    elif inventory_key == "energy_potions":
+        max_energy = quest_progression.get_player_max_energy(quest_module, player, event.target)
+        if player.get("energy", 0) >= max_energy:
+            quest_module.safe_reply(connection, event, "Your energy is already full! Save the potion for later.")
+            return True
+
+        energy_restore = random.randint(2, 4)
+        player["inventory"]["energy_potions"] -= 1
+        old_energy = player.get("energy", 0)
+        player["energy"] = min(max_energy, old_energy + energy_restore)
+        actual_restore = player["energy"] - old_energy
+        quest_module.safe_reply(
+            connection,
+            event,
+            f"You drink the energy potion and feel refreshed! +{actual_restore} energy ({player['energy']}/{max_energy}). ({player['inventory']['energy_potions']} potions remaining)"
+        )
+
+    elif inventory_key == "lucky_charms":
+        # Lucky charm boosts next fight win chance
+        if any(effect.get("type") == "lucky_charm" for effect in player["active_effects"]):
+            quest_module.safe_reply(connection, event, "You already have a lucky charm active! The effects don't stack.")
+            return True
+
+        player["inventory"]["lucky_charms"] -= 1
+        win_bonus = random.randint(10, 20)
+        player["active_effects"].append({
+            "type": "lucky_charm",
+            "win_bonus": win_bonus,
+            "expires": "next_fight"
+        })
+        quest_module.safe_reply(
+            connection,
+            event,
+            f"You activate the lucky charm! Your next fight will have +{win_bonus}% win chance. ({player['inventory']['lucky_charms']} charms remaining)"
+        )
+
+    elif inventory_key == "armor_shards":
+        # Armor shard reduces injury chance for the next three fights
+        if any(effect.get("type") == "armor_shard" for effect in player["active_effects"]):
+            quest_module.safe_reply(connection, event, "You already have armor protection active! The effects don't stack.")
+            return True
+
+        player["inventory"]["armor_shards"] -= 1
+        player["active_effects"].append({
+            "type": "armor_shard",
+            "injury_reduction": 0.30,
+            "remaining_fights": 3
+        })
+        quest_module.safe_reply(
+            connection,
+            event,
+            f"You equip the armor shard! Injury chance reduced by 30% for the next 3 fights. ({player['inventory']['armor_shards']} shards remaining)"
+        )
+
+    elif inventory_key == "xp_scrolls":
+        # XP scroll boosts XP on next victory
+        if any(effect.get("type") == "xp_scroll" for effect in player["active_effects"]):
+            quest_module.safe_reply(connection, event, "You already have an XP scroll active! The effects don't stack.")
+            return True
+
+        player["inventory"]["xp_scrolls"] -= 1
+        player["active_effects"].append({
+            "type": "xp_scroll",
+            "xp_multiplier": 1.5,
+            "expires": "next_win"
+        })
+        quest_module.safe_reply(
+            connection,
+            event,
+            f"You read the XP scroll! Your next victory will grant 1.5x XP. ({player['inventory']['xp_scrolls']} scrolls remaining)"
+        )
+
+    elif inventory_key == DUNGEON_REWARD_KEY:
+        # Mythic relic guarantees upcoming victories
+        player["inventory"][DUNGEON_REWARD_KEY] -= 1
+        existing = next((eff for eff in player["active_effects"] if eff.get("type") == "dungeon_relic"), None)
+        if existing:
+            existing["remaining_auto_wins"] = existing.get("remaining_auto_wins", 0) + DUNGEON_REWARD_CHARGES
+            existing.pop("triggered_this_fight", None)
+            total_charges = existing["remaining_auto_wins"]
+            quest_module.safe_reply(
+                connection,
+                event,
+                f"The {DUNGEON_REWARD_NAME} flares brighter! You now have {total_charges} guaranteed solo quest victories banked."
+            )
+        else:
+            player["active_effects"].append({
+                "type": "dungeon_relic",
+                "remaining_auto_wins": DUNGEON_REWARD_CHARGES
+            })
+            quest_module.safe_reply(
+                connection,
+                event,
+                f"The {DUNGEON_REWARD_NAME} hums with power. Your next {DUNGEON_REWARD_CHARGES} solo quests (including !dungeon rooms) are automatic victories."
+            )
+
+    # Persist player changes
+    players_state = quest_module.get_state("players", {})
+    players_state[user_id] = player
+    quest_module.set_state("players", players_state)
+    quest_module.save_state()
     return True
 
 

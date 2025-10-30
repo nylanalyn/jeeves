@@ -435,3 +435,142 @@ def use_ability(quest_module, connection, event, username, user_id, player, abil
     # We'll need to keep this in the main __init__.py file due to its complexity
     quest_module.safe_reply(connection, event, "Ability system is being refactored. Please use the main quest module.")
     return True
+
+
+def handle_medkit(quest_module, connection, event, username, target_arg):
+    """Handle medkit usage - heal yourself or another player."""
+    user_id = quest_module.bot.get_user_id(username)
+    player = quest_progression.get_player(quest_module, user_id, username)
+
+    # Check if player has medkits
+    medkit_count = player.get("inventory", {}).get("medkits", 0)
+    if medkit_count < 1:
+        quest_module.safe_reply(connection, event, f"You don't have any medkits, {quest_module.bot.title_for(username)}. Try !quest search to find one!")
+        return True
+
+    # Determine target
+    if not target_arg:
+        # Self-heal
+        return _medkit_self_heal(quest_module, connection, event, username, user_id, player)
+    else:
+        # Heal another player
+        return _medkit_heal_other(quest_module, connection, event, username, user_id, player, target_arg)
+
+
+def _medkit_self_heal(quest_module, connection, event, username, user_id, player):
+    """Use medkit on self."""
+    # Migrate old format
+    if 'active_injury' in player:
+        player['active_injuries'] = [player['active_injury']]
+        del player['active_injury']
+
+    if 'active_injuries' not in player or not player['active_injuries']:
+        quest_module.safe_reply(connection, event, f"You're not injured, {quest_module.bot.title_for(username)}!")
+        return True
+
+    injury_names = [inj['name'] for inj in player['active_injuries']]
+    injury_count = len(injury_names)
+
+    # Remove all injuries
+    player['active_injuries'] = []
+
+    # Deduct medkit
+    player["inventory"]["medkits"] -= 1
+
+    # Track medkit usage for challenge paths
+    if "challenge_stats" not in player:
+        player["challenge_stats"] = {}
+    player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
+
+    # Grant partial XP
+    base_xp = quest_module.get_config_value("base_xp_reward", event.target, default=50)
+    self_heal_multiplier = quest_module.get_config_value("medic_quests.self_heal_xp_multiplier", event.target, default=0.75)
+    xp_reward = int(base_xp * self_heal_multiplier)
+
+    xp_messages = []
+    for msg in quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=False, is_crit=False):
+        xp_messages.append(msg)
+
+    # Save state
+    players_state = quest_module.get_state("players", {})
+    players_state[user_id] = player
+    quest_module.set_state("players", players_state)
+    quest_module.save_state()
+
+    if injury_count == 1:
+        response = f"{quest_module.bot.title_for(username)} uses a medkit and recovers from {injury_names[0]}! (+{xp_reward} XP)"
+    else:
+        response = f"{quest_module.bot.title_for(username)} uses a medkit and recovers from all injuries ({', '.join(injury_names)})! (+{xp_reward} XP)"
+
+    if xp_messages:
+        response += " " + " ".join(xp_messages)
+
+    quest_module.safe_reply(connection, event, response)
+    return True
+
+
+def _medkit_heal_other(quest_module, connection, event, username, user_id, player, target_nick):
+    """Use medkit on another player."""
+    target_id = quest_module.bot.get_user_id(target_nick)
+    target_player = quest_progression.get_player(quest_module, target_id, target_nick)
+
+    # Check if target is on a no-medkit challenge path
+    target_challenge_path = target_player.get("challenge_path")
+    if target_challenge_path:
+        path_data = quest_module.challenge_paths.get("paths", {}).get(target_challenge_path, {})
+        completion = path_data.get("completion_conditions", {})
+        if completion.get("no_medkits_used"):
+            path_name = path_data.get("name", target_challenge_path)
+            quest_module.safe_reply(connection, event, f"{target_nick} is on the {path_name} challenge and cannot be healed with medkits!")
+            return True
+
+    # Migrate old format
+    if 'active_injury' in target_player:
+        target_player['active_injuries'] = [target_player['active_injury']]
+        del target_player['active_injury']
+
+    # Check if target is injured
+    if 'active_injuries' not in target_player or not target_player['active_injuries']:
+        quest_module.safe_reply(connection, event, f"{target_nick} is not injured!")
+        return True
+
+    injury_names = [inj['name'] for inj in target_player['active_injuries']]
+    injury_count = len(injury_names)
+
+    # Remove all target's injuries
+    target_player['active_injuries'] = []
+
+    # Deduct medkit from healer
+    player["inventory"]["medkits"] -= 1
+
+    # Track medkit usage for challenge paths
+    if "challenge_stats" not in player:
+        player["challenge_stats"] = {}
+    player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
+
+    # Grant MASSIVE XP to healer
+    base_xp = quest_module.get_config_value("base_xp_reward", event.target, default=50)
+    altruistic_multiplier = quest_module.get_config_value("medic_quests.altruistic_heal_xp_multiplier", event.target, default=3.0)
+    xp_reward = int(base_xp * altruistic_multiplier)
+
+    xp_messages = []
+    for msg in quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=True, is_crit=False):
+        xp_messages.append(msg)
+
+    # Save both players
+    players_state = quest_module.get_state("players", {})
+    players_state[user_id] = player
+    players_state[target_id] = target_player
+    quest_module.set_state("players", players_state)
+    quest_module.save_state()
+
+    if injury_count == 1:
+        response = f"{quest_module.bot.title_for(username)} uses a medkit to heal {target_nick}'s {injury_names[0]}! Such selflessness is rewarded with +{xp_reward} XP!"
+    else:
+        response = f"{quest_module.bot.title_for(username)} uses a medkit to heal all of {target_nick}'s injuries ({', '.join(injury_names)})! Such selflessness is rewarded with +{xp_reward} XP!"
+
+    if xp_messages:
+        response += " " + " ".join(xp_messages)
+
+    quest_module.safe_reply(connection, event, response)
+    return True

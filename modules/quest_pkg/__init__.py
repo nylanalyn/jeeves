@@ -283,9 +283,11 @@ class Quest(SimpleCommandModule):
         return quest_combat.close_mob_window(self)
 
     def _cmd_medkit(self, connection, event, msg, username, match):
-        # Placeholder - full implementation needed
-        self.safe_reply(connection, event, "Medkit functionality being refactored.")
-        return True
+        """Use a medkit to heal yourself or another player."""
+        if not self.is_enabled(event.target):
+            return False
+        target_arg = (match.group(1) or "").strip() if match else ""
+        return quest_core.handle_medkit(self, connection, event, username, target_arg)
 
     def _cmd_inventory(self, connection, event, msg, username, match):
         return quest_display.cmd_inventory(self, connection, event, msg, username, match)

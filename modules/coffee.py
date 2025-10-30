@@ -67,8 +67,8 @@ class Coffee(SimpleCommandModule):
         # Fetch configuration values dynamically for the current channel
         beverage_limit = self.get_config_value("beverage_limit", channel, 2)
         limit_reset_hours = self.get_config_value("limit_reset_hours", channel, 1)
-        limit_message = self.get_config_value("limit_message", channel, "Perhaps that is enough beverages for now, {title}.")
-        force_messages = self.get_config_value("force_messages", channel, ["Very well, {title}. If you insist."])
+        limit_message = self.get_config_value("limit_message", channel, "Easy there, {title}. You've already had your fill.")
+        force_messages = self.get_config_value("force_messages", channel, ["If that's your play, {title}."])
 
         user_counts = self.get_state("user_beverage_counts", {})
         user_data = user_counts.get(user_id, {"count": 0, "timestamp": 0})
@@ -85,19 +85,19 @@ class Coffee(SimpleCommandModule):
 
         if 5 <= local_hour < 12:
             drink = random.choice(self.COFFEE_DRINKS)
-            response = f"At once, {title}. I have prepared {drink} for you."
+            response = f"The sun's barely up, {title}. Here's {drink} to keep you sharp."
         elif 12 <= local_hour < 17:
             if force_flag:
-                response = f"{random.choice(force_messages).format(title=title)} I shall prepare {random.choice(self.COFFEE_DRINKS)}."
+                response = f"{random.choice(force_messages).format(title=title)} One shot of {random.choice(self.COFFEE_DRINKS)} coming your way."
             else:
                 drink = random.choice(self.TEA_DRINKS)
-                response = f"It is getting a little late for coffee, {title}. Might I suggest {drink} instead?"
+                response = f"Midday calls for something smoother, {title}. Try {drink} while you work the next lead."
         else:
             if force_flag:
-                response = f"{random.choice(force_messages).format(title=title)} I shall prepare {random.choice(self.COFFEE_DRINKS)}."
+                response = f"{random.choice(force_messages).format(title=title)} I'll brew {random.choice(self.COFFEE_DRINKS)} and keep the pot quiet."
             else:
                 drink = random.choice(self.EVENING_DRINKS)
-                response = f"{title}, I do worry about your sleep schedule. Perhaps {drink} would be more suitable."
+                response = f"Night's getting long, {title}. {drink} will calm the jitters better than jet fuel."
 
         self.safe_reply(connection, event, response)
         

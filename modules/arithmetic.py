@@ -62,7 +62,7 @@ class Arithmetic(SimpleCommandModule):
             self.set_state("calculations_performed", self.get_state("calculations_performed", 0) + 1)
 
             if is_reliable:
-                response = f"If my calculations are correct, {self.bot.title_for(username)}, the answer is {result}."
+                response = f"I scribbled the math on the back of a rain-soaked napkin, {self.bot.title_for(username)}, and the answer reads {result}."
             else:
                 fudge = random.uniform(-max_fudge_factor, max_fudge_factor)
                 
@@ -71,32 +71,32 @@ class Arithmetic(SimpleCommandModule):
                 else:
                     whimsical_result = result + fudge
                 
-                response = f"I believe the figure is approximately {whimsical_result:.2f}, {self.bot.title_for(username)}."
+                response = f"The numbers are smeared and the neon keeps flickering, {self.bot.title_for(username)}, but I'd call it {whimsical_result:.2f}."
                 self.set_state("whimsical_results", self.get_state("whimsical_results", 0) + 1)
             
             self.save_state()
             self.safe_reply(connection, event, response)
         
         except (ValueError, ZeroDivisionError) as e:
-            self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I encountered an issue: {e}")
+            self.safe_reply(connection, event, f"Ran the figures and hit a brick wall, {self.bot.title_for(username)}: {e}")
         except Exception:
-            self.safe_reply(connection, event, f"I'm afraid that calculation is beyond my station, {self.bot.title_for(username)}.")
+            self.safe_reply(connection, event, f"That calculation is rougher than a back-alley shakedown, {self.bot.title_for(username)}.")
 
     def _safe_eval(self, expr):
         """A safe evaluator for basic arithmetic using AST parsing."""
         if len(expr) > 100:
-            raise ValueError("Expression is too long for my abacus.")
+            raise ValueError("That expression stretches longer than a midnight stakeout.")
 
         expr = expr.replace('^', '**')
 
         if not re.match(r"^[0-9\s\+\-\*/\.\(\)\^]+$", expr.replace('**', '^')):
-            raise ValueError("Invalid characters in expression.")
+            raise ValueError("Those characters don't belong on these streets.")
 
         # Parse the expression into an AST
         try:
             tree = ast.parse(expr, mode='eval')
         except SyntaxError:
-            raise ValueError("Invalid expression syntax.")
+            raise ValueError("Can't parse that syntax through the cigarette smoke.")
 
         # Validate that only safe operations are used
         for node in ast.walk(tree):
@@ -107,11 +107,11 @@ class Arithmetic(SimpleCommandModule):
             elif isinstance(node, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, ast.Mod, ast.USub, ast.UAdd)):
                 continue
             else:
-                raise ValueError(f"Unsafe operation: {node.__class__.__name__}")
+                raise ValueError(f"That operation ({node.__class__.__name__}) isn't sanctioned by the department.")
 
         # Check for excessive nesting/complexity
         if self._ast_depth(tree) > 20:
-            raise ValueError("Expression is too complex for my humble abilities.")
+            raise ValueError("Too many twists in that caper for my ledger.")
 
         # Evaluate the validated AST
         allowed_operators = {
@@ -136,7 +136,7 @@ class Arithmetic(SimpleCommandModule):
                 op = allowed_operators[type(node.op)]
                 # Limit exponentiation to prevent DoS
                 if isinstance(node.op, ast.Pow) and abs(right) > 100:
-                    raise ValueError("Such exponentiation is beyond my humble abilities.")
+                    raise ValueError("That kind of power play blows the precinct fuse box.")
                 return op(left, right)
             elif isinstance(node, ast.UnaryOp):
                 operand = eval_node(node.operand)
@@ -145,7 +145,7 @@ class Arithmetic(SimpleCommandModule):
             elif isinstance(node, ast.Expression):
                 return eval_node(node.body)
             else:
-                raise ValueError("Unsupported operation")
+                raise ValueError("That's a trick none of the math boys downtown can pull.")
 
         return eval_node(tree)
 

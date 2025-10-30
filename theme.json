@@ -1,0 +1,39 @@
+{
+  "name": "noir_november",
+  "background": "#070708",
+  "foreground": "#f2f2f2",
+  "accent": "#c5a880",
+  "accent_text": "#111113",
+  "card_background": "#121316",
+  "card_border": "#c5a880",
+  "table_header": "#1d1e22",
+  "table_stripe": "#151619",
+  "link": "#d8c3a5",
+  "link_hover": "#f1dcc1",
+  "prestige_tiers": [
+    {
+      "max": 3,
+      "icon": "📜",
+      "class": "tier-casefile",
+      "color": "#c5a880",
+      "repeat": 3,
+      "banner": null
+    },
+    {
+      "max": 6,
+      "icon": "🔍",
+      "class": "tier-magnifier",
+      "color": "#f2f2f2",
+      "repeat": 3,
+      "banner": "shadow"
+    },
+    {
+      "max": null,
+      "icon": "🛡️",
+      "class": "tier-shield",
+      "color": "#ffd166",
+      "repeat": 2,
+      "banner": "badge"
+    }
+  ]
+}

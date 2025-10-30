@@ -1,0 +1,28 @@
+# QuestBot Configuration
+# Copy this to config/config.yaml and edit with your settings
+
+connection:
+  server: "irc.example.net"
+  port: 6697
+  nickname: "QuestBot"
+  nickserv_pass: ""  # Optional NickServ password
+  use_ssl: true
+  channels:
+    - "#gaming"
+
+core:
+  admins:
+    - nick: "YourNick"
+      host: "your.hostname.here"
+  name_pattern: "questbot|quest"  # Regex for bot name mentions
+
+# Quest Module Configuration
+quest:
+  enabled: true
+  allowed_channels: []  # Empty = all channels
+  blocked_channels: []
+  quest_channel: "#gaming"  # Main quest channel
+  content_file: "quest_content.json"  # Path to quest content (relative to parent dir)
+  challenge_paths_file: "challenge_paths.json"  # Path to challenge paths
+  web_enabled: false  # Set to true if you want web UI
+  web_port: 8082

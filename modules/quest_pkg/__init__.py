@@ -184,17 +184,22 @@ class Quest(SimpleCommandModule):
 
     def _cmd_quest_master(self, connection, event, msg, username, match):
         """Master quest command handler."""
-        if not self.is_enabled(event.target):
-            return False
-
         args_str = (match.group(1) or "").strip()
         args = args_str.split()
+
+        # Allow "!quest use" in DMs for dungeon item usage, but require channel for everything else
+        subcommand = args[0].lower() if args else ""
+        if subcommand == "use":
+            return quest_core.handle_use_item(self, connection, event, username, args[1:])
+
+        # All other quest commands require the module to be enabled in the channel
+        if not self.is_enabled(event.target):
+            return False
 
         difficulty_mods = self.get_config_value("difficulty", default={})
         if not args_str or args[0].lower() in difficulty_mods:
             return quest_core.handle_solo_quest(self, connection, event, username, args[0] if args else "normal")
 
-        subcommand = args[0].lower()
         if subcommand == "search":
             return quest_core.handle_search(self, connection, event, username, args[1:])
         elif subcommand == "medic":
@@ -209,8 +214,6 @@ class Quest(SimpleCommandModule):
             return quest_display.handle_leaderboard(self, connection, event)
         elif subcommand == "prestige":
             return quest_progression.handle_prestige(self, connection, event, username, args[1:])
-        elif subcommand == "use":
-            return quest_core.handle_use_item(self, connection, event, username, args[1:])
         else:
             self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <search|use|medic|profile|story|class|top|prestige>'.")
             return True
@@ -250,8 +253,7 @@ class Quest(SimpleCommandModule):
         return quest_core.handle_medic_quest(self, connection, event, username)
 
     def _cmd_quest_use_alias(self, connection, event, msg, username, match):
-        if not self.is_enabled(event.target):
-            return False
+        # Allow !qu in DMs for dungeon item usage (no channel restriction)
         args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
         args = args_str.split() if args_str else []
         return quest_core.handle_use_item(self, connection, event, username, args)

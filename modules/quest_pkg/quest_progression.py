@@ -572,9 +572,6 @@ def handle_challenge_prestige(quest_module, connection, event, username, user_id
 
 def cmd_dungeon_equip(quest_module, connection, event, msg, username, match):
     """Equip a random set of dungeon items for the next run."""
-    if not quest_module.is_enabled(event.target):
-        return False
-
     user_id = quest_module.bot.get_user_id(username)
     player = get_player(quest_module, user_id, username)
     dungeon_state = quest_utils.get_dungeon_state(player)
@@ -615,9 +612,6 @@ def cmd_dungeon_equip(quest_module, connection, event, msg, username, match):
 
 def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
     """Run the ten-room dungeon, DMing each step to the player."""
-    if not quest_module.is_enabled(event.target):
-        return False
-
     # Import here to avoid circular dependency
     from .quest_combat import apply_active_effects_to_combat, consume_combat_effects
 
@@ -705,12 +699,12 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             quest_module.safe_privmsg(username, f"Momentum bonus: +{momentum_bonus:.0%} win chance ({momentum} consecutive clears)")
         base_win_chance += momentum_bonus
 
-        # Add level advantage bonus (high level players get extra edge)
-        player_level = player.get("level", 1)
-        if player_level >= 50:
-            level_bonus = 0.05
-            quest_module.safe_privmsg(username, f"Veteran warrior bonus: +{level_bonus:.0%} win chance")
-            base_win_chance += level_bonus
+        # Add prestige advantage bonus (experienced players get extra edge)
+        player_prestige = player.get("prestige", 0)
+        if player_prestige >= 3:
+            prestige_bonus = 0.05
+            quest_module.safe_privmsg(username, f"Veteran warrior bonus: +{prestige_bonus:.0%} win chance (Prestige {player_prestige})")
+            base_win_chance += prestige_bonus
 
         # Clamp win chance
         min_win = quest_module.get_config_value("combat.min_win_chance", channel, default=0.05)
@@ -870,9 +864,6 @@ def _show_safe_haven(quest_module, username: str, rooms_cleared: int, momentum: 
 
 def cmd_dungeon_continue(quest_module, connection, event, msg, username, match):
     """Continue dungeon run from a safe haven."""
-    if not quest_module.is_enabled(event.target):
-        return False
-
     user_id = quest_module.bot.get_user_id(username)
     player = get_player(quest_module, user_id, username)
     dungeon_state = quest_utils.get_dungeon_state(player)
@@ -898,9 +889,6 @@ def cmd_dungeon_continue(quest_module, connection, event, msg, username, match):
 
 def cmd_dungeon_quit(quest_module, connection, event, msg, username, match):
     """Quit dungeon run and claim partial rewards."""
-    if not quest_module.is_enabled(event.target):
-        return False
-
     user_id = quest_module.bot.get_user_id(username)
     player = get_player(quest_module, user_id, username)
     dungeon_state = quest_utils.get_dungeon_state(player)

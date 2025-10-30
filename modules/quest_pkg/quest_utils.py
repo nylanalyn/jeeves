@@ -302,37 +302,33 @@ def get_dungeon_state(player: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def apply_dungeon_failure_penalty(quest_module, player: Dict[str, Any], room_reached: int = 1) -> None:
-    """Apply the penalty for failing inside the dungeon.
+def apply_dungeon_failure_penalty(quest_module, player: Dict[str, Any], user_id: str, username: str, room_reached: int = 1) -> int:
+    """Apply the penalty for failing inside the dungeon and return the XP lost.
 
-    Penalty is softer if you made it further in:
-    - Rooms 1-3: Lose a level (harsh)
-    - Rooms 4-6: Lose 50% current level XP (medium)
-    - Rooms 7+: Lose 25% current level XP (light)
+    Penalty scales with progress into the dungeon. Early rooms remove a large
+    chunk of a level's progress, while deeper rooms chip away smaller portions.
+    If the resulting XP loss pushes the player below zero, levels are removed
+    via quest_progression.deduct_xp.
     """
-    current_level = player.get("level", 1)
+    base_pool = player.get("xp_to_next_level") or calculate_xp_for_level(quest_module, max(player.get("level", 1), 1))
+    penalties_cfg = quest_module.get_config_value("dungeon.failure_penalties", default={})
+
+    early_ratio = penalties_cfg.get("early_ratio", 0.75)
+    mid_ratio = penalties_cfg.get("mid_ratio", 0.50)
+    late_ratio = penalties_cfg.get("late_ratio", 0.25)
 
     if room_reached <= 3:
-        # Early failure - full level loss
-        if current_level > 1:
-            player["level"] = current_level - 1
-            player["xp"] = 0
-            player["xp_to_next_level"] = calculate_xp_for_level(quest_module, player["level"])
-        else:
-            player["xp"] = 0
-            player["xp_to_next_level"] = calculate_xp_for_level(quest_module, current_level)
+        ratio = early_ratio
     elif room_reached <= 6:
-        # Mid-run failure - lose 50% of current level XP
-        from . import quest_progression
-        xp_loss = int(player.get("xp", 0) * 0.5)
-        quest_progression.deduct_xp(quest_module, player.get("user_id"), player.get("username"), xp_loss)
+        ratio = mid_ratio
     else:
-        # Late failure - lose only 25% of current level XP
-        from . import quest_progression
-        xp_loss = int(player.get("xp", 0) * 0.25)
-        quest_progression.deduct_xp(quest_module, player.get("user_id"), player.get("username"), xp_loss)
+        ratio = late_ratio
 
-    player["win_streak"] = 0
+    xp_loss = max(1, int(round(base_pool * ratio)))
+
+    from . import quest_progression
+    quest_progression.deduct_xp(quest_module, user_id, username, xp_loss)
+    return xp_loss
 
 
 def calculate_dungeon_partial_reward(room_reached: int) -> Tuple[int, int]:

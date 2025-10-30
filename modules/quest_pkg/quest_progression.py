@@ -216,15 +216,49 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
     return messages
 
 
-def deduct_xp(quest_module, user_id: str, username: str, amount: int):
-    """Deduct XP from a player (on loss)."""
+def deduct_xp(quest_module, user_id: str, username: str, amount: int) -> Dict[str, Any]:
+    """Deduct XP from a player (on loss), allowing level downs when XP underflows."""
+    loss = max(0, int(amount))
+    if loss == 0:
+        return get_player(quest_module, user_id, username)
+
     player = get_player(quest_module, user_id, username)
-    player["xp"] = max(0, player["xp"] - int(amount))
+    level_cap = quest_module.get_config_value("level_cap", default=20)
+
+    # Convert to total accumulated XP across all levels
+    total_xp = player.get("xp", 0)
+    for level in range(1, player.get("level", 1)):
+        total_xp += quest_utils.calculate_xp_for_level(quest_module, level)
+
+    total_xp = max(0, total_xp - loss)
+
+    # Recalculate level and in-level XP from remaining total XP
+    new_level = 1
+    remaining_xp = total_xp
+
+    for level in range(1, level_cap):
+        level_cost = quest_utils.calculate_xp_for_level(quest_module, level)
+        if remaining_xp >= level_cost:
+            remaining_xp -= level_cost
+            new_level = level + 1
+        else:
+            break
+
+    player["level"] = new_level
+    if new_level >= level_cap:
+        player["xp"] = 0
+        player["xp_to_next_level"] = 0
+    else:
+        player["xp"] = remaining_xp
+        player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, new_level)
+
     # Reset win streak on loss
     player["win_streak"] = 0
+
     players = quest_module.get_state("players")
     players[user_id] = player
     quest_module.set_state("players", players)
+    return player
 
 
 def handle_class(quest_module, connection, event, username, args):
@@ -735,8 +769,16 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
                 "win": False
             }
 
-            # Apply softer penalty based on progress
-            quest_utils.apply_dungeon_failure_penalty(quest_module, player, room_reached=index)
+            # Apply XP-based penalty based on progress
+            previous_level = player.get("level", 1)
+            xp_loss = quest_utils.apply_dungeon_failure_penalty(
+                quest_module,
+                player,
+                user_id,
+                username,
+                room_reached=index
+            )
+            new_level = player.get("level", 1)
             consume_combat_effects(player, False)
 
             # Grant partial rewards
@@ -759,12 +801,10 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             quest_module.save_state()
 
             # Determine penalty message based on room
-            if index <= 3:
-                penalty_msg = "and loses a level"
-            elif index <= 6:
-                penalty_msg = "and loses half their current XP"
+            if new_level < previous_level:
+                penalty_msg = f"and loses {xp_loss} XP (dropping to level {new_level})"
             else:
-                penalty_msg = "and loses a quarter of their current XP"
+                penalty_msg = f"and loses {xp_loss} XP"
 
             quest_module.safe_reply(connection, event,
                             f"{username} was defeated in room {index} ({room['name']}) {penalty_msg}. {reward_msg}")

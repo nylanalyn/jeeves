@@ -7,7 +7,7 @@ import operator
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 
-from .constants import UTC, DUNGEON_ITEMS
+from .constants import UTC, DUNGEON_ITEMS, DUNGEON_EQUIPPED_ITEMS, DUNGEON_PARTIAL_REWARDS, DUNGEON_SAFE_HAVENS, DUNGEON_MOMENTUM_BONUS
 
 
 def format_timedelta(future_datetime: datetime) -> str:
@@ -283,8 +283,10 @@ def safe_calculate(expr: str) -> float:
     return result
 
 
-def select_dungeon_loadout(count: int = 3) -> List[Dict[str, Any]]:
+def select_dungeon_loadout(count: int = None) -> List[Dict[str, Any]]:
     """Select a random set of dungeon items."""
+    if count is None:
+        count = DUNGEON_EQUIPPED_ITEMS
     if not DUNGEON_ITEMS:
         return []
     count = max(1, min(count, len(DUNGEON_ITEMS)))
@@ -300,17 +302,84 @@ def get_dungeon_state(player: Dict[str, Any]) -> Dict[str, Any]:
     return state
 
 
-def apply_dungeon_failure_penalty(quest_module, player: Dict[str, Any]) -> None:
-    """Apply the penalty for failing inside the dungeon."""
+def apply_dungeon_failure_penalty(quest_module, player: Dict[str, Any], room_reached: int = 1) -> None:
+    """Apply the penalty for failing inside the dungeon.
+
+    Penalty is softer if you made it further in:
+    - Rooms 1-3: Lose a level (harsh)
+    - Rooms 4-6: Lose 50% current level XP (medium)
+    - Rooms 7+: Lose 25% current level XP (light)
+    """
     current_level = player.get("level", 1)
-    if current_level > 1:
-        player["level"] = current_level - 1
-        player["xp"] = 0
-        player["xp_to_next_level"] = calculate_xp_for_level(quest_module, player["level"])
+
+    if room_reached <= 3:
+        # Early failure - full level loss
+        if current_level > 1:
+            player["level"] = current_level - 1
+            player["xp"] = 0
+            player["xp_to_next_level"] = calculate_xp_for_level(quest_module, player["level"])
+        else:
+            player["xp"] = 0
+            player["xp_to_next_level"] = calculate_xp_for_level(quest_module, current_level)
+    elif room_reached <= 6:
+        # Mid-run failure - lose 50% of current level XP
+        from . import quest_progression
+        xp_loss = int(player.get("xp", 0) * 0.5)
+        quest_progression.deduct_xp(quest_module, player.get("user_id"), player.get("username"), xp_loss)
     else:
-        player["xp"] = 0
-        player["xp_to_next_level"] = calculate_xp_for_level(quest_module, current_level)
+        # Late failure - lose only 25% of current level XP
+        from . import quest_progression
+        xp_loss = int(player.get("xp", 0) * 0.25)
+        quest_progression.deduct_xp(quest_module, player.get("user_id"), player.get("username"), xp_loss)
+
     player["win_streak"] = 0
+
+
+def calculate_dungeon_partial_reward(room_reached: int) -> Tuple[int, int]:
+    """Calculate partial rewards based on how far the player got.
+
+    Returns: (xp_reward, relic_charges)
+    """
+    for min_room, max_room, xp_reward, relic_charges in DUNGEON_PARTIAL_REWARDS:
+        if min_room <= room_reached <= max_room:
+            return (xp_reward, relic_charges)
+    return (0, 0)
+
+
+def grant_dungeon_partial_reward(quest_module, user_id: str, username: str, room_reached: int, is_quit: bool = False) -> str:
+    """Grant partial rewards for dungeon progress.
+
+    Returns a message describing what was rewarded.
+    """
+    from .constants import DUNGEON_REWARD_KEY
+    from . import quest_progression
+
+    xp_reward, relic_charges = calculate_dungeon_partial_reward(room_reached)
+
+    if xp_reward == 0 and relic_charges == 0:
+        return "You escaped with your life, but gained nothing."
+
+    messages = []
+    players = quest_module.get_state("players", {})
+    player = players.get(user_id)
+
+    if player and xp_reward > 0:
+        xp_messages = quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=True)
+        if xp_messages:
+            messages.append(f"+{xp_reward} XP")
+
+    if player and relic_charges > 0:
+        player["inventory"][DUNGEON_REWARD_KEY] = player["inventory"].get(DUNGEON_REWARD_KEY, 0) + relic_charges
+        players[user_id] = player
+        quest_module.set_state("players", players)
+        messages.append(f"+{relic_charges} Mythic Relic charge{'s' if relic_charges > 1 else ''}")
+
+    quest_module.save_state()
+
+    action = "retreated safely" if is_quit else "were defeated"
+    if messages:
+        return f"You {action} after {room_reached} rooms and gained: {', '.join(messages)}"
+    return f"You {action} after {room_reached} rooms."
 
 
 def get_action_text(quest_module, user_id: str) -> str:

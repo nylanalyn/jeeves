@@ -7,7 +7,8 @@ from typing import Dict, Any, List, Optional
 
 from .constants import (
     UTC, DUNGEON_ROOMS, DUNGEON_ROOMS_BY_ID, TOTAL_DUNGEON_ROOMS,
-    DUNGEON_REWARD_KEY, DUNGEON_REWARD_NAME, DUNGEON_REWARD_EFFECT_TEXT
+    DUNGEON_REWARD_KEY, DUNGEON_REWARD_NAME, DUNGEON_REWARD_EFFECT_TEXT,
+    DUNGEON_SAFE_HAVENS, DUNGEON_MOMENTUM_BONUS, DUNGEON_REWARD_CHARGES
 )
 from . import quest_utils
 
@@ -598,34 +599,65 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
 
     channel = event.target
     start_time = datetime.now(UTC).isoformat()
-    dungeon_state["last_run"] = {
-        "started": start_time,
-        "channel": channel,
-        "completed": False,
-        "final_room": None,
-        "success": None
-    }
 
-    quest_module.safe_reply(connection, event,
-                        f"{username}, starting your dungeon crawl now—check your DMs for the blow-by-blow.")
-    quest_module.safe_privmsg(username, f"--- Entering the Tenfold Depths ({TOTAL_DUNGEON_ROOMS} rooms) ---")
+    # Initialize or continue run
+    if "active_run" not in dungeon_state or not dungeon_state["active_run"]:
+        # Starting new run
+        dungeon_state["active_run"] = {
+            "started": start_time,
+            "channel": channel,
+            "current_room": 1,
+            "momentum": 0,  # Consecutive victories
+            "rooms_cleared": 0
+        }
+        dungeon_state["last_run"] = {
+            "started": start_time,
+            "channel": channel,
+            "completed": False,
+            "final_room": None,
+            "success": None
+        }
+        quest_module.safe_reply(connection, event,
+                            f"{username}, starting your dungeon crawl now—check your DMs for the blow-by-blow.")
+        quest_module.safe_privmsg(username, f"--- Entering the Tenfold Depths ({TOTAL_DUNGEON_ROOMS} rooms) ---")
 
-    final_room_index = 0
-    for index, room in enumerate(DUNGEON_ROOMS, start=1):
-        final_room_index = index
+    active_run = dungeon_state["active_run"]
+    start_room = active_run["current_room"]
+    momentum = active_run["momentum"]
+
+    # Run dungeon from current room
+    for index in range(start_room, TOTAL_DUNGEON_ROOMS + 1):
+        room = DUNGEON_ROOMS[index - 1]
         room_header = f"Room {index}/{TOTAL_DUNGEON_ROOMS}: {room['name']}"
         quest_module.safe_privmsg(username, room_header)
         quest_module.safe_privmsg(username, room["intro"])
 
+        # Check for counter item bypass
         counter_key = next((key for key in equipped_keys if key in room.get("counter_items", [])), None)
 
         if counter_key and room.get("bypass_text"):
             quest_module.safe_privmsg(username, room["bypass_text"])
+            active_run["rooms_cleared"] = index
+            # Bypassed rooms still count for momentum
+            momentum += 1
+            active_run["momentum"] = momentum
+
+            # Check for safe haven after bypass
+            if index in DUNGEON_SAFE_HAVENS:
+                active_run["current_room"] = index + 1
+                players = quest_module.get_state("players")
+                players[user_id] = player
+                quest_module.set_state("players", players)
+                quest_module.save_state()
+                _show_safe_haven(quest_module, username, index, momentum, player)
+                return True
             continue
 
+        # Combat encounter
         monster = room["monster"]
         monster_level = max(1, player.get("level", 1) + monster.get("level_offset", 0))
 
+        # Calculate base win chance with prestige bonus
         base_win_chance = quest_utils.calculate_win_chance(
             player.get("level", 1),
             monster_level,
@@ -633,16 +665,32 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
         )
         base_win_chance += monster.get("win_chance_adjust", 0.0)
 
+        # Add momentum bonus (dungeon-specific)
+        momentum_bonus = momentum * DUNGEON_MOMENTUM_BONUS
+        if momentum > 0:
+            quest_module.safe_privmsg(username, f"Momentum bonus: +{momentum_bonus:.0%} win chance ({momentum} consecutive clears)")
+        base_win_chance += momentum_bonus
+
+        # Add level advantage bonus (high level players get extra edge)
+        player_level = player.get("level", 1)
+        if player_level >= 50:
+            level_bonus = 0.05
+            quest_module.safe_privmsg(username, f"Veteran warrior bonus: +{level_bonus:.0%} win chance")
+            base_win_chance += level_bonus
+
+        # Clamp win chance
         min_win = quest_module.get_config_value("combat.min_win_chance", channel, default=0.05)
         max_win = quest_module.get_config_value("combat.max_win_chance", channel, default=0.95)
         base_win_chance = max(min_win, min(max_win, base_win_chance))
 
+        # Apply active effects
         base_xp = monster.get("xp_reward", 0)
         win_chance, _, effect_msgs = apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=False)
         for msg_text in effect_msgs:
             if msg_text:
                 quest_module.safe_privmsg(username, msg_text)
 
+        # Roll combat
         win = random.random() < win_chance
 
         if win:
@@ -662,16 +710,40 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
                 xp_messages = grant_xp(quest_module, user_id, username, xp_award, is_win=True)
                 for xp_msg in xp_messages:
                     quest_module.safe_privmsg(username, xp_msg)
+
+            momentum += 1
+            active_run["momentum"] = momentum
+            active_run["rooms_cleared"] = index
+            consume_combat_effects(player, True)
+
+            # Check for safe haven
+            if index in DUNGEON_SAFE_HAVENS:
+                active_run["current_room"] = index + 1
+                players = quest_module.get_state("players")
+                players[user_id] = player
+                quest_module.set_state("players", players)
+                quest_module.save_state()
+                _show_safe_haven(quest_module, username, index, momentum, player)
+                return True
+
         else:
+            # Defeat
             quest_module.safe_privmsg(username, f"The {monster['name']} overwhelms you! (Win chance: {win_chance:.0%})")
             player["last_fight"] = {
                 "monster_name": monster["name"],
                 "monster_level": monster_level,
                 "win": False
             }
-            quest_utils.apply_dungeon_failure_penalty(quest_module, player)
+
+            # Apply softer penalty based on progress
+            quest_utils.apply_dungeon_failure_penalty(quest_module, player, room_reached=index)
             consume_combat_effects(player, False)
 
+            # Grant partial rewards
+            reward_msg = quest_utils.grant_dungeon_partial_reward(quest_module, user_id, username, index, is_quit=False)
+            quest_module.safe_privmsg(username, reward_msg)
+
+            # Clean up dungeon state
             dungeon_state["last_run"].update({
                 "completed": True,
                 "final_room": index,
@@ -679,27 +751,36 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
                 "ended": datetime.now(UTC).isoformat()
             })
             dungeon_state["equipped_items"] = []
+            dungeon_state["active_run"] = None
 
             players = quest_module.get_state("players")
             players[user_id] = player
             quest_module.set_state("players", players)
             quest_module.save_state()
 
+            # Determine penalty message based on room
+            if index <= 3:
+                penalty_msg = "and loses a level"
+            elif index <= 6:
+                penalty_msg = "and loses half their current XP"
+            else:
+                penalty_msg = "and loses a quarter of their current XP"
+
             quest_module.safe_reply(connection, event,
-                            f"{username} was defeated in room {index} ({room['name']}) and loses a level. The dungeon closes.")
+                            f"{username} was defeated in room {index} ({room['name']}) {penalty_msg}. {reward_msg}")
             return True
 
-        consume_combat_effects(player, win)
-
+    # Victory! Cleared all 10 rooms
     dungeon_state["last_run"].update({
         "completed": True,
-        "final_room": final_room_index,
+        "final_room": TOTAL_DUNGEON_ROOMS,
         "success": True,
         "ended": datetime.now(UTC).isoformat()
     })
     dungeon_state["equipped_items"] = []
+    dungeon_state["active_run"] = None
 
-    player["inventory"][DUNGEON_REWARD_KEY] += 1
+    player["inventory"][DUNGEON_REWARD_KEY] = player["inventory"].get(DUNGEON_REWARD_KEY, 0) + DUNGEON_REWARD_CHARGES
     player["last_fight"] = {
         "monster_name": DUNGEON_ROOMS[-1]["monster"]["name"],
         "monster_level": player.get("level", 1) + DUNGEON_ROOMS[-1]["monster"].get("level_offset", 0),
@@ -716,4 +797,107 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
 
     quest_module.safe_reply(connection, event,
                         f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed a {DUNGEON_REWARD_NAME}! {DUNGEON_REWARD_EFFECT_TEXT}")
+    return True
+
+
+def _show_safe_haven(quest_module, username: str, rooms_cleared: int, momentum: int, player: Dict[str, Any]):
+    """Display safe haven message with options."""
+    quest_module.safe_privmsg(username, "")
+    quest_module.safe_privmsg(username, f"=== SAFE HAVEN (after room {rooms_cleared}/{TOTAL_DUNGEON_ROOMS}) ===")
+    quest_module.safe_privmsg(username, "You've reached a sanctuary within the depths. Torches burn with soothing light.")
+    quest_module.safe_privmsg(username, f"Current momentum: {momentum} consecutive clears (+{momentum * DUNGEON_MOMENTUM_BONUS:.0%} win chance)")
+    quest_module.safe_privmsg(username, "")
+    quest_module.safe_privmsg(username, "OPTIONS:")
+    quest_module.safe_privmsg(username, "- !quest use <item> - Use consumable items (lucky charms, armor shards, etc.)")
+    quest_module.safe_privmsg(username, "- !dungeon continue - Press onward to the next room")
+    quest_module.safe_privmsg(username, "- !dungeon quit - Retreat safely with partial rewards")
+
+    # Show available consumables
+    consumables = []
+    inventory = player.get("inventory", {})
+    if inventory.get("lucky_charms", 0) > 0:
+        consumables.append(f"lucky_charms x{inventory['lucky_charms']}")
+    if inventory.get("armor_shards", 0) > 0:
+        consumables.append(f"armor_shards x{inventory['armor_shards']}")
+    if inventory.get("xp_scrolls", 0) > 0:
+        consumables.append(f"xp_scrolls x{inventory['xp_scrolls']}")
+
+    if consumables:
+        quest_module.safe_privmsg(username, f"Available consumables: {', '.join(consumables)}")
+    else:
+        quest_module.safe_privmsg(username, "You have no consumable items.")
+
+
+def cmd_dungeon_continue(quest_module, connection, event, msg, username, match):
+    """Continue dungeon run from a safe haven."""
+    if not quest_module.is_enabled(event.target):
+        return False
+
+    user_id = quest_module.bot.get_user_id(username)
+    player = get_player(quest_module, user_id, username)
+    dungeon_state = quest_utils.get_dungeon_state(player)
+
+    if "active_run" not in dungeon_state or not dungeon_state["active_run"]:
+        quest_module.safe_reply(connection, event, "You don't have an active dungeon run. Use !equip then !dungeon to start.")
+        return True
+
+    active_run = dungeon_state["active_run"]
+    current_room = active_run.get("current_room", 1)
+
+    # Check if they're actually at a safe haven
+    if (current_room - 1) not in DUNGEON_SAFE_HAVENS:
+        quest_module.safe_reply(connection, event, "You can only continue from a safe haven checkpoint.")
+        return True
+
+    quest_module.safe_reply(connection, event, f"{username} presses deeper into the dungeon...")
+    quest_module.safe_privmsg(username, f"You steel yourself and venture into room {current_room}...")
+
+    # Resume the dungeon run (it will pick up from current_room)
+    return cmd_dungeon_run(quest_module, connection, event, msg, username, match)
+
+
+def cmd_dungeon_quit(quest_module, connection, event, msg, username, match):
+    """Quit dungeon run and claim partial rewards."""
+    if not quest_module.is_enabled(event.target):
+        return False
+
+    user_id = quest_module.bot.get_user_id(username)
+    player = get_player(quest_module, user_id, username)
+    dungeon_state = quest_utils.get_dungeon_state(player)
+
+    if "active_run" not in dungeon_state or not dungeon_state["active_run"]:
+        quest_module.safe_reply(connection, event, "You don't have an active dungeon run to quit.")
+        return True
+
+    active_run = dungeon_state["active_run"]
+    rooms_cleared = active_run.get("rooms_cleared", 0)
+    current_room = active_run.get("current_room", 1)
+
+    # Check if they're at a safe haven
+    if (current_room - 1) not in DUNGEON_SAFE_HAVENS:
+        quest_module.safe_reply(connection, event, "You can only quit from a safe haven checkpoint.")
+        return True
+
+    # Grant partial rewards
+    reward_msg = quest_utils.grant_dungeon_partial_reward(quest_module, user_id, username, rooms_cleared, is_quit=True)
+
+    # Clean up dungeon state
+    dungeon_state["last_run"].update({
+        "completed": True,
+        "final_room": rooms_cleared,
+        "success": False,
+        "ended": datetime.now(UTC).isoformat()
+    })
+    dungeon_state["equipped_items"] = []
+    dungeon_state["active_run"] = None
+
+    players = quest_module.get_state("players")
+    players[user_id] = player
+    quest_module.set_state("players", players)
+    quest_module.save_state()
+
+    quest_module.safe_privmsg(username, f"You retreat from the dungeon after clearing {rooms_cleared} rooms.")
+    quest_module.safe_privmsg(username, reward_msg)
+    quest_module.safe_reply(connection, event, f"{username} retreats from the dungeon. {reward_msg}")
+
     return True

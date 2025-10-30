@@ -59,60 +59,8 @@ DUNGEON_REWARD_NAME = "Mythic Relic"
 DUNGEON_REWARD_EFFECT_TEXT = "Use with !quest use dungeon_relic to guarantee victory in your next five solo fights."
 DUNGEON_REWARD_CHARGES = 5
 
-# Dungeon Rooms
+# Dungeon Rooms (ordered easiest to hardest)
 DUNGEON_ROOMS = [
-    {
-        "id": "shadow_antechamber",
-        "name": "Shadow Antechamber",
-        "intro": "A tenebrous hallway swallows torchlight as whispers coil around you.",
-        "bypass_text": "Your Ember Lantern flares, painting the shadows in molten gold as hidden glyphs reveal a safe path.",
-        "counter_items": ["ember_lantern"],
-        "monster": {
-            "name": "Gloom Siphon",
-            "level_offset": 1,
-            "win_chance_adjust": -0.05,
-            "xp_reward": 120
-        }
-    },
-    {
-        "id": "venom_garden",
-        "name": "Garden of Venom",
-        "intro": "Carnivorous blooms hiss, spraying arcs of glittering toxin across the path.",
-        "bypass_text": "You smear Venomveil Salve across your armor; the toxins bead harmlessly and you slip past.",
-        "counter_items": ["venom_salve"],
-        "monster": {
-            "name": "Bloom Tyrant",
-            "level_offset": 2,
-            "win_chance_adjust": -0.08,
-            "xp_reward": 140
-        }
-    },
-    {
-        "id": "storm_bridge",
-        "name": "Storm Bridge",
-        "intro": "A suspended bridge crackles with wild lightning as hurricane gusts slam the rails.",
-        "bypass_text": "The Tempest Charm drinks the storm. You cross as the winds bow respectfully.",
-        "counter_items": ["tempest_charm"],
-        "monster": {
-            "name": "Thunderbound Sentinel",
-            "level_offset": 2,
-            "win_chance_adjust": -0.03,
-            "xp_reward": 130
-        }
-    },
-    {
-        "id": "echo_archive",
-        "name": "Echo Archive",
-        "intro": "A vaulted archive hums with looping echoes that gnaw at your sense of self.",
-        "bypass_text": "The Spiral Siren-Shell thrums counterpoint, untangling the echoes and letting you stride through.",
-        "counter_items": ["spiral_shell"],
-        "monster": {
-            "name": "Mnemonic Lich",
-            "level_offset": 3,
-            "win_chance_adjust": -0.1,
-            "xp_reward": 160
-        }
-    },
     {
         "id": "mirror_gallery",
         "name": "Mirror Gallery",
@@ -140,16 +88,29 @@ DUNGEON_ROOMS = [
         }
     },
     {
-        "id": "clockwork_vault",
-        "name": "Clockwork Vault",
-        "intro": "Interlocking gears rotate walls into deadly configurations, sealing off exits.",
-        "bypass_text": "You press the Gearstone Glyph into a socket; the mechanisms freeze, accepting you as an ally.",
-        "counter_items": ["gearstone"],
+        "id": "storm_bridge",
+        "name": "Storm Bridge",
+        "intro": "A suspended bridge crackles with wild lightning as hurricane gusts slam the rails.",
+        "bypass_text": "The Tempest Charm drinks the storm. You cross as the winds bow respectfully.",
+        "counter_items": ["tempest_charm"],
         "monster": {
-            "name": "Colossal Gear-Guard",
-            "level_offset": 3,
-            "win_chance_adjust": -0.07,
-            "xp_reward": 170
+            "name": "Thunderbound Sentinel",
+            "level_offset": 2,
+            "win_chance_adjust": -0.03,
+            "xp_reward": 130
+        }
+    },
+    {
+        "id": "shadow_antechamber",
+        "name": "Shadow Antechamber",
+        "intro": "A tenebrous hallway swallows torchlight as whispers coil around you.",
+        "bypass_text": "Your Ember Lantern flares, painting the shadows in molten gold as hidden glyphs reveal a safe path.",
+        "counter_items": ["ember_lantern"],
+        "monster": {
+            "name": "Gloom Siphon",
+            "level_offset": 1,
+            "win_chance_adjust": -0.05,
+            "xp_reward": 120
         }
     },
     {
@@ -179,6 +140,45 @@ DUNGEON_ROOMS = [
         }
     },
     {
+        "id": "clockwork_vault",
+        "name": "Clockwork Vault",
+        "intro": "Interlocking gears rotate walls into deadly configurations, sealing off exits.",
+        "bypass_text": "You press the Gearstone Glyph into a socket; the mechanisms freeze, accepting you as an ally.",
+        "counter_items": ["gearstone"],
+        "monster": {
+            "name": "Colossal Gear-Guard",
+            "level_offset": 3,
+            "win_chance_adjust": -0.07,
+            "xp_reward": 170
+        }
+    },
+    {
+        "id": "venom_garden",
+        "name": "Garden of Venom",
+        "intro": "Carnivorous blooms hiss, spraying arcs of glittering toxin across the path.",
+        "bypass_text": "You smear Venomveil Salve across your armor; the toxins bead harmlessly and you slip past.",
+        "counter_items": ["venom_salve"],
+        "monster": {
+            "name": "Bloom Tyrant",
+            "level_offset": 2,
+            "win_chance_adjust": -0.08,
+            "xp_reward": 140
+        }
+    },
+    {
+        "id": "echo_archive",
+        "name": "Echo Archive",
+        "intro": "A vaulted archive hums with looping echoes that gnaw at your sense of self.",
+        "bypass_text": "The Spiral Siren-Shell thrums counterpoint, untangling the echoes and letting you stride through.",
+        "counter_items": ["spiral_shell"],
+        "monster": {
+            "name": "Mnemonic Lich",
+            "level_offset": 3,
+            "win_chance_adjust": -0.1,
+            "xp_reward": 160
+        }
+    },
+    {
         "id": "heart_of_the_abyss",
         "name": "Heart of the Abyss",
         "intro": "An ancient throne pulses with voidlight. The dungeon's architect unfurls their wings.",
@@ -195,3 +195,17 @@ DUNGEON_ROOMS = [
 
 TOTAL_DUNGEON_ROOMS = len(DUNGEON_ROOMS)
 DUNGEON_ROOMS_BY_ID = {room["id"]: room for room in DUNGEON_ROOMS}
+
+# Dungeon Configuration
+DUNGEON_EQUIPPED_ITEMS = 4  # Number of items player can equip
+DUNGEON_SAFE_HAVENS = [3, 6, 9]  # Room numbers where safe havens appear
+DUNGEON_MOMENTUM_BONUS = 0.02  # Win chance bonus per consecutive victory
+
+# Dungeon Partial Rewards (for early exits/failures)
+# Format: (min_room, max_room, xp_reward, relic_charges)
+DUNGEON_PARTIAL_REWARDS = [
+    (1, 2, 100, 0),   # Rooms 1-2: minimal XP, no relics
+    (3, 5, 250, 1),   # Rooms 3-5: decent XP, 1 relic charge
+    (6, 8, 500, 2),   # Rooms 6-8: good XP, 2 relic charges
+    (9, 9, 800, 3),   # Room 9: great XP, 3 relic charges
+]

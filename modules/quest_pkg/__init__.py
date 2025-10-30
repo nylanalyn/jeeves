@@ -146,6 +146,10 @@ class Quest(SimpleCommandModule):
                               description="Equip random dungeon gear that can counter threats inside !dungeon runs.")
         self.register_command(r"^\s*!dungeon\s*$", self._cmd_dungeon_run, name="dungeon_run",
                               description="Run a ten-room dungeon via private messages.")
+        self.register_command(r"^\s*!dungeon\s+continue\s*$", self._cmd_dungeon_continue, name="dungeon_continue",
+                              description="Continue your dungeon run from a safe haven.")
+        self.register_command(r"^\s*!dungeon\s+quit\s*$", self._cmd_dungeon_quit, name="dungeon_quit",
+                              description="Abandon your dungeon run and claim partial rewards.")
         self.register_command(r"^\s*!quest\s+mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping")
         self.register_command(r"^\s*!quest\s+mob\s*$", self._cmd_mob_start, name="mob")
         self.register_command(r"^\s*!quest\s+join\s*$", self._cmd_mob_join, name="join")
@@ -269,6 +273,12 @@ class Quest(SimpleCommandModule):
 
     def _cmd_dungeon_run(self, connection, event, msg, username, match):
         return quest_progression.cmd_dungeon_run(self, connection, event, msg, username, match)
+
+    def _cmd_dungeon_continue(self, connection, event, msg, username, match):
+        return quest_progression.cmd_dungeon_continue(self, connection, event, msg, username, match)
+
+    def _cmd_dungeon_quit(self, connection, event, msg, username, match):
+        return quest_progression.cmd_dungeon_quit(self, connection, event, msg, username, match)
 
     def _cmd_mob_ping(self, connection, event, msg, username, match):
         return quest_combat.cmd_mob_ping(self, connection, event, msg, username, match)

@@ -1,6 +1,7 @@
 # modules/quest/__init__.py
 # Main Quest module - coordinates all quest subsystems
 
+import re
 import time
 import schedule
 import threading
@@ -112,6 +113,45 @@ class Quest(SimpleCommandModule):
         if updated:
             self.set_state("players", players)
             self.save_state()
+
+    def _dispatch_commands(self, connection, event, msg: str, username: str) -> bool:
+        """Override to allow dungeon and item-use commands in DMs."""
+        # Check if this is a DM (event.target is bot's nickname, not a channel)
+        is_dm = not event.target.startswith('#')
+
+        # Allow dungeon commands and !quest use / !qu in DMs regardless of channel settings
+        if is_dm:
+            dm_allowed_patterns = [
+                r"^\s*[!,]dungeon",  # All dungeon commands
+                r"^\s*[!,]quest\s+use\b",  # !quest use
+                r"^\s*[!,]qu\s+",  # !qu alias
+            ]
+            for pattern in dm_allowed_patterns:
+                if re.match(pattern, msg, re.IGNORECASE):
+                    # Process this command even though module isn't "enabled" for DMs
+                    # Temporarily skip the is_enabled check by calling parent's parent method
+                    for cmd_id, cmd_info in self._commands.items():
+                        match = cmd_info["pattern"].match(msg)
+                        if match:
+                            self.log_debug(f"DM Command '{cmd_info['name']}' matched by user {username}")
+                            if cmd_info["admin_only"] and not self.bot.is_admin(event.source):
+                                self.log_debug(f"Denying admin command '{cmd_info['name']}' for non-admin {username}")
+                                continue
+                            cooldown_val = self.get_config_value("cooldown_seconds", event.target, cmd_info["cooldown"])
+                            if not self.check_user_cooldown(username, cmd_id, cooldown_val):
+                                self.log_debug(f"Command '{cmd_info['name']}' on cooldown for user {username}")
+                                continue
+                            try:
+                                if cmd_info["handler"](connection, event, msg, username, match):
+                                    self.log_debug(f"DM Command '{cmd_info['name']}' handled successfully.")
+                                    return True
+                            except Exception as e:
+                                import traceback
+                                self.log_debug(f"Error in command {cmd_id}: {e}\n{traceback.format_exc()}")
+                    return False
+
+        # For channel messages, use normal dispatch with is_enabled check
+        return super()._dispatch_commands(connection, event, msg, username)
 
     def _register_commands(self):
         # Register more specific patterns first

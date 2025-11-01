@@ -201,11 +201,12 @@ DUNGEON_EQUIPPED_ITEMS = 4  # Number of items player can equip
 DUNGEON_SAFE_HAVENS = [3, 6, 9]  # Room numbers where safe havens appear
 DUNGEON_MOMENTUM_BONUS = 0.02  # Win chance bonus per consecutive victory
 
-# Dungeon Partial Rewards (for early exits/failures)
+# Dungeon Quit Rewards (XP only for safe retreats)
 # Format: (min_room, max_room, xp_reward, relic_charges)
+# Relics are ONLY granted for completing all 10 rooms
 DUNGEON_PARTIAL_REWARDS = [
-    (1, 2, 100, 0),   # Rooms 1-2: minimal XP, no relics
-    (3, 5, 250, 1),   # Rooms 3-5: decent XP, 1 relic charge
-    (6, 8, 500, 2),   # Rooms 6-8: good XP, 2 relic charges
-    (9, 9, 800, 3),   # Room 9: great XP, 3 relic charges
+    (1, 2, 200, 0),    # Rooms 1-2: small XP boost, no relics
+    (3, 5, 500, 0),    # Rooms 3-5: good XP boost, no relics
+    (6, 8, 1000, 0),   # Rooms 6-8: great XP boost, no relics
+    (9, 9, 1500, 0),   # Room 9: excellent XP boost, no relics
 ]

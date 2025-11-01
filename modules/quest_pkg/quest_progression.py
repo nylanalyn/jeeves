@@ -775,10 +775,6 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             new_level = player.get("level", 1)
             consume_combat_effects(player, False)
 
-            # Grant partial rewards
-            reward_msg = quest_utils.grant_dungeon_partial_reward(quest_module, user_id, username, index, is_quit=False)
-            quest_module.safe_privmsg(username, reward_msg)
-
             # Clean up dungeon state
             dungeon_state["last_run"].update({
                 "completed": True,
@@ -794,6 +790,9 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             quest_module.set_state("players", players)
             quest_module.save_state()
 
+            # Send defeat message with penalty
+            quest_module.safe_privmsg(username, f"You were defeated and lost {xp_loss} XP. No rewards were gained.")
+
             # Determine penalty message based on room
             if new_level < previous_level:
                 penalty_msg = f"and loses {xp_loss} XP (dropping to level {new_level})"
@@ -801,7 +800,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
                 penalty_msg = f"and loses {xp_loss} XP"
 
             quest_module.safe_reply(connection, event,
-                            f"{username} was defeated in room {index} ({room['name']}) {penalty_msg}. {reward_msg}")
+                            f"{username} was defeated in room {index} ({room['name']}) {penalty_msg}.")
             return True
 
     # Victory! Cleared all 10 rooms
@@ -888,7 +887,7 @@ def cmd_dungeon_continue(quest_module, connection, event, msg, username, match):
 
 
 def cmd_dungeon_quit(quest_module, connection, event, msg, username, match):
-    """Quit dungeon run and claim partial rewards."""
+    """Quit dungeon run and claim XP rewards (no relics)."""
     user_id = quest_module.bot.get_user_id(username)
     player = get_player(quest_module, user_id, username)
     dungeon_state = quest_utils.get_dungeon_state(player)
@@ -906,8 +905,8 @@ def cmd_dungeon_quit(quest_module, connection, event, msg, username, match):
         quest_module.safe_reply(connection, event, "You can only quit from a safe haven checkpoint.")
         return True
 
-    # Grant partial rewards
-    reward_msg = quest_utils.grant_dungeon_partial_reward(quest_module, user_id, username, rooms_cleared, is_quit=True)
+    # Grant quit rewards (XP only)
+    reward_msg = quest_utils.grant_dungeon_quit_reward(quest_module, user_id, username, rooms_cleared)
 
     # Clean up dungeon state
     dungeon_state["last_run"].update({

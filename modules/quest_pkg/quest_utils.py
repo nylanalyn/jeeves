@@ -342,18 +342,17 @@ def calculate_dungeon_partial_reward(room_reached: int) -> Tuple[int, int]:
     return (0, 0)
 
 
-def grant_dungeon_partial_reward(quest_module, user_id: str, username: str, room_reached: int, is_quit: bool = False) -> str:
-    """Grant partial rewards for dungeon progress.
+def grant_dungeon_quit_reward(quest_module, user_id: str, username: str, room_reached: int) -> str:
+    """Grant XP rewards for safely quitting a dungeon.
 
     Returns a message describing what was rewarded.
     """
-    from .constants import DUNGEON_REWARD_KEY
     from . import quest_progression
 
     xp_reward, relic_charges = calculate_dungeon_partial_reward(room_reached)
 
-    if xp_reward == 0 and relic_charges == 0:
-        return "You escaped with your life, but gained nothing."
+    if xp_reward == 0:
+        return "You retreated safely after 1 room, but gained nothing."
 
     messages = []
     players = quest_module.get_state("players", {})
@@ -364,18 +363,11 @@ def grant_dungeon_partial_reward(quest_module, user_id: str, username: str, room
         if xp_messages:
             messages.append(f"+{xp_reward} XP")
 
-    if player and relic_charges > 0:
-        player["inventory"][DUNGEON_REWARD_KEY] = player["inventory"].get(DUNGEON_REWARD_KEY, 0) + relic_charges
-        players[user_id] = player
-        quest_module.set_state("players", players)
-        messages.append(f"+{relic_charges} Mythic Relic charge{'s' if relic_charges > 1 else ''}")
-
     quest_module.save_state()
 
-    action = "retreated safely" if is_quit else "were defeated"
     if messages:
-        return f"You {action} after {room_reached} rooms and gained: {', '.join(messages)}"
-    return f"You {action} after {room_reached} rooms."
+        return f"You retreated safely after {room_reached} room{'s' if room_reached > 1 else ''} and gained: {', '.join(messages)}"
+    return f"You retreated safely after {room_reached} room{'s' if room_reached > 1 else ''}."
 
 
 def get_action_text(quest_module, user_id: str) -> str:

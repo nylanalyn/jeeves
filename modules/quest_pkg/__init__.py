@@ -3,9 +3,10 @@
 
 import re
 import time
+import secrets
 import schedule
 import threading
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 from ..base import SimpleCommandModule
 
@@ -17,6 +18,8 @@ from . import quest_combat
 from . import quest_display
 from . import quest_core
 
+WEB_LINK_TOKEN_TTL = 600  # seconds (10 minutes)
+
 
 def setup(bot):
     """Initializes the Quest module."""
@@ -26,7 +29,7 @@ def setup(bot):
 class Quest(SimpleCommandModule):
     """A module for a persistent RPG-style questing game."""
     name = "quest"
-    version = "5.0.0"  # Refactored into modular structure
+    version = "5.1.0"  # Added web link token support
     description = "An RPG-style questing game where users can fight monsters and level up."
 
     def __init__(self, bot):
@@ -38,6 +41,7 @@ class Quest(SimpleCommandModule):
         self.set_state("player_classes", self.get_state("player_classes", {}))
         self.set_state("legend_bosses", self.get_state("legend_bosses", {}))
         self.set_state("mob_cooldowns", self.get_state("mob_cooldowns", {}))
+        self.set_state("web_link_tokens", self.get_state("web_link_tokens", {}))
         self.mob_lock = threading.Lock()
         self.save_state()
         self._is_loaded = False
@@ -199,6 +203,8 @@ class Quest(SimpleCommandModule):
                               description="View your medkits and active injuries")
         self.register_command(r"^\s*!quest\s+ability(?:\s+(.+))?\s*$", self._cmd_ability, name="ability",
                               description="List or use unlocked abilities")
+        self.register_command(r"^\s*!quest\s+weblink\s*$", self._cmd_weblink, name="quest_weblink",
+                              description="Generate a short-lived code to link your account to the quest website")
         self.register_command(r"^\s*!quest(?:\s+(.*))?$", self._cmd_quest_master, name="quest")
 
         # Short aliases
@@ -212,6 +218,8 @@ class Quest(SimpleCommandModule):
         self.register_command(r"^\s*!qu(?:\s+(.*))?\s*$", self._cmd_quest_use_alias, name="quest_use_alias")
         self.register_command(r"^\s*!qt\s*$", self._cmd_quest_leaderboard_alias, name="quest_leaderboard_alias")
         self.register_command(r"^\s*!qc(?:\s+(.*))?\s*$", self._cmd_quest_class_alias, name="quest_class_alias")
+        self.register_command(r"^\s*!weblink\s*$", self._cmd_weblink, name="weblink_alias",
+                              description="Generate a short-lived code to link your account to the quest website")
 
         # Legacy aliases
         self.register_command(r"^\s*!mob\s+ping\s+(on|off)\s*$", self._cmd_mob_ping, name="mob_ping_legacy")
@@ -219,6 +227,68 @@ class Quest(SimpleCommandModule):
         self.register_command(r"^\s*!join\s*$", self._cmd_mob_join, name="join_legacy")
         self.register_command(r"^\s*!medkit(?:\s+(.+))?\s*$", self._cmd_medkit, name="medkit_legacy")
         self.register_command(r"^\s*!inv(?:entory)?\s*$", self._cmd_inventory, name="inventory_legacy")
+
+    def _issue_weblink_token(self, username: str) -> Tuple[str, float]:
+        """Return an active web link token for the given user or create a new one."""
+        now = time.time()
+        tokens = dict(self.get_state("web_link_tokens", {}))
+
+        # Prune expired tokens
+        stale_tokens = [token for token, info in tokens.items()
+                        if not isinstance(info, dict) or info.get("expires_at", 0) <= now]
+        for token in stale_tokens:
+            tokens.pop(token, None)
+
+        user_id = self.bot.get_user_id(username)
+        for token, info in tokens.items():
+            if info.get("user_id") == user_id:
+                return token, info.get("expires_at", now)
+
+        # Issue a fresh token
+        token = None
+        while not token or token in tokens:
+            token = secrets.token_urlsafe(6)
+        expires_at = now + WEB_LINK_TOKEN_TTL
+        tokens[token] = {
+            "user_id": user_id,
+            "username": username,
+            "issued_at": now,
+            "expires_at": expires_at,
+        }
+        self.set_state("web_link_tokens", tokens)
+        self.save_state()
+        return token, expires_at
+
+    def _cmd_weblink(self, connection, event, msg, username, match):
+        """Provide a short-lived token to link an IRC account with the quest website."""
+        target = getattr(event, "target", "")
+        if target.startswith('#') and not self.is_enabled(target):
+            return False
+
+        token, expires_at = self._issue_weblink_token(username)
+        remaining_seconds = max(5, int(expires_at - time.time()))
+        remaining_minutes = max(1, remaining_seconds // 60)
+
+        details = (
+            f"Your Jeeves quest website link code is: {token}\n"
+            f"It expires in about {remaining_minutes} minute{'s' if remaining_minutes != 1 else ''}."
+        )
+
+        if not self.safe_privmsg(username, details):
+            # Fall back to replying in the same context if DMs fail
+            self.safe_reply(
+                connection,
+                event,
+                f"{self.bot.title_for(username)}, I couldn't DM you. "
+                f"Your link code is {token} (valid for {remaining_minutes} minute{'s' if remaining_minutes != 1 else ''})."
+            )
+            return True
+
+        if target.startswith('#'):
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I've sent your link code via private message.")
+        else:
+            self.safe_reply(connection, event, "I've sent your link code via private message. Check our DM for the code.")
+        return True
 
     # ===== COMMAND HANDLERS - Delegate to submodules =====
 

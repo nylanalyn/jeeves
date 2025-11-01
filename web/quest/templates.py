@@ -167,6 +167,82 @@ class TemplateEngine:
             box-shadow: 0 0 10px var(--accent);
         }}
 
+        .action-card {{
+            margin-bottom: 30px;
+        }}
+
+        .action-card h3 {{
+            margin-bottom: 10px;
+            color: var(--accent);
+        }}
+
+        .action-card p.description {{
+            margin-bottom: 15px;
+            opacity: 0.85;
+        }}
+
+        .link-form {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }}
+
+        .link-form input[type="text"] {{
+            padding: 10px 14px;
+            border: 1px solid var(--card_border);
+            border-radius: 6px;
+            flex: 1 1 220px;
+            background: var(--card_background);
+            color: var(--foreground);
+        }}
+
+        .link-form button,
+        .action-buttons button {{
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            background: var(--accent);
+            color: var(--accent_text);
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }}
+
+        .link-form button:hover,
+        .action-buttons button:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(255, 107, 53, 0.3);
+        }}
+
+        .action-buttons {{
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }}
+
+        .action-output {{
+            background: rgba(0, 0, 0, 0.35);
+            border-radius: 6px;
+            padding: 12px;
+            min-height: 80px;
+            white-space: pre-wrap;
+            font-family: "Fira Code", "Courier New", monospace;
+        }}
+
+        .action-status {{
+            margin-top: 10px;
+            opacity: 0.85;
+        }}
+
+        .alert-error {{
+            color: #ef4444;
+        }}
+
+        .alert-success {{
+            color: #22c55e;
+        }}
+
         .stats-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -464,7 +540,8 @@ class TemplateEngine:
 
     def render_leaderboard(self, players: List[Dict[str, Any]], classes: Dict[str, str],
                           search_term: str = "", challenge_info: Optional[Dict[str, Any]] = None,
-                          mob_cooldowns: Optional[Dict[str, float]] = None) -> str:
+                          mob_cooldowns: Optional[Dict[str, float]] = None,
+                          current_user: Optional[str] = None) -> str:
         """Render the leaderboard view."""
         content = ""
 
@@ -496,6 +573,38 @@ class TemplateEngine:
                 <h3>Average Level</h3>
                 <div class="value">{avg_level:.1f}</div>
             </div>
+        </div>
+        """
+
+        link_style = "" if not current_user else "display: none;"
+        action_style = "" if current_user else "display: none;"
+        current_user_html = sanitize(current_user) if current_user else ""
+
+        content += f"""
+        <div class="card action-card" id="link-section" style="{link_style}">
+            <h3>🔐 Link your IRC account</h3>
+            <p class="description">
+                Run <code>!weblink</code> in IRC to get a short-lived code, then paste it below to play from the web.
+            </p>
+            <form class="link-form" id="link-form">
+                <input type="text" name="token" id="link-token" placeholder="Enter your link code" autocomplete="one-time-code" required>
+                <button type="submit">Link account</button>
+            </form>
+            <div class="action-status" id="link-message"></div>
+        </div>
+
+        <div class="card action-card" id="action-section" style="{action_style}">
+            <h3>⚔️ Quest from the browser</h3>
+            <p class="description">
+                Logged in as <strong id="action-username">{current_user_html}</strong>. Choose a difficulty to embark on a solo quest.
+            </p>
+            <div class="action-buttons">
+                <button type="button" data-difficulty="easy">Easy Quest</button>
+                <button type="button" data-difficulty="normal">Normal Quest</button>
+                <button type="button" data-difficulty="hard">Hard Quest</button>
+            </div>
+            <div class="action-output" id="action-output">Awaiting your command...</div>
+            <div class="action-status" id="action-status"></div>
         </div>
         """
 
@@ -593,6 +702,95 @@ class TemplateEngine:
             '''
 
         content += '</tbody></table></div>'
+
+        content += """
+        <script>
+        (function() {
+            const linkSection = document.getElementById('link-section');
+            const actionSection = document.getElementById('action-section');
+            const linkForm = document.getElementById('link-form');
+            const linkInput = document.getElementById('link-token');
+            const linkMessage = document.getElementById('link-message');
+            const actionButtons = actionSection ? actionSection.querySelectorAll('button[data-difficulty]') : [];
+            const actionOutput = document.getElementById('action-output');
+            const actionStatus = document.getElementById('action-status');
+            const actionUsername = document.getElementById('action-username');
+
+            function setStatus(el, text, kind) {
+                if (!el) return;
+                el.textContent = text || '';
+                el.classList.remove('alert-error', 'alert-success');
+                if (kind === 'error') {
+                    el.classList.add('alert-error');
+                } else if (kind === 'success') {
+                    el.classList.add('alert-success');
+                }
+            }
+
+            if (linkForm && linkInput) {
+                linkForm.addEventListener('submit', async function(ev) {
+                    ev.preventDefault();
+                    const token = (linkInput.value || '').trim();
+                    if (!token) {
+                        setStatus(linkMessage, 'Please enter your link code.', 'error');
+                        return;
+                    }
+                    setStatus(linkMessage, 'Linking account…');
+                    try {
+                        const res = await fetch('/api/link/claim', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token })
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data.success) {
+                            throw new Error(data.error || 'Unable to link account.');
+                        }
+                        setStatus(linkMessage, 'Linked successfully! You can quest from here now.', 'success');
+                        if (linkSection && actionSection) {
+                            linkSection.style.display = 'none';
+                            actionSection.style.display = '';
+                        }
+                        if (actionUsername && data.username) {
+                            actionUsername.textContent = data.username;
+                        }
+                    } catch (err) {
+                        setStatus(linkMessage, err.message || 'Unable to link account.', 'error');
+                    }
+                });
+            }
+
+            if (actionButtons.length && actionOutput && actionStatus) {
+                actionButtons.forEach((button) => {
+                    button.addEventListener('click', async () => {
+                        const difficulty = button.getAttribute('data-difficulty');
+                        setStatus(actionStatus, 'Venturing forth…');
+                        actionOutput.textContent = '';
+                        try {
+                            const res = await fetch('/api/quest/solo', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ difficulty })
+                            });
+                            const data = await res.json();
+                            if (!res.ok || !data.success) {
+                                throw new Error(data.error || 'Quest failed.');
+                            }
+                            const messages = Array.isArray(data.messages) ? data.messages : [];
+                            actionOutput.textContent = messages.join('\\n') || 'No response from Jeeves.';
+                            if (data.username && actionUsername) {
+                                actionUsername.textContent = data.username;
+                            }
+                            setStatus(actionStatus, 'Quest complete!', 'success');
+                        } catch (err) {
+                            setStatus(actionStatus, err.message || 'Quest failed.', 'error');
+                        }
+                    });
+                });
+            }
+        })();
+        </script>
+        """
 
         return content
 

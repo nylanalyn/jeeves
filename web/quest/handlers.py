@@ -390,12 +390,12 @@ def create_handler_class(games_path: Path, content_path: Path) -> type:
     config_path = config_dir / "config.yaml"
     shared_session_store: Dict[str, Dict[str, Any]] = {}
     shared_session_lock = threading.RLock()
-    action_service = QuestActionService(config_dir, config_path)
+    shared_action_service = QuestActionService(config_dir, config_path)
 
     class BoundRequestHandler(QuestHTTPRequestHandler):
         session_store = shared_session_store
         session_lock = shared_session_lock
-        action_service = action_service
+        action_service = shared_action_service
 
         def __init__(self, *args, **kwargs):
             super().__init__(*args, games_path=games_path, content_path=content_path, **kwargs)

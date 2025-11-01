@@ -14,8 +14,6 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import yaml
 
-import schedule
-
 from modules.quest_pkg import Quest, quest_core
 
 
@@ -226,7 +224,6 @@ class QuestActionService:
             try:
                 quest._load_state()
                 quest.on_load()
-                schedule.run_pending()
                 handled = quest_core.handle_solo_quest(quest, connection, event, username, difficulty)
             finally:
                 quest.save_state(force=True)

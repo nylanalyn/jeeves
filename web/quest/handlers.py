@@ -182,6 +182,34 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
                     self.session_store[self.active_session_id]["username"] = result["username"]
         self._send_json(response_data)
 
+    def _handle_api_use_item(self) -> None:
+        session = self._current_session()
+        if not session:
+            self._send_json({"success": False, "error": "Not authenticated"}, status=401)
+            return
+
+        payload = self._read_json_body() or {}
+        item_name = str(payload.get("item", "")).strip()
+        if not item_name:
+            self._send_json({"success": False, "error": "Item name is required"}, status=400)
+            return
+
+        try:
+            result = self.action_service.use_item(session["user_id"], item_name)
+        except Exception as exc:  # pylint: disable=broad-except
+            logging.exception("Failed to use item via web: %s", exc)
+            self._send_json({"success": False, "error": "Failed to use item"}, status=500)
+            return
+
+        # Keep username in session store up-to-date
+        response_data = {"success": True}
+        response_data.update(result)
+        if result.get("username"):
+            with self.session_lock:
+                if self.active_session_id and self.active_session_id in self.session_store:
+                    self.session_store[self.active_session_id]["username"] = result["username"]
+        self._send_json(response_data)
+
     def do_GET(self) -> None:
         """Handle GET requests."""
         try:
@@ -214,6 +242,8 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
                 self._handle_api_link_claim()
             elif parsed_path.path == "/api/quest/solo":
                 self._handle_api_quest_solo()
+            elif parsed_path.path == "/api/item/use":
+                self._handle_api_use_item()
             else:
                 self._send_404()
         except Exception as e:
@@ -286,8 +316,11 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             self._send_404()
             return
 
+        session = self._current_session()
+        current_user = session.get("username") if session else None
+
         player_class = self.classes.get(user_id, "No class")
-        content = self.template_engine.render_player_detail(player, player_class, self.challenge_info)
+        content = self.template_engine.render_player_detail(player, player_class, self.challenge_info, current_user)
         html = self.template_engine.render_page(
             f"{player.get('username', 'Player')} - Profile",
             content,

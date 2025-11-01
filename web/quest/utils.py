@@ -258,8 +258,15 @@ def get_medal_emoji(rank: int) -> str:
 
 def calculate_max_energy(prestige_level: int, base_max: int = 10) -> int:
     """Calculate max energy including prestige bonus."""
-    # Prestige energy bonus: 2 per prestige level
-    prestige_bonus = prestige_level * 2
+    # Prestige energy bonus uses a tiered system
+    if prestige_level < 3:
+        prestige_bonus = 0  # No bonus for prestige 0-2
+    elif prestige_level < 6:
+        prestige_bonus = 1  # Prestige 3-5: +1 energy
+    elif prestige_level < 9:
+        prestige_bonus = 2  # Prestige 6-8: +2 energy
+    else:  # prestige_level >= 9
+        prestige_bonus = 3  # Prestige 9+: +3 energy
     return base_max + prestige_bonus
 
 

@@ -245,3 +245,32 @@ class QuestActionService:
                 "username": username,
                 "difficulty": difficulty,
             }
+
+    def use_item(self, user_id: str, item_name: str) -> Dict[str, Any]:
+        """Use an item from the player's inventory."""
+        with self._lock:
+            bot = WebQuestBot(self.config, self.config_dir)
+            username = bot.get_user_nick(user_id)
+            if not username:
+                username = user_id
+
+            quest = Quest(bot)
+            connection = DummyConnection()
+            event = DummyEvent(target="#web")
+
+            handled = False
+            try:
+                quest._load_state()
+                quest.on_load()
+                handled = quest_core.handle_use_item(quest, connection, event, username, [item_name])
+            finally:
+                quest.save_state(force=True)
+                bot.persist()
+                quest.on_unload()
+
+            return {
+                "handled": bool(handled),
+                "messages": connection.messages,
+                "username": username,
+                "item": item_name,
+            }

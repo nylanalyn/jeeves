@@ -87,11 +87,13 @@ class MultiFileStateManager:
         self._states = {}
         self._dirty = {}
         self._save_timers = {}
+        self._mtimes = {}
 
         for file_type in ['state', 'games', 'users', 'stats']:
             self._states[file_type] = {}
             self._dirty[file_type] = False
             self._save_timers[file_type] = None
+            self._mtimes[file_type] = 0.0
 
         self._load_all()
 
@@ -104,18 +106,26 @@ class MultiFileStateManager:
         for file_type in ['state', 'games', 'users', 'stats']:
             self._load_file(file_type)
 
-    def _load_file(self, file_type):
+    def _update_mtime(self, file_type):
+        path = self._get_path(file_type)
+        try:
+            self._mtimes[file_type] = path.stat().st_mtime
+        except FileNotFoundError:
+            self._mtimes[file_type] = 0.0
+
+    def _load_file(self, file_type, create_backup=True, quiet=False):
         """Load a specific state file with backup support."""
         path = self._get_path(file_type)
         backup_path = path.with_suffix(".json.backup")
 
         # Create backup if file exists and is valid
-        if path.exists():
+        if path.exists() and create_backup:
             try:
                 with open(path, "r") as f:
                     test_load = json.load(f)
                 shutil.copy2(path, backup_path)
-                print(f"[state] Created backup: {backup_path}", file=sys.stderr)
+                if not quiet:
+                    print(f"[state] Created backup: {backup_path}", file=sys.stderr)
             except Exception as e:
                 print(f"[state] Warning: Could not backup {file_type}.json: {e}", file=sys.stderr)
 
@@ -124,10 +134,12 @@ class MultiFileStateManager:
             if path.exists():
                 with open(path, "r") as f:
                     self._states[file_type] = json.load(f)
-                print(f"[state] Loaded {file_type}.json", file=sys.stderr)
+                if not quiet:
+                    print(f"[state] Loaded {file_type}.json", file=sys.stderr)
             else:
                 self._states[file_type] = {}
-                print(f"[state] No existing {file_type}.json, starting fresh", file=sys.stderr)
+                if not quiet:
+                    print(f"[state] No existing {file_type}.json, starting fresh", file=sys.stderr)
         except Exception as e:
             print(f"[state] Load error for {file_type}.json: {e}", file=sys.stderr)
             # Try to restore from backup
@@ -142,19 +154,36 @@ class MultiFileStateManager:
                     self._states[file_type] = {}
             else:
                 self._states[file_type] = {}
+        finally:
+            self._update_mtime(file_type)
 
     def _get_file_type_for_module(self, module_name):
         """Determine which file type a module should use."""
         return self.STATE_FILE_MAPPING.get(module_name, 'state')
 
+    def _ensure_latest(self, file_type):
+        path = self._get_path(file_type)
+        try:
+            mtime = path.stat().st_mtime
+        except FileNotFoundError:
+            mtime = 0.0
+
+        current = self._mtimes.get(file_type, 0.0)
+        if mtime == 0.0 and current != 0.0:
+            self._load_file(file_type, create_backup=False, quiet=True)
+        elif mtime > current:
+            self._load_file(file_type, create_backup=False, quiet=True)
+
     def get_state(self):
         """Get the entire main state (for backward compatibility)."""
         with self._locks['state']:
+            self._ensure_latest('state')
             return json.loads(json.dumps(self._states['state']))
 
     def update_state(self, updates):
         """Update the main state file (for backward compatibility)."""
         with self._locks['state']:
+            self._ensure_latest('state')
             self._states['state'].update(updates)
             self._mark_dirty('state')
 
@@ -162,6 +191,7 @@ class MultiFileStateManager:
         """Get a module's state from the appropriate file."""
         file_type = self._get_file_type_for_module(name)
         with self._locks[file_type]:
+            self._ensure_latest(file_type)
             mods = self._states[file_type].setdefault("modules", {})
             return mods.setdefault(name, {})
 
@@ -169,6 +199,7 @@ class MultiFileStateManager:
         """Update a module's state in the appropriate file."""
         file_type = self._get_file_type_for_module(name)
         with self._locks[file_type]:
+            self._ensure_latest(file_type)
             mods = self._states[file_type].setdefault("modules", {})
             mods[name] = updates
             self._mark_dirty(file_type)
@@ -192,6 +223,7 @@ class MultiFileStateManager:
                 tmp = path.with_suffix(".tmp")
                 tmp.write_text(json.dumps(self._states[file_type], indent=4))
                 tmp.replace(path)
+                self._update_mtime(file_type)
                 self._dirty[file_type] = False
                 print(f"[state] Saved {file_type}.json", file=sys.stderr)
             except Exception as e:

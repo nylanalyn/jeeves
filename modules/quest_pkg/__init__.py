@@ -52,6 +52,31 @@ class Quest(SimpleCommandModule):
         # Load challenge paths
         self.challenge_paths = quest_core.load_challenge_paths(self)
 
+    def _refresh_state_cache(self) -> None:
+        """Refresh cached state if external changes were detected."""
+        with self._state_lock:
+            if self._state_dirty:
+                return
+        latest = self.bot.get_module_state(self.name) or {}
+        if not isinstance(latest, dict):
+            latest = {}
+        with self._state_lock:
+            if self._state_dirty:
+                return
+            self._state_cache = latest.copy()
+
+    def get_state(self, key: str = None, default: Any = None) -> Any:
+        self._refresh_state_cache()
+        return super().get_state(key, default)
+
+    def set_state(self, key: str, value: Any) -> None:
+        self._refresh_state_cache()
+        super().set_state(key, value)
+
+    def update_state(self, updates: Dict[str, Any]) -> None:
+        self._refresh_state_cache()
+        super().update_state(updates)
+
     def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
         """Get content from JSON file, falling back to config if not found."""
         # Try to get from content file first

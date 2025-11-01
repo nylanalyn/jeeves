@@ -254,3 +254,60 @@ def get_medal_emoji(rank: int) -> str:
         return "🥉"
     else:
         return f"{rank}."
+
+
+def calculate_max_energy(prestige_level: int, base_max: int = 10) -> int:
+    """Calculate max energy including prestige bonus."""
+    # Prestige energy bonus: 2 per prestige level
+    prestige_bonus = prestige_level * 2
+    return base_max + prestige_bonus
+
+
+def format_injury_time_remaining(expires_at_iso: str) -> str:
+    """Format injury expiration time as human-readable string."""
+    from datetime import datetime, timezone
+    import time
+
+    try:
+        expires_at = datetime.fromisoformat(expires_at_iso)
+        now = datetime.now(timezone.utc)
+
+        if now >= expires_at:
+            return "Expired"
+
+        delta = expires_at - now
+        total_seconds = int(delta.total_seconds())
+
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        else:
+            return f"{minutes}m"
+    except (ValueError, TypeError):
+        return "Unknown"
+
+
+def to_roman(num: int) -> str:
+    """Convert integer to Roman numeral."""
+    val = [
+        1000, 900, 500, 400,
+        100, 90, 50, 40,
+        10, 9, 5, 4,
+        1
+    ]
+    syms = [
+        "M", "CM", "D", "CD",
+        "C", "XC", "L", "XL",
+        "X", "IX", "V", "IV",
+        "I"
+    ]
+    roman_num = ''
+    i = 0
+    while num > 0:
+        for _ in range(num // val[i]):
+            roman_num += syms[i]
+            num -= val[i]
+        i += 1
+    return roman_num

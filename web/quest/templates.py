@@ -2,7 +2,11 @@
 # HTML template generation for quest web UI
 
 from typing import Dict, Any, List, Optional
-from .utils import sanitize, get_rank_suffix, get_medal_emoji, format_xp, calculate_win_rate, format_streak, calculate_level_progress, get_player_display_name, format_cooldown_timestamp
+from .utils import (
+    sanitize, get_rank_suffix, get_medal_emoji, format_xp, calculate_win_rate,
+    format_streak, calculate_level_progress, get_player_display_name,
+    format_cooldown_timestamp, calculate_max_energy, format_injury_time_remaining, to_roman
+)
 from .themes import ThemeManager
 import time
 
@@ -891,17 +895,24 @@ class TemplateEngine:
         """Render detailed player profile view."""
         username = sanitize(player.get("username", "Unknown Player"))
         prestige = player.get("prestige", 0)
+        transcendence = player.get("transcendence", 0)
         level = player.get("level", 1)
         xp = player.get("xp", 0)
         xp_to_next = player.get("xp_to_next_level", 0)
         energy = player.get("energy", 0)
+        max_energy = calculate_max_energy(prestige)
         wins = player.get("wins", 0)
         losses = player.get("losses", 0)
         win_streak = player.get("win_streak", 0)
         prestige_icons = self.theme.get_prestige_icons(prestige)
 
+        # Format legend suffix for transcendence
+        legend_suffix = ""
+        if transcendence > 0:
+            legend_suffix = " (Legend)" if transcendence == 1 else f" (Legend {to_roman(transcendence)})"
+
         # Format XP display
-        xp_display = f"{xp:,}/{xp_to_next:,}" if xp_to_next > 0 else f"{xp:,}"
+        xp_display = f"{xp:,}/{xp_to_next:,}" if xp_to_next > 0 else f"{xp:,} (MAX)"
 
         # Get inventory
         inventory = player.get("inventory", {})
@@ -910,6 +921,7 @@ class TemplateEngine:
         lucky_charms = inventory.get("lucky_charms", 0)
         armor_shards = inventory.get("armor_shards", 0)
         xp_scrolls = inventory.get("xp_scrolls", 0)
+        dungeon_relics = inventory.get("dungeon_relics", 0)
 
         # Active effects
         active_effects = player.get("active_effects", [])
@@ -927,6 +939,11 @@ class TemplateEngine:
 
         # Challenge path
         challenge_path = player.get("challenge_path", "None")
+        challenge_path_name = challenge_path
+        if challenge_info and challenge_path != "None":
+            paths_data = challenge_info.get("paths", {})
+            path_info = paths_data.get(challenge_path, {})
+            challenge_path_name = path_info.get("name", challenge_path)
         challenge_stats = player.get("challenge_stats", {})
 
         # Unlocked abilities
@@ -939,16 +956,17 @@ class TemplateEngine:
 
         <div class="card" style="margin-bottom: 20px;">
             <div style="padding: 30px; text-align: center; background: linear-gradient(135deg, var(--card_background), var(--table_stripe));">
-                <h1 style="font-size: 2.5em; margin-bottom: 10px; color: var(--accent);">{username}</h1>
+                <h1 style="font-size: 2.5em; margin-bottom: 10px; color: var(--accent);">{username}{legend_suffix}</h1>
                 <div style="font-size: 1.2em; margin-bottom: 10px;">{prestige_icons} Prestige {prestige} {sanitize(player_class).title()}</div>
                 <div style="font-size: 1.5em; color: var(--link);">Level {level}</div>
+                {f'<div style="font-size: 1em; margin-top: 10px; color: #9d4edd;">Transcendence: {to_roman(transcendence) if transcendence > 1 else "Legend"}</div>' if transcendence > 0 else ''}
             </div>
         </div>
 
         <div class="stats-grid">
             <div class="stat-card">
                 <h3>⚡ Energy</h3>
-                <div class="value">{energy}</div>
+                <div class="value">{energy}/{max_energy}</div>
             </div>
             <div class="stat-card">
                 <h3>📊 Win/Loss</h3>
@@ -961,7 +979,7 @@ class TemplateEngine:
             </div>
             <div class="stat-card">
                 <h3>✨ XP Progress</h3>
-                <div class="value">{xp_display}</div>
+                <div class="value" style="font-size: 1.5em;">{xp_display}</div>
             </div>
         </div>
 
@@ -994,6 +1012,11 @@ class TemplateEngine:
                         <div style="font-weight: bold;">{xp_scrolls}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">XP Scrolls</div>
                     </div>
+                    {f'''<div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">✨</div>
+                        <div style="font-weight: bold;">{dungeon_relics}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Mythic Relics</div>
+                    </div>''' if dungeon_relics > 0 else ''}
                 </div>
             </div>
         </div>
@@ -1002,24 +1025,75 @@ class TemplateEngine:
         # Active effects and injuries
         if active_effects or active_injuries:
             content += '<div class="card" style="margin-top: 20px;"><div style="padding: 20px;">'
-            content += '<h2 style="color: var(--accent); margin-bottom: 15px;">🔮 Active Effects</h2>'
+            content += '<h2 style="color: var(--accent); margin-bottom: 15px;">🔮 Status Effects</h2>'
 
             if active_effects:
-                content += '<div style="margin-bottom: 15px;"><strong>Buffs:</strong><ul style="margin-top: 5px;">'
+                content += '<div style="margin-bottom: 15px;"><strong style="color: #10b981;">✨ Active Buffs:</strong><ul style="margin-top: 5px; margin-left: 20px;">'
                 for effect in active_effects:
-                    content += f'<li>{sanitize(str(effect))}</li>'
+                    effect_type = effect.get("type", "unknown")
+                    if effect_type == "lucky_charm":
+                        win_bonus = effect.get("win_bonus", 0)
+                        content += f'<li style="color: #10b981;">🍀 Lucky Charm (+{int(win_bonus * 100)}% win chance)</li>'
+                    elif effect_type == "armor_shard":
+                        remaining = effect.get("remaining_fights", 0)
+                        content += f'<li style="color: #10b981;">🛡️ Armor ({remaining} fights remaining)</li>'
+                    elif effect_type == "xp_scroll":
+                        content += f'<li style="color: #10b981;">📜 XP Scroll (active for next win)</li>'
+                    elif effect_type == "dungeon_relic":
+                        charges = effect.get("remaining_auto_wins", 0)
+                        suffix = "win" if charges == 1 else "wins"
+                        content += f'<li style="color: #10b981;">✨ Mythic Relic ({charges} guaranteed {suffix})</li>'
+                    else:
+                        content += f'<li style="color: #10b981;">{sanitize(str(effect))}</li>'
                 content += '</ul></div>'
 
             if active_injuries:
-                content += '<div><strong>Injuries:</strong><ul style="margin-top: 5px; color: #ef4444;">'
+                content += '<div><strong style="color: #ef4444;">💔 Active Injuries:</strong><ul style="margin-top: 5px; margin-left: 20px;">'
                 for injury in active_injuries:
-                    content += f'<li>{sanitize(str(injury))}</li>'
+                    injury_name = injury.get("name", "Unknown Injury")
+                    expires_at = injury.get("expires_at", "")
+                    time_remaining = format_injury_time_remaining(expires_at) if expires_at else "Unknown"
+                    content += f'<li style="color: #ef4444;">💔 {sanitize(injury_name)} ({time_remaining} remaining)</li>'
                 content += '</ul></div>'
 
             content += '</div></div>'
 
         # Unlocked abilities
-        if unlocked_abilities:
+        if unlocked_abilities and challenge_info:
+            abilities_data = challenge_info.get("abilities", {})
+            content += f"""
+            <div class="card" style="margin-top: 20px;">
+                <div style="padding: 20px;">
+                    <h2 style="color: var(--accent); margin-bottom: 15px;">⚔️ Unlocked Abilities</h2>
+                    <div style="display: grid; gap: 15px;">
+            """
+            for ability_id in unlocked_abilities:
+                ability = abilities_data.get(ability_id, {})
+                ability_name = sanitize(ability.get("name", ability_id.replace("_", " ").title()))
+                description = sanitize(ability.get("description", "No description available"))
+                command = ability.get("command", ability_id)
+                cooldown_hours = ability.get("cooldown_hours", 0)
+
+                # Get cooldown info from player data
+                ability_cooldowns = player.get("ability_cooldowns", {})
+                cooldown_status = ""
+                if ability_id in ability_cooldowns:
+                    # We'd need to check if it's still on cooldown, but for now just show cooldown info
+                    cooldown_status = f'<div style="font-size: 0.85em; opacity: 0.7; margin-top: 5px;">Cooldown: {cooldown_hours} hours</div>'
+                else:
+                    cooldown_status = f'<div style="font-size: 0.85em; color: #10b981; margin-top: 5px;">✓ Ready (Cooldown: {cooldown_hours} hours)</div>'
+
+                content += f'''
+                <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; border-left: 4px solid var(--accent);">
+                    <div style="font-size: 1.1em; font-weight: bold; color: var(--accent); margin-bottom: 5px;">⚔️ {ability_name}</div>
+                    <div style="margin-bottom: 5px;">{description}</div>
+                    <div style="font-family: 'Courier New', monospace; font-size: 0.9em; color: var(--link);">!quest ability {sanitize(command)}</div>
+                    {cooldown_status}
+                </div>
+                '''
+            content += "</div></div></div>"
+        elif unlocked_abilities:
+            # Fallback if challenge_info not available
             content += f"""
             <div class="card" style="margin-top: 20px;">
                 <div style="padding: 20px;">
@@ -1036,10 +1110,10 @@ class TemplateEngine:
             <div class="card" style="margin-top: 20px;">
                 <div style="padding: 20px;">
                     <h2 style="color: var(--accent); margin-bottom: 15px;">🎯 Challenge Path</h2>
-                    <div style="font-size: 1.2em; margin-bottom: 10px;">{sanitize(challenge_path).replace('_', ' ').title()}</div>
+                    <div style="font-size: 1.2em; margin-bottom: 10px; font-weight: bold; color: var(--link);">{sanitize(challenge_path_name)}</div>
             """
             if challenge_stats:
-                content += '<div style="margin-top: 10px;"><strong>Stats:</strong><ul style="margin-top: 5px;">'
+                content += '<div style="margin-top: 10px;"><strong>Progress:</strong><ul style="margin-top: 5px; margin-left: 20px;">'
                 for stat_name, stat_value in challenge_stats.items():
                     formatted_name = stat_name.replace('_', ' ').title()
                     content += f'<li>{sanitize(formatted_name)}: {sanitize(str(stat_value))}</li>'

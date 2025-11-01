@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
 from irc.connection import Factory
 import schedule
+from file_lock import FileLock
 
 # Import configuration validator
 try:
@@ -118,44 +119,46 @@ class MultiFileStateManager:
         path = self._get_path(file_type)
         backup_path = path.with_suffix(".json.backup")
 
-        # Create backup if file exists and is valid
-        if path.exists() and create_backup:
-            try:
-                with open(path, "r") as f:
-                    test_load = json.load(f)
-                shutil.copy2(path, backup_path)
-                if not quiet:
-                    print(f"[state] Created backup: {backup_path}", file=sys.stderr)
-            except Exception as e:
-                print(f"[state] Warning: Could not backup {file_type}.json: {e}", file=sys.stderr)
-
-        # Try to load main file
-        try:
-            if path.exists():
-                with open(path, "r") as f:
-                    self._states[file_type] = json.load(f)
-                if not quiet:
-                    print(f"[state] Loaded {file_type}.json", file=sys.stderr)
-            else:
-                self._states[file_type] = {}
-                if not quiet:
-                    print(f"[state] No existing {file_type}.json, starting fresh", file=sys.stderr)
-        except Exception as e:
-            print(f"[state] Load error for {file_type}.json: {e}", file=sys.stderr)
-            # Try to restore from backup
-            if backup_path.exists():
+        # Acquire file lock for the entire read operation
+        with FileLock(path):
+            # Create backup if file exists and is valid
+            if path.exists() and create_backup:
                 try:
-                    print(f"[state] Attempting to restore {file_type}.json from backup...", file=sys.stderr)
-                    with open(backup_path, "r") as f:
+                    with open(path, "r") as f:
+                        test_load = json.load(f)
+                    shutil.copy2(path, backup_path)
+                    if not quiet:
+                        print(f"[state] Created backup: {backup_path}", file=sys.stderr)
+                except Exception as e:
+                    print(f"[state] Warning: Could not backup {file_type}.json: {e}", file=sys.stderr)
+
+            # Try to load main file
+            try:
+                if path.exists():
+                    with open(path, "r") as f:
                         self._states[file_type] = json.load(f)
-                    print(f"[state] Successfully restored {file_type}.json from backup!", file=sys.stderr)
-                except Exception as backup_err:
-                    print(f"[state] Backup restore failed for {file_type}.json: {backup_err}", file=sys.stderr)
+                    if not quiet:
+                        print(f"[state] Loaded {file_type}.json", file=sys.stderr)
+                else:
                     self._states[file_type] = {}
-            else:
-                self._states[file_type] = {}
-        finally:
-            self._update_mtime(file_type)
+                    if not quiet:
+                        print(f"[state] No existing {file_type}.json, starting fresh", file=sys.stderr)
+            except Exception as e:
+                print(f"[state] Load error for {file_type}.json: {e}", file=sys.stderr)
+                # Try to restore from backup
+                if backup_path.exists():
+                    try:
+                        print(f"[state] Attempting to restore {file_type}.json from backup...", file=sys.stderr)
+                        with open(backup_path, "r") as f:
+                            self._states[file_type] = json.load(f)
+                        print(f"[state] Successfully restored {file_type}.json from backup!", file=sys.stderr)
+                    except Exception as backup_err:
+                        print(f"[state] Backup restore failed for {file_type}.json: {backup_err}", file=sys.stderr)
+                        self._states[file_type] = {}
+                else:
+                    self._states[file_type] = {}
+            finally:
+                self._update_mtime(file_type)
 
     def _get_file_type_for_module(self, module_name):
         """Determine which file type a module should use."""
@@ -220,10 +223,12 @@ class MultiFileStateManager:
                 return
             try:
                 path = self._get_path(file_type)
-                tmp = path.with_suffix(".tmp")
-                tmp.write_text(json.dumps(self._states[file_type], indent=4))
-                tmp.replace(path)
-                self._update_mtime(file_type)
+                # Acquire file lock for the entire write operation
+                with FileLock(path):
+                    tmp = path.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(self._states[file_type], indent=4))
+                    tmp.replace(path)
+                    self._update_mtime(file_type)
                 self._dirty[file_type] = False
                 print(f"[state] Saved {file_type}.json", file=sys.stderr)
             except Exception as e:

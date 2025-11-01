@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import threading
 import time
 import uuid
@@ -14,6 +15,10 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import yaml
 
+# Add parent directory to path to import file_lock
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from file_lock import FileLock
+
 from modules.quest_pkg import Quest, quest_core
 
 
@@ -21,10 +26,12 @@ def _load_json(path: Path) -> Dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-            if isinstance(data, dict):
-                return data
+        # Acquire file lock before reading
+        with FileLock(path):
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+                if isinstance(data, dict):
+                    return data
     except (json.JSONDecodeError, OSError):
         logging.exception("Failed to load JSON from %s", path)
     return {}
@@ -32,10 +39,12 @@ def _load_json(path: Path) -> Dict[str, Any]:
 
 def _save_json(path: Path, data: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, sort_keys=True)
-    tmp.replace(path)
+    # Acquire file lock before writing
+    with FileLock(path):
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, sort_keys=True)
+        tmp.replace(path)
 
 
 class DummyConnection:

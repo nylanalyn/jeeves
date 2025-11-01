@@ -57,12 +57,9 @@ class Quest(SimpleCommandModule):
         with self._state_lock:
             if self._state_dirty:
                 return
-        latest = self.bot.get_module_state(self.name) or {}
-        if not isinstance(latest, dict):
-            latest = {}
-        with self._state_lock:
-            if self._state_dirty:
-                return
+            latest = self.bot.get_module_state(self.name) or {}
+            if not isinstance(latest, dict):
+                latest = {}
             self._state_cache = latest.copy()
 
     def get_state(self, key: str = None, default: Any = None) -> Any:
@@ -88,7 +85,9 @@ class Quest(SimpleCommandModule):
     def on_load(self):
         super().on_load()
         self._is_loaded = True
+        self._cleanup_expired_tokens()
         self._schedule_energy_regen()
+        self._schedule_token_cleanup()
         active_mob = self.get_state("active_mob")
         if active_mob:
             close_time = active_mob.get("close_epoch", 0)
@@ -283,6 +282,32 @@ class Quest(SimpleCommandModule):
         self.set_state("web_link_tokens", tokens)
         self.save_state()
         return token, expires_at
+
+    def _cleanup_expired_tokens(self) -> None:
+        """Remove expired weblink tokens from state."""
+        now = time.time()
+        tokens = dict(self.get_state("web_link_tokens", {}))
+
+        # Count tokens before cleanup
+        initial_count = len(tokens)
+
+        # Remove expired tokens
+        expired_tokens = [token for token, info in tokens.items()
+                         if not isinstance(info, dict) or info.get("expires_at", 0) <= now]
+        for token in expired_tokens:
+            tokens.pop(token, None)
+
+        # Only save if we actually removed something
+        if len(tokens) != initial_count:
+            self.set_state("web_link_tokens", tokens)
+            self.save_state()
+            removed_count = initial_count - len(tokens)
+            self.log_debug(f"Cleaned up {removed_count} expired weblink token(s)")
+
+    def _schedule_token_cleanup(self) -> None:
+        """Schedule periodic cleanup of expired weblink tokens."""
+        # Run cleanup every hour
+        schedule.every(1).hours.do(self._cleanup_expired_tokens).tag(f"{self.name}-token_cleanup")
 
     def _cmd_weblink(self, connection, event, msg, username, match):
         """Provide a short-lived token to link an IRC account with the quest website."""

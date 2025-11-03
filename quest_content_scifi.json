@@ -101,5 +101,52 @@
         "Moving unseen, {user} delivers a critical blow to the {monster}."
       ]
     }
+  },
+  "injury_system": {
+    "enabled": true,
+    "injury_chance_on_loss": 0.50,
+    "injuries": [
+      {
+        "name": "Neural Feedback",
+        "description": "Corrupted data has fried your synapses - everything feels fuzzy.",
+        "duration_hours": 2,
+        "effects": {
+          "xp_multiplier": 0.5
+        }
+      },
+      {
+        "name": "System Overload",
+        "description": "Your augments are running hot and need time to cool down.",
+        "duration_hours": 4,
+        "effects": {
+          "energy_regen_modifier": -1
+        }
+      },
+      {
+        "name": "Code Injection",
+        "description": "Malicious code is wreaking havoc on your systems.",
+        "duration_hours": 1,
+        "effects": {
+          "energy_regen_modifier": -1,
+          "xp_multiplier": 0.75
+        }
+      },
+      {
+        "name": "Data Corruption",
+        "description": "Your memory banks are scrambled - nothing makes sense right now.",
+        "duration_hours": 3,
+        "effects": {
+          "xp_multiplier": 0.6
+        }
+      },
+      {
+        "name": "Power Drain",
+        "description": "Something is leeching energy from your core systems.",
+        "duration_hours": 6,
+        "effects": {
+          "energy_regen_modifier": -1
+        }
+      }
+    ]
   }
 }

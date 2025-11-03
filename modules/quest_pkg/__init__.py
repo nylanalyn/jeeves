@@ -767,7 +767,7 @@ class Quest(SimpleCommandModule):
             return True
 
         # Get available injuries
-        injury_config = self.get_config_value("injury_system", event.target, default={})
+        injury_config = self._get_content("injury_system", event.target, default={})
         possible_injuries = injury_config.get("injuries", [])
 
         if not possible_injuries:

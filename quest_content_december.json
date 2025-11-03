@@ -1,0 +1,225 @@
+{
+  "theme": {
+    "name": "december_shopping",
+    "background": "#0f1a0d",
+    "foreground": "#f5f5f0",
+    "accent": "#c41e3a",
+    "accent_text": "#ffffff",
+    "card_background": "#1a2618",
+    "card_border": "#2d5f3f",
+    "table_header": "#2d5f3f",
+    "table_stripe": "#1e2e1c",
+    "link": "#5fa777",
+    "link_hover": "#7bc99c",
+    "prestige_tiers": [
+      {
+        "max": 3,
+        "icon": "🎁",
+        "class": "tier-gift",
+        "color": "#c41e3a",
+        "repeat": 3,
+        "banner": null
+      },
+      {
+        "max": 6,
+        "icon": "🎄",
+        "class": "tier-tree",
+        "color": "#2d5f3f",
+        "repeat": 3,
+        "banner": "snow"
+      },
+      {
+        "max": null,
+        "icon": "⭐",
+        "class": "tier-star",
+        "color": "#ffd700",
+        "repeat": 2,
+        "banner": "garland"
+      }
+    ]
+  },
+  "world_lore": [
+    "The mall speakers play the same six songs on endless repeat, a soundtrack to desperation and determination.",
+    "Parking lots stretch into infinity, each row more crowded than the last, every spot a mirage.",
+    "Returns lines snake through stores like patient serpents, receipts clutched in sweaty hands.",
+    "Online shopping promised convenience, but the delivery windows lie and packages vanish into the void.",
+    "The perfect gift exists somewhere in this chaos - you just have to find it before someone else does."
+  ],
+  "story_beats": {
+    "openers": [
+      "{user} navigates through crowded aisles and encounters {monster} blocking the way to the toy section.",
+      "While waiting in the return line, {user} spots {monster} reaching for the last item on the shelf.",
+      "{user} checks their shopping list one more time before confronting {monster} at the checkout.",
+      "The holiday music crescendos as {user} rounds the corner to find {monster} guarding the gift wrap station.",
+      "{user} braves the parking lot chaos only to discover {monster} claiming the last available space."
+    ],
+    "actions": [
+      "{user} grabs their shopping cart and prepares to navigate around {monster}.",
+      "{user} clutches their coffee tighter and steels themselves against {monster}.",
+      "With determination born of desperation, {user} refuses to let {monster} ruin their shopping trip.",
+      "{user} checks their budget one more time before dealing with {monster}.",
+      "{user} takes a deep breath and channels their inner holiday spirit to overcome {monster}."
+    ]
+  },
+  "monsters": [
+    {
+      "name": "Misplaced Shopping List",
+      "min_level": 1,
+      "max_level": 3,
+      "xp_win_min": 15,
+      "xp_win_max": 30
+    },
+    {
+      "name": "Out of Stock Sign",
+      "min_level": 2,
+      "max_level": 5,
+      "xp_win_min": 20,
+      "xp_win_max": 40
+    },
+    {
+      "name": "Holiday Traffic Jam",
+      "min_level": 4,
+      "max_level": 8,
+      "xp_win_min": 35,
+      "xp_win_max": 70
+    },
+    {
+      "name": "Price Check Delay",
+      "min_level": 6,
+      "max_level": 10,
+      "xp_win_min": 50,
+      "xp_win_max": 100
+    },
+    {
+      "name": "Expired Coupon",
+      "min_level": 8,
+      "max_level": 12,
+      "xp_win_min": 70,
+      "xp_win_max": 130
+    },
+    {
+      "name": "Gift Wrapping Station Line",
+      "min_level": 10,
+      "max_level": 15,
+      "xp_win_min": 100,
+      "xp_win_max": 180
+    },
+    {
+      "name": "Shipping Deadline",
+      "min_level": 14,
+      "max_level": 18,
+      "xp_win_min": 150,
+      "xp_win_max": 250
+    },
+    {
+      "name": "Budget Overrun",
+      "min_level": 16,
+      "max_level": 22,
+      "xp_win_min": 200,
+      "xp_win_max": 350
+    },
+    {
+      "name": "Assembly Required Instructions",
+      "min_level": 20,
+      "max_level": 28,
+      "xp_win_min": 300,
+      "xp_win_max": 500
+    }
+  ],
+  "boss_monsters": [
+    {
+      "name": "Black Friday Stampede",
+      "min_level": 10,
+      "max_level": 20,
+      "xp_win_min": 500,
+      "xp_win_max": 1000
+    },
+    {
+      "name": "The Last Minute Shopper",
+      "min_level": 15,
+      "max_level": 25,
+      "xp_win_min": 800,
+      "xp_win_max": 1500
+    },
+    {
+      "name": "Santa's Naughty List Coordinator",
+      "min_level": 20,
+      "max_level": 30,
+      "xp_win_min": 1200,
+      "xp_win_max": 2000
+    }
+  ],
+  "classes": {
+    "planner": {
+      "description": "An organized shopper with color-coded lists and a battle-tested strategy.",
+      "actions": [
+        "{user} consults their meticulously organized spreadsheet before engaging {monster}.",
+        "{user} cross-references their shopping list and budget calculator while facing {monster}.",
+        "With military precision, {user} executes their pre-planned route around {monster}."
+      ]
+    },
+    "procrastinator": {
+      "description": "Someone who thrives on deadline pressure and last-minute inspiration.",
+      "actions": [
+        "{user} frantically checks their phone for gift ideas while confronting {monster}.",
+        "{user} remembers they forgot someone on their list just as {monster} appears.",
+        "Fueled by panic and peppermint lattes, {user} charges headlong at {monster}."
+      ]
+    },
+    "bargain_hunter": {
+      "description": "A deal-seeking expert who knows every coupon code and clearance rack.",
+      "actions": [
+        "{user} whips out a stack of coupons and promotional codes to deal with {monster}.",
+        "{user} spots a 'Manager's Special' sign and uses it to distract {monster}.",
+        "With the skill of a seasoned deal-hunter, {user} navigates around {monster} to the clearance section."
+      ]
+    }
+  },
+  "injury_system": {
+    "enabled": true,
+    "injury_chance_on_loss": 0.50,
+    "injuries": [
+      {
+        "name": "Paper Cut",
+        "description": "Gift wrapping has drawn blood - the paper cuts sting with every movement.",
+        "duration_hours": 2,
+        "effects": {
+          "xp_multiplier": 0.5
+        }
+      },
+      {
+        "name": "Sore Feet",
+        "description": "Hours of mall walking have left your feet screaming for mercy.",
+        "duration_hours": 4,
+        "effects": {
+          "energy_regen_modifier": -1
+        }
+      },
+      {
+        "name": "Stress Headache",
+        "description": "The combination of crowds, noise, and pressure has resulted in a pounding headache.",
+        "duration_hours": 1,
+        "effects": {
+          "energy_regen_modifier": -1,
+          "xp_multiplier": 0.75
+        }
+      },
+      {
+        "name": "Cookie Burn",
+        "description": "A baking mishap has left you with a painful burn. Should have used oven mitts.",
+        "duration_hours": 3,
+        "effects": {
+          "xp_multiplier": 0.6
+        }
+      },
+      {
+        "name": "Wallet Strain",
+        "description": "Your wallet feels so light it hurts. The financial stress is weighing on you.",
+        "duration_hours": 6,
+        "effects": {
+          "energy_regen_modifier": -1
+        }
+      }
+    ]
+  }
+}

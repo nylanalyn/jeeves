@@ -174,5 +174,52 @@
         "You learn a few things living in this city, and {user} knows just how to deal with a {monster}."
       ]
     }
+  },
+  "injury_system": {
+    "enabled": true,
+    "injury_chance_on_loss": 0.50,
+    "injuries": [
+      {
+        "name": "Pistol Whipped",
+        "description": "Someone got the drop on you - your head is ringing like church bells.",
+        "duration_hours": 2,
+        "effects": {
+          "xp_multiplier": 0.5
+        }
+      },
+      {
+        "name": "Knife Wound",
+        "description": "A blade found its mark in the alley. You're bleeding but still standing.",
+        "duration_hours": 4,
+        "effects": {
+          "energy_regen_modifier": -1
+        }
+      },
+      {
+        "name": "Bourbon Hangover",
+        "description": "That bottle seemed like a good idea last night. It wasn't.",
+        "duration_hours": 1,
+        "effects": {
+          "energy_regen_modifier": -1,
+          "xp_multiplier": 0.75
+        }
+      },
+      {
+        "name": "Cigarette Burn",
+        "description": "They used you as an ashtray during the interrogation.",
+        "duration_hours": 3,
+        "effects": {
+          "xp_multiplier": 0.6
+        }
+      },
+      {
+        "name": "Broken Ribs",
+        "description": "Someone worked you over real good. Every breath is agony.",
+        "duration_hours": 6,
+        "effects": {
+          "energy_regen_modifier": -1
+        }
+      }
+    ]
   }
 }

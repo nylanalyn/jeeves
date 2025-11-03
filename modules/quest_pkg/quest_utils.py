@@ -179,7 +179,7 @@ def check_and_clear_injury(player_data: Dict[str, Any]) -> Tuple[Dict[str, Any],
 def apply_injury(quest_module, user_id: str, username: str, channel: str,
                 is_medic_quest: bool = False, injury_reduction: float = 0.0) -> Optional[str]:
     """Applies a random injury to a player upon defeat. Max 2 of each injury type."""
-    injury_config = quest_module.get_config_value("injury_system", channel, default={})
+    injury_config = quest_module._get_content("injury_system", channel, default={})
     if not injury_config.get("enabled"):
         return None
 

@@ -208,6 +208,14 @@ class Quest(SimpleCommandModule):
         self.register_command(r"^\s*!quest\s+admin\s+path\s+clear\s+(\S+)\s*$", self._cmd_admin_path_clear, name="admin_path_clear",
                               admin_only=True, description="Clear a player's challenge path")
 
+        # Admin commands for injuries
+        self.register_command(r"^\s*!quest\s+admin\s+injury\s+add\s+(\S+)(?:\s+(.+))?\s*$", self._cmd_admin_injury_add, name="admin_injury_add",
+                              admin_only=True, description="Add an injury to a player (random if not specified)")
+        self.register_command(r"^\s*!quest\s+admin\s+injury\s+clear\s+(\S+)\s*$", self._cmd_admin_injury_clear, name="admin_injury_clear",
+                              admin_only=True, description="Clear all injuries from a player")
+        self.register_command(r"^\s*!quest\s+admin\s+injury\s+list\s+(\S+)\s*$", self._cmd_admin_injury_list, name="admin_injury_list",
+                              admin_only=True, description="List a player's active injuries")
+
         self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_quest_transcend, name="quest_transcend",
                               description="Transcend beyond prestige to become a legend.")
         self.register_command(r"^\s*!equip\s*$", self._cmd_dungeon_equip, name="dungeon_equip",
@@ -719,4 +727,184 @@ class Quest(SimpleCommandModule):
         paths = self.challenge_paths.get("paths", {})
         old_name = paths.get(old_path, {}).get("name", old_path)
         self.safe_reply(connection, event, f"Cleared {target_nick}'s challenge path ({old_name}).")
+        return True
+
+    # ===== ADMIN COMMANDS FOR INJURIES =====
+
+    def _cmd_admin_injury_add(self, connection, event, msg, username, match):
+        """Add an injury to a player."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+        injury_name = match.group(2).strip() if match.group(2) else None
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        # Get available injuries
+        injury_config = self.get_config_value("injury_system", event.target, default={})
+        possible_injuries = injury_config.get("injuries", [])
+
+        if not possible_injuries:
+            self.safe_reply(connection, event, "No injuries are configured in the system.")
+            return True
+
+        # Select injury
+        if injury_name:
+            # Find matching injury by name (case-insensitive)
+            injury = None
+            for inj in possible_injuries:
+                if inj.get('name', '').lower() == injury_name.lower():
+                    injury = inj
+                    break
+
+            if not injury:
+                available = ', '.join([inj.get('name', 'Unknown') for inj in possible_injuries])
+                self.safe_reply(connection, event, f"Injury '{injury_name}' not found. Available: {available}")
+                return True
+        else:
+            # Random injury
+            import random
+            injury = random.choice(possible_injuries)
+
+        # Apply the injury manually
+        player = players[target_user_id]
+
+        # Migrate old format if needed
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        if 'active_injuries' not in player:
+            player['active_injuries'] = []
+
+        # Check if player already has 2 of this injury type
+        injury_count = sum(1 for inj in player['active_injuries'] if inj['name'] == injury['name'])
+        if injury_count >= 2:
+            self.safe_reply(connection, event, f"{target_nick} already has 2 {injury['name']} injuries (max limit).")
+            return True
+
+        # Add the injury
+        from datetime import datetime, timedelta
+        duration = timedelta(hours=injury.get("duration_hours", 1))
+        expires_at = datetime.now(constants.UTC) + duration
+
+        new_injury = {
+            "name": injury['name'],
+            "description": injury['description'],
+            "expires_at": expires_at.isoformat(),
+            "effects": injury.get('effects', {})
+        }
+
+        player['active_injuries'].append(new_injury)
+        self.set_state("players", players)
+        self.save_state()
+
+        self.safe_reply(connection, event, f"Added {injury['name']} to {target_nick}! (Duration: {injury.get('duration_hours', 1)}h)")
+        return True
+
+    def _cmd_admin_injury_clear(self, connection, event, msg, username, match):
+        """Clear all injuries from a player."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+
+        # Migrate old format if needed
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        injuries = player.get('active_injuries', [])
+
+        if not injuries:
+            self.safe_reply(connection, event, f"{target_nick} has no active injuries.")
+            return True
+
+        injury_count = len(injuries)
+        injury_names = [inj['name'] for inj in injuries]
+
+        # Clear all injuries
+        player['active_injuries'] = []
+        self.set_state("players", players)
+        self.save_state()
+
+        if injury_count == 1:
+            self.safe_reply(connection, event, f"Cleared {injury_names[0]} from {target_nick}.")
+        else:
+            self.safe_reply(connection, event, f"Cleared {injury_count} injuries from {target_nick}: {', '.join(injury_names)}")
+        return True
+
+    def _cmd_admin_injury_list(self, connection, event, msg, username, match):
+        """List a player's active injuries."""
+        if not self.is_enabled(event.target):
+            return False
+
+        target_nick = match.group(1)
+
+        # Get target user ID
+        target_user_id = self.bot.get_user_id(target_nick)
+        if not target_user_id:
+            self.safe_reply(connection, event, f"Player '{target_nick}' not found.")
+            return True
+
+        # Get player
+        players = self.get_state("players", {})
+        if target_user_id not in players:
+            self.safe_reply(connection, event, f"Player '{target_nick}' has not started playing yet.")
+            return True
+
+        player = players[target_user_id]
+
+        # Migrate old format if needed
+        if 'active_injury' in player:
+            player['active_injuries'] = [player['active_injury']]
+            del player['active_injury']
+
+        injuries = player.get('active_injuries', [])
+
+        if not injuries:
+            self.safe_reply(connection, event, f"{target_nick} has no active injuries.")
+            return True
+
+        # Format injury list with expiration times
+        from datetime import datetime
+        injury_details = []
+        for injury in injuries:
+            expires_str = injury.get('expires_at', '')
+            if expires_str:
+                try:
+                    expires_at = datetime.fromisoformat(expires_str)
+                    time_left = quest_utils.format_timedelta(expires_at)
+                    injury_details.append(f"{injury['name']} (expires in {time_left})")
+                except:
+                    injury_details.append(injury['name'])
+            else:
+                injury_details.append(injury['name'])
+
+        self.safe_reply(connection, event, f"{target_nick}'s injuries: {', '.join(injury_details)}")
         return True

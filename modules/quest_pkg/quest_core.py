@@ -579,11 +579,110 @@ def handle_medic_quest(quest_module, connection, event, username):
 
 
 def use_ability(quest_module, connection, event, username, user_id, player, ability_name):
-    """Use an unlocked ability (simplified for now)."""
-    # This is a placeholder - the full implementation is in the original quest.py
-    # We'll need to keep this in the main __init__.py file due to its complexity
-    quest_module.safe_reply(connection, event, "Ability system is being refactored. Please use the main quest module.")
+    """Use an unlocked ability."""
+    # Check if player has this ability unlocked
+    unlocked = player.get("unlocked_abilities", [])
+    abilities_data = quest_module.challenge_paths.get("abilities", {})
+
+    # Find the ability by command name
+    ability_id = None
+    ability_data = None
+    for aid, adata in abilities_data.items():
+        if adata.get("command", "").lower() == ability_name:
+            ability_id = aid
+            ability_data = adata
+            break
+
+    if not ability_id or ability_id not in unlocked:
+        quest_module.safe_reply(connection, event, f"You don't have the '{ability_name}' ability unlocked.")
+        return True
+
+    # Check cooldown
+    cooldowns = player.get("ability_cooldowns", {})
+    if ability_id in cooldowns:
+        cooldown_expires = datetime.fromisoformat(cooldowns[ability_id])
+        now = datetime.now(UTC)
+        if now < cooldown_expires:
+            time_left = quest_utils.format_timedelta(cooldown_expires)
+            quest_module.safe_reply(connection, event, f"That ability is on cooldown for {time_left}.")
+            return True
+
+    # Execute the ability
+    effect = ability_data.get("effect")
+    success = _execute_ability_effect(quest_module, connection, event, username, user_id, effect, ability_data)
+
+    if success:
+        # Set cooldown
+        cooldown_hours = ability_data.get("cooldown_hours", 24)
+        cooldown_expires = datetime.now(UTC) + timedelta(hours=cooldown_hours)
+        player["ability_cooldowns"][ability_id] = cooldown_expires.isoformat()
+
+        # Save player state
+        players = quest_module.get_state("players")
+        players[user_id] = player
+        quest_module.set_state("players", players)
+        quest_module.save_state()
+
+        # Announce to channel
+        announcement = ability_data.get("announcement", "{user} uses {ability}!")
+        announcement = announcement.format(user=quest_module.bot.title_for(username), ability=ability_data.get("name"))
+        quest_module.safe_say(announcement, event.target)
+
     return True
+
+
+def _execute_ability_effect(quest_module, connection, event, username, user_id, effect, ability_data):
+    """Execute the actual effect of an ability."""
+    if effect == "heal_all_injuries":
+        # Heal all injuries for all players in channel
+        players = quest_module.get_state("players", {})
+        healed_count = 0
+
+        for pid, pdata in players.items():
+            if isinstance(pdata, dict):
+                if pdata.get("active_injuries") and len(pdata.get("active_injuries", [])) > 0:
+                    pdata["active_injuries"] = []
+                    healed_count += 1
+                    players[pid] = pdata
+
+        quest_module.set_state("players", players)
+        quest_module.save_state()
+
+        if healed_count > 0:
+            quest_module.safe_say(f"{healed_count} player(s) have been healed!", event.target)
+        return True
+
+    elif effect == "restore_party_energy":
+        # Restore energy to all players
+        players = quest_module.get_state("players", {})
+        energy_amount = ability_data.get("effect_data", {}).get("energy_amount", 5)
+        restored_count = 0
+
+        for pid, pdata in players.items():
+            if isinstance(pdata, dict):
+                max_energy = quest_progression.get_player_max_energy(quest_module, pdata, event.target)
+                old_energy = pdata.get("energy", 0)
+                pdata["energy"] = min(max_energy, old_energy + energy_amount)
+                if pdata["energy"] > old_energy:
+                    restored_count += 1
+                players[pid] = pdata
+
+        quest_module.set_state("players", players)
+        quest_module.save_state()
+
+        if restored_count > 0:
+            quest_module.safe_say(f"{restored_count} player(s) restored energy!", event.target)
+        return True
+
+    elif effect == "party_buff_win_chance":
+        # Add a timed buff to all players
+        # This would require more complex buff tracking - placeholder for now
+        quest_module.safe_say("Party buff applied! (Full implementation pending)", event.target)
+        return True
+
+    # Unknown effect
+    quest_module.safe_reply(connection, event, f"Unknown ability effect: {effect}")
+    return False
 
 
 def handle_medkit(quest_module, connection, event, username, target_arg):

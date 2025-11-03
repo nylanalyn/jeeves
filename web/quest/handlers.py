@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .templates import TemplateEngine
 from .themes import ThemeManager
-from .utils import sanitize, validate_search_term, load_quest_state, load_challenge_paths, load_mob_cooldowns, sort_players_by_prestige
+from .utils import sanitize, validate_search_term, load_quest_state, load_challenge_paths, load_mob_cooldowns, load_boss_hunt_data, sort_players_by_prestige
 from .actions import QuestActionService
 
 SESSION_COOKIE = "jeeves_quest_session"
@@ -35,6 +35,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         self.players, self.classes = self._load_state()
         self.challenge_info = load_challenge_paths(content_path / "challenge_paths.json")
         self.mob_cooldowns = load_mob_cooldowns(games_path)
+        self.boss_hunt_data = load_boss_hunt_data(games_path)
         self.active_session_id: Optional[str] = None
         # Now call parent init which will handle the request
         super().__init__(*args, **kwargs)
@@ -48,6 +49,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         self.players, self.classes = self._load_state()
         self.challenge_info = load_challenge_paths(self.content_path / "challenge_paths.json")
         self.mob_cooldowns = load_mob_cooldowns(self.games_path)
+        self.boss_hunt_data = load_boss_hunt_data(self.games_path)
         self.active_session_id = None
 
     # --- Session helpers -------------------------------------------------
@@ -276,6 +278,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             search_term,
             self.challenge_info,
             self.mob_cooldowns,
+            self.boss_hunt_data,
             current_user
         )
 

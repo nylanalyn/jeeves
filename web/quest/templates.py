@@ -331,6 +331,101 @@ class TemplateEngine:
             color: #f59e0b;
         }}
 
+        .boss-hunt-section {{
+            padding: 20px;
+        }}
+
+        .boss-buff-active {{
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1));
+            border: 2px solid #10b981;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 1.1em;
+            animation: glow-pulse 2s infinite;
+        }}
+
+        .boss-info {{
+            margin-top: 15px;
+        }}
+
+        .boss-info h4 {{
+            font-size: 1.5em;
+            color: var(--accent);
+            margin-bottom: 5px;
+        }}
+
+        .boss-description {{
+            color: var(--muted_foreground);
+            font-style: italic;
+            margin-bottom: 15px;
+        }}
+
+        .boss-hp-container {{
+            margin: 15px 0;
+        }}
+
+        .boss-hp-label {{
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: var(--muted_foreground);
+        }}
+
+        .boss-hp-bar-container {{
+            width: 100%;
+            height: 25px;
+            background: var(--table_stripe);
+            border: 1px solid var(--card_border);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }}
+
+        .boss-hp-bar {{
+            height: 100%;
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }}
+
+        .boss-hp-ascii {{
+            font-family: 'Courier New', monospace;
+            text-align: center;
+            margin-top: 5px;
+            font-size: 0.9em;
+            color: var(--muted_foreground);
+        }}
+
+        .boss-stats {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid var(--card_border);
+        }}
+
+        .boss-stat {{
+            display: flex;
+            flex-direction: column;
+            text-align: center;
+        }}
+
+        .boss-stat .stat-label {{
+            font-size: 0.85em;
+            color: var(--muted_foreground);
+            margin-bottom: 5px;
+        }}
+
+        .boss-stat .stat-value {{
+            font-size: 1.3em;
+            font-weight: bold;
+            color: var(--accent);
+        }}
+
         .card {{
             background: var(--card_background);
             border: 1px solid var(--card_border);
@@ -545,6 +640,7 @@ class TemplateEngine:
     def render_leaderboard(self, players: List[Dict[str, Any]], classes: Dict[str, str],
                           search_term: str = "", challenge_info: Optional[Dict[str, Any]] = None,
                           mob_cooldowns: Optional[Dict[str, float]] = None,
+                          boss_hunt_data: Optional[Dict[str, Any]] = None,
                           current_user: Optional[str] = None) -> str:
         """Render the leaderboard view."""
         content = ""
@@ -611,6 +707,88 @@ class TemplateEngine:
             <div class="action-status" id="action-status"></div>
         </div>
         """
+
+        # Boss Hunt
+        if boss_hunt_data:
+            current_boss = boss_hunt_data.get("current_boss", {})
+            buff = boss_hunt_data.get("buff", {})
+            stats = boss_hunt_data.get("stats", {})
+
+            if current_boss:
+                boss_name = sanitize(current_boss.get("name", "Unknown Boss"))
+                boss_desc = sanitize(current_boss.get("description", ""))
+                current_hp = current_boss.get("current_hp", 0)
+                max_hp = current_boss.get("max_hp", 1)
+                clues = current_boss.get("clues_collected", 0)
+
+                # Calculate HP percentage and bar
+                hp_percent = int((current_hp / max_hp) * 100) if max_hp > 0 else 0
+                bar_filled = int((current_hp / max_hp) * 20) if max_hp > 0 else 0
+                bar_empty = 20 - bar_filled
+                hp_bar = "█" * bar_filled + "░" * bar_empty
+
+                # Check buff status
+                buff_active = buff.get("active", False)
+                buff_html = ""
+                if buff_active:
+                    from datetime import datetime, timezone
+                    try:
+                        expires_at_str = buff.get("expires_at")
+                        if expires_at_str:
+                            expires_at = datetime.fromisoformat(expires_at_str)
+                            now = datetime.now(timezone.utc)
+                            if now < expires_at:
+                                time_left = expires_at - now
+                                days = time_left.days
+                                hours = time_left.seconds // 3600
+                                xp_mult = buff.get("xp_multiplier", 1.0)
+                                level_red = buff.get("level_reduction", 0)
+                                buff_html = f"""
+                                <div class="boss-buff-active">
+                                    🎉 <strong>THE HEAT'S OFF!</strong> 🎉<br>
+                                    Enemies -{level_red} levels | XP x{xp_mult} | {days}d {hours}h remaining
+                                </div>
+                                """
+                    except:
+                        pass
+
+                total_defeated = stats.get("total_bosses_defeated", 0)
+                total_clues = stats.get("total_clues_found", 0)
+
+                content += f"""
+                <div class="card boss-hunt-section">
+                    <h3 style="margin-bottom: 15px; color: var(--accent);">🔍 Boss Hunt: The Trail</h3>
+                    {buff_html}
+                    <div class="boss-info">
+                        <h4>{boss_name}</h4>
+                        <p class="boss-description">{boss_desc}</p>
+                        <div class="boss-hp-container">
+                            <div class="boss-hp-label">
+                                <span>HP: {current_hp:,} / {max_hp:,}</span>
+                                <span>{hp_percent}%</span>
+                            </div>
+                            <div class="boss-hp-bar-container">
+                                <div class="boss-hp-bar" style="width: {hp_percent}%"></div>
+                            </div>
+                            <div class="boss-hp-ascii">[{hp_bar}]</div>
+                        </div>
+                        <div class="boss-stats">
+                            <div class="boss-stat">
+                                <span class="stat-label">Clues Collected:</span>
+                                <span class="stat-value">{clues}</span>
+                            </div>
+                            <div class="boss-stat">
+                                <span class="stat-label">Total Bosses Defeated:</span>
+                                <span class="stat-value">{total_defeated}</span>
+                            </div>
+                            <div class="boss-stat">
+                                <span class="stat-label">Total Clues Found:</span>
+                                <span class="stat-value">{total_clues:,}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                """
 
         # Mob cooldowns
         if mob_cooldowns:

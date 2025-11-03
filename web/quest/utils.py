@@ -318,3 +318,44 @@ def to_roman(num: int) -> str:
             num -= val[i]
         i += 1
     return roman_num
+
+
+def load_boss_hunt_data(games_path: Path) -> Dict[str, Any]:
+    """Load boss hunt data from games.json.
+
+    Returns:
+        Dict containing boss hunt state (current_boss, buff, stats)
+    """
+    if not games_path.exists():
+        return {}
+
+    try:
+        with open(games_path, 'r') as f:
+            data = json.load(f)
+            if not isinstance(data, dict):
+                return {}
+
+            # Quest data is nested under modules.quest
+            modules = data.get("modules", {})
+            if not isinstance(modules, dict):
+                return {}
+
+            quest_state = modules.get("quest", {})
+            if not isinstance(quest_state, dict):
+                return {}
+
+            boss_hunt = quest_state.get("boss_hunt", {})
+            if not isinstance(boss_hunt, dict):
+                return {}
+
+            return boss_hunt
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def format_boss_hp_percentage(current_hp: int, max_hp: int) -> str:
+    """Format boss HP as percentage."""
+    if max_hp == 0:
+        return "0%"
+    percentage = (current_hp / max_hp) * 100
+    return f"{percentage:.1f}%"

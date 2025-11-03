@@ -14,6 +14,7 @@ from .constants import (
 from . import quest_utils
 from . import quest_progression
 from . import quest_combat
+from . import quest_boss_hunt
 
 
 def load_content(quest_module) -> Dict[str, Any]:
@@ -103,6 +104,13 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         player["energy"] -= 1
 
     target_monster_level = player_level + diff_mod["level_mod"]
+
+    # Apply boss hunt buff to reduce monster level if active
+    boss_hunt_level_mod, _, boss_buff_msg = quest_boss_hunt.apply_boss_hunt_buff_to_combat(
+        quest_module, target_monster_level, 0, event.target
+    )
+    target_monster_level = boss_hunt_level_mod
+
     possible_monsters = [m for m in monsters if isinstance(m, dict) and m['min_level'] <= target_monster_level <= m['max_level']]
     if not possible_monsters:
         quest_module.safe_reply(connection, event, "The lands are eerily quiet... no suitable monsters could be found.")
@@ -111,7 +119,7 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         return True
 
     monster = random.choice(possible_monsters)
-    monster_level = max(1, random.randint(min(player_level - 1, player_level + diff_mod["level_mod"]), max(player_level - 1, player_level + diff_mod["level_mod"])))
+    monster_level = max(1, random.randint(min(player_level - 1, target_monster_level), max(player_level - 1, target_monster_level)))
 
     # Check for rare spawn
     rare_spawn_chance = quest_module.get_config_value("rare_spawn_chance", event.target, default=0.10)
@@ -160,6 +168,12 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     if is_rare:
         total_xp *= rare_xp_mult
 
+    # Apply boss hunt buff to XP if active
+    _, buffed_xp, _ = quest_boss_hunt.apply_boss_hunt_buff_to_combat(
+        quest_module, 0, total_xp, event.target
+    )
+    total_xp = buffed_xp
+
     # Apply active effects (lucky charm, xp scroll) - pass placeholder for is_win
     win_chance_modified, xp_modified, effect_msgs = quest_combat.apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=False)
 
@@ -180,6 +194,10 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     is_crit = win and random.random() < crit_chance
 
     if win:
+        # Show buff message if active (before victory message)
+        if boss_buff_msg:
+            quest_module.safe_reply(connection, event, boss_buff_msg)
+
         quest_module.safe_reply(connection, event, f"Victory! (Win chance: {win_chance_modified:.0%}) The {monster_name_with_level} is defeated! You gain {int(total_xp)} XP.")
         # Show XP scroll message if it activated
         for msg in xp_effect_msgs:
@@ -187,11 +205,24 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
                 quest_module.safe_reply(connection, event, msg)
         for m in quest_progression.grant_xp(quest_module, user_id, username, total_xp, is_win=True, is_crit=is_crit):
             quest_module.safe_reply(connection, event, m)
+
+        # Try to drop an item from combat
+        item_drop_msg = try_drop_item_from_combat(quest_module, player, event, is_win=True, is_crit=is_crit)
+        if item_drop_msg:
+            quest_module.safe_reply(connection, event, item_drop_msg)
+
+        # Try to drop a clue for boss hunt
+        quest_boss_hunt.try_drop_clue(quest_module, connection, event, username, event.target)
     else:
         xp_loss_perc = quest_module.get_config_value("xp_loss_percentage", event.target, default=0.25)
         xp_loss = total_xp * xp_loss_perc
         quest_module.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance_modified:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
         quest_progression.deduct_xp(quest_module, user_id, username, xp_loss)
+
+        # Try to drop a medkit on loss
+        item_drop_msg = try_drop_item_from_combat(quest_module, player, event, is_win=False, is_crit=False)
+        if item_drop_msg:
+            quest_module.safe_reply(connection, event, item_drop_msg)
 
         # Apply injury with armor reduction
         injury_reduction = quest_combat.get_injury_reduction(player)
@@ -207,6 +238,67 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     quest_module.set_state("players", players)
     quest_module.save_state()
     return True
+
+
+def try_drop_item_from_combat(quest_module, player: Dict[str, Any], event, is_win: bool, is_crit: bool) -> Optional[str]:
+    """
+    Try to drop an item from combat.
+
+    Args:
+        quest_module: The quest module instance
+        player: Player data dict
+        event: IRC event
+        is_win: True if player won the fight
+        is_crit: True if it was a critical hit
+
+    Returns:
+        Item drop message or None if no drop
+    """
+    if is_win:
+        # Win drops: lucky charm, armor shard, XP scroll, energy potion
+        base_drop_chance = quest_module.get_config_value("combat_drops.win_drop_chance", event.target, default=0.20)
+        crit_bonus = quest_module.get_config_value("combat_drops.crit_drop_bonus", event.target, default=0.15)
+
+        drop_chance = base_drop_chance + (crit_bonus if is_crit else 0.0)
+
+        if random.random() >= drop_chance:
+            return None
+
+        # Determine which item drops
+        drop_weights = {
+            "energy_potion": quest_module.get_config_value("combat_drops.energy_potion_weight", event.target, default=0.35),
+            "lucky_charm": quest_module.get_config_value("combat_drops.lucky_charm_weight", event.target, default=0.25),
+            "armor_shard": quest_module.get_config_value("combat_drops.armor_shard_weight", event.target, default=0.20),
+            "xp_scroll": quest_module.get_config_value("combat_drops.xp_scroll_weight", event.target, default=0.20)
+        }
+
+        # Weighted random selection
+        items = list(drop_weights.keys())
+        weights = list(drop_weights.values())
+        dropped_item = random.choices(items, weights=weights, k=1)[0]
+
+        # Add to inventory
+        if dropped_item == "energy_potion":
+            player["inventory"]["energy_potions"] = player["inventory"].get("energy_potions", 0) + 1
+            return "💎 You found an ENERGY POTION!"
+        elif dropped_item == "lucky_charm":
+            player["inventory"]["lucky_charms"] = player["inventory"].get("lucky_charms", 0) + 1
+            return "🍀 You found a LUCKY CHARM!"
+        elif dropped_item == "armor_shard":
+            player["inventory"]["armor_shards"] = player["inventory"].get("armor_shards", 0) + 1
+            return "🛡️ You found an ARMOR SHARD!"
+        elif dropped_item == "xp_scroll":
+            player["inventory"]["xp_scrolls"] = player["inventory"].get("xp_scrolls", 0) + 1
+            return "📜 You found an XP SCROLL!"
+    else:
+        # Loss drops: medkits only
+        medkit_drop_chance = quest_module.get_config_value("combat_drops.loss_medkit_chance", event.target, default=0.15)
+
+        if random.random() < medkit_drop_chance:
+            player["inventory"]["medkits"] = player["inventory"].get("medkits", 0) + 1
+            return "⚕️ You stumbled upon a MEDKIT while retreating!"
+
+    return None
 
 
 def perform_single_search(quest_module, player: Dict[str, Any], event) -> Dict[str, Any]:
@@ -278,6 +370,12 @@ def perform_single_search(quest_module, player: Dict[str, Any], event) -> Dict[s
 
 def handle_search(quest_module, connection, event, username, args):
     """Handle search command - search for items using energy."""
+    # Search has been retired in favor of combat drops
+    quest_module.safe_reply(connection, event, "Search has been retired! Items now drop from combat. Win fights for supplies, lose fights for medkits. Critical hits increase drop chances!")
+    return True
+
+def handle_search_old(quest_module, connection, event, username, args):
+    """OLD: Handle search command - search for items using energy."""
     user_id = quest_module.bot.get_user_id(username)
     player = quest_progression.get_player(quest_module, user_id, username)
 

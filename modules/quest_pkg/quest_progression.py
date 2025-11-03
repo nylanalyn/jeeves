@@ -436,6 +436,9 @@ def handle_transcend(quest_module, connection, event, username):
 
     new_transcendence = current_transcendence + 1
 
+    # Preserve unlocked abilities through transcendence
+    preserved_abilities = player.get("unlocked_abilities", [])
+
     # Reset player stats to base values
     player["transcendence"] = new_transcendence
     player["prestige"] = 1
@@ -469,8 +472,8 @@ def handle_transcend(quest_module, connection, event, username):
         "last_equipped": None,
         "last_run": None
     }
-    player["ability_cooldowns"] = {}
-    player["unlocked_abilities"] = []
+    player["ability_cooldowns"] = {}  # Reset cooldowns but keep abilities
+    player["unlocked_abilities"] = preserved_abilities  # Keep unlocked abilities!
 
     # Clear class back to default
     player_classes = quest_module.get_state("player_classes", {})
@@ -500,6 +503,14 @@ def handle_transcend(quest_module, connection, event, username):
                         f"*** {username} transcends the mortal cycle and becomes {legend_suffix}! Their legend will haunt future mobs. ***")
     quest_module.safe_reply(connection, event,
                         "You have been reborn at Level 1, Prestige 1. Your stats have been reset to their base values.")
+
+    # Notify about preserved abilities
+    if preserved_abilities:
+        abilities_data = quest_module.challenge_paths.get("abilities", {})
+        ability_names = [abilities_data.get(aid, {}).get("name", aid) for aid in preserved_abilities]
+        quest_module.safe_privmsg(username,
+                              f"Your unlocked abilities remain with you: {', '.join(ability_names)}")
+
     quest_module.safe_privmsg(username,
                           "You now stalk the world as a Legend-tier boss. Future !mob encounters may summon you—good luck to the mortals!")
 

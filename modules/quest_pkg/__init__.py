@@ -17,6 +17,7 @@ from . import quest_progression
 from . import quest_combat
 from . import quest_display
 from . import quest_core
+from . import quest_boss_hunt
 
 WEB_LINK_TOKEN_TTL = 600  # seconds (10 minutes)
 
@@ -88,6 +89,10 @@ class Quest(SimpleCommandModule):
         self._cleanup_expired_tokens()
         self._schedule_energy_regen()
         self._schedule_token_cleanup()
+
+        # Initialize boss hunt system
+        quest_boss_hunt.initialize_boss_hunt_state(self)
+
         active_mob = self.get_state("active_mob")
         if active_mob:
             close_time = active_mob.get("close_epoch", 0)
@@ -215,6 +220,16 @@ class Quest(SimpleCommandModule):
                               admin_only=True, description="Clear all injuries from a player")
         self.register_command(r"^\s*!quest\s+admin\s+injury\s+list\s+(\S+)\s*$", self._cmd_admin_injury_list, name="admin_injury_list",
                               admin_only=True, description="List a player's active injuries")
+
+        # Boss hunt commands
+        self.register_command(r"^\s*!quest\s+boss(?:\s+status)?\s*$", self._cmd_boss_status, name="boss_status",
+                              description="Show current boss hunt status")
+        self.register_command(r"^\s*!quest\s+admin\s+boss\s+spawn\s*$", self._cmd_boss_spawn, name="admin_boss_spawn",
+                              admin_only=True, description="Spawn a new boss")
+        self.register_command(r"^\s*!quest\s+admin\s+boss\s+damage\s+(\d+)\s*$", self._cmd_boss_damage, name="admin_boss_damage",
+                              admin_only=True, description="Deal damage to the current boss")
+        self.register_command(r"^\s*!quest\s+admin\s+boss\s+buff\s+(on|off|status)\s*$", self._cmd_boss_buff, name="admin_boss_buff",
+                              admin_only=True, description="Toggle or check boss hunt buff")
 
         self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_quest_transcend, name="quest_transcend",
                               description="Transcend beyond prestige to become a legend.")
@@ -908,3 +923,21 @@ class Quest(SimpleCommandModule):
 
         self.safe_reply(connection, event, f"{target_nick}'s injuries: {', '.join(injury_details)}")
         return True
+
+    # ===== BOSS HUNT COMMANDS =====
+
+    def _cmd_boss_status(self, connection, event, msg, username, match):
+        """Show current boss hunt status."""
+        return quest_boss_hunt.cmd_boss_status(self, connection, event, msg, username, match)
+
+    def _cmd_boss_spawn(self, connection, event, msg, username, match):
+        """Admin command to spawn a new boss."""
+        return quest_boss_hunt.cmd_boss_spawn(self, connection, event, msg, username, match)
+
+    def _cmd_boss_damage(self, connection, event, msg, username, match):
+        """Admin command to damage the boss."""
+        return quest_boss_hunt.cmd_boss_damage(self, connection, event, msg, username, match)
+
+    def _cmd_boss_buff(self, connection, event, msg, username, match):
+        """Admin command to toggle boss buff."""
+        return quest_boss_hunt.cmd_boss_buff(self, connection, event, msg, username, match)

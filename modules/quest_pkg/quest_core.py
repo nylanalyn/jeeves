@@ -242,7 +242,7 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
 
 def try_drop_item_from_combat(quest_module, player: Dict[str, Any], event, is_win: bool, is_crit: bool) -> Optional[str]:
     """
-    Try to drop an item from combat.
+    Try to drop items from combat. Can drop multiple items!
 
     Args:
         quest_module: The quest module instance
@@ -252,53 +252,66 @@ def try_drop_item_from_combat(quest_module, player: Dict[str, Any], event, is_wi
         is_crit: True if it was a critical hit
 
     Returns:
-        Item drop message or None if no drop
+        Item drop message or None if no drops
     """
-    if is_win:
-        # Win drops: lucky charm, armor shard, XP scroll, energy potion
-        base_drop_chance = quest_module.get_config_value("combat_drops.win_drop_chance", event.target, default=0.20)
-        crit_bonus = quest_module.get_config_value("combat_drops.crit_drop_bonus", event.target, default=0.15)
+    dropped_items = []
 
+    if is_win:
+        # Win drops: medkit, lucky charm, armor shard, XP scroll, energy potion
+        # Try for each item type independently - can get multiple!
+        base_drop_chance = quest_module.get_config_value("combat_drops.win_drop_chance", event.target, default=0.35)
+        crit_bonus = quest_module.get_config_value("combat_drops.crit_drop_bonus", event.target, default=0.20)
         drop_chance = base_drop_chance + (crit_bonus if is_crit else 0.0)
 
-        if random.random() >= drop_chance:
-            return None
-
-        # Determine which item drops
-        drop_weights = {
-            "energy_potion": quest_module.get_config_value("combat_drops.energy_potion_weight", event.target, default=0.35),
-            "lucky_charm": quest_module.get_config_value("combat_drops.lucky_charm_weight", event.target, default=0.25),
-            "armor_shard": quest_module.get_config_value("combat_drops.armor_shard_weight", event.target, default=0.20),
-            "xp_scroll": quest_module.get_config_value("combat_drops.xp_scroll_weight", event.target, default=0.20)
+        # Each item type has its own roll
+        item_chances = {
+            "medkit": quest_module.get_config_value("combat_drops.medkit_chance", event.target, default=0.25),
+            "energy_potion": quest_module.get_config_value("combat_drops.energy_potion_chance", event.target, default=0.30),
+            "lucky_charm": quest_module.get_config_value("combat_drops.lucky_charm_chance", event.target, default=0.20),
+            "armor_shard": quest_module.get_config_value("combat_drops.armor_shard_chance", event.target, default=0.20),
+            "xp_scroll": quest_module.get_config_value("combat_drops.xp_scroll_chance", event.target, default=0.20)
         }
 
-        # Weighted random selection
-        items = list(drop_weights.keys())
-        weights = list(drop_weights.values())
-        dropped_item = random.choices(items, weights=weights, k=1)[0]
+        # Try for each item type
+        for item_type, item_chance in item_chances.items():
+            if random.random() < (drop_chance * item_chance):
+                if item_type == "medkit":
+                    player["inventory"]["medkits"] = player["inventory"].get("medkits", 0) + 1
+                    dropped_items.append("⚕️ MEDKIT")
+                elif item_type == "energy_potion":
+                    player["inventory"]["energy_potions"] = player["inventory"].get("energy_potions", 0) + 1
+                    dropped_items.append("💎 ENERGY POTION")
+                elif item_type == "lucky_charm":
+                    player["inventory"]["lucky_charms"] = player["inventory"].get("lucky_charms", 0) + 1
+                    dropped_items.append("🍀 LUCKY CHARM")
+                elif item_type == "armor_shard":
+                    player["inventory"]["armor_shards"] = player["inventory"].get("armor_shards", 0) + 1
+                    dropped_items.append("🛡️ ARMOR SHARD")
+                elif item_type == "xp_scroll":
+                    player["inventory"]["xp_scrolls"] = player["inventory"].get("xp_scrolls", 0) + 1
+                    dropped_items.append("📜 XP SCROLL")
 
-        # Add to inventory
-        if dropped_item == "energy_potion":
-            player["inventory"]["energy_potions"] = player["inventory"].get("energy_potions", 0) + 1
-            return "💎 You found an ENERGY POTION!"
-        elif dropped_item == "lucky_charm":
-            player["inventory"]["lucky_charms"] = player["inventory"].get("lucky_charms", 0) + 1
-            return "🍀 You found a LUCKY CHARM!"
-        elif dropped_item == "armor_shard":
-            player["inventory"]["armor_shards"] = player["inventory"].get("armor_shards", 0) + 1
-            return "🛡️ You found an ARMOR SHARD!"
-        elif dropped_item == "xp_scroll":
-            player["inventory"]["xp_scrolls"] = player["inventory"].get("xp_scrolls", 0) + 1
-            return "📜 You found an XP SCROLL!"
     else:
-        # Loss drops: medkits only
-        medkit_drop_chance = quest_module.get_config_value("combat_drops.loss_medkit_chance", event.target, default=0.15)
+        # Loss drops: medkits and energy potions
+        medkit_chance = quest_module.get_config_value("combat_drops.loss_medkit_chance", event.target, default=0.30)
+        potion_chance = quest_module.get_config_value("combat_drops.loss_potion_chance", event.target, default=0.20)
 
-        if random.random() < medkit_drop_chance:
+        if random.random() < medkit_chance:
             player["inventory"]["medkits"] = player["inventory"].get("medkits", 0) + 1
-            return "⚕️ You stumbled upon a MEDKIT while retreating!"
+            dropped_items.append("⚕️ MEDKIT")
 
-    return None
+        if random.random() < potion_chance:
+            player["inventory"]["energy_potions"] = player["inventory"].get("energy_potions", 0) + 1
+            dropped_items.append("💎 ENERGY POTION")
+
+    # Build message
+    if not dropped_items:
+        return None
+
+    if len(dropped_items) == 1:
+        return f"You found {dropped_items[0]}!"
+    else:
+        return f"You found multiple items: {', '.join(dropped_items)}!"
 
 
 def perform_single_search(quest_module, player: Dict[str, Any], event) -> Dict[str, Any]:

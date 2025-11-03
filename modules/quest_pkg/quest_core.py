@@ -78,6 +78,9 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         quest_module.safe_reply(connection, event, f"You are too exhausted for a quest, {quest_module.bot.title_for(username)}. You must rest.")
         return True
 
+    # Check if the big bad boss has returned and notify user
+    quest_boss_hunt.check_and_notify_boss_return(quest_module, connection, event, username, event.target)
+
     difficulty_mods = quest_module.get_config_value("difficulty", event.target, default={})
     diff_mod = difficulty_mods.get(difficulty, {"level_mod": 1, "xp_mult": 1.0})
     player_level = player['level']
@@ -213,6 +216,9 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
 
         # Try to drop a clue for boss hunt
         quest_boss_hunt.try_drop_clue(quest_module, connection, event, username, event.target)
+
+        # Try to show haunting message on win
+        quest_boss_hunt.try_show_haunting_message(quest_module, connection, event, username, event.target, "win")
     else:
         xp_loss_perc = quest_module.get_config_value("xp_loss_percentage", event.target, default=0.25)
         xp_loss = total_xp * xp_loss_perc
@@ -229,6 +235,8 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         injury_msg = quest_utils.apply_injury(quest_module, user_id, username, event.target, injury_reduction=injury_reduction)
         if injury_msg:
             quest_module.safe_reply(connection, event, injury_msg)
+            # Try to show haunting message on injury
+            quest_boss_hunt.try_show_haunting_message(quest_module, connection, event, username, event.target, "injury")
 
     # Consume active effects after combat
     quest_combat.consume_combat_effects(player, is_win=win)

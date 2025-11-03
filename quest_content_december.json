@@ -221,5 +221,47 @@
         }
       }
     ]
+  },
+  "boss_hunt": {
+    "bosses": [
+      {
+        "name": "The Grinch",
+        "description": "A green menace stealing joy from the season",
+        "max_hp": 500
+      },
+      {
+        "name": "Krampus",
+        "description": "The dark enforcer of naughty list justice",
+        "max_hp": 600
+      },
+      {
+        "name": "Black Friday",
+        "description": "The manifestation of consumer chaos itself",
+        "max_hp": 550
+      }
+    ],
+    "clue_messages": [
+      "finds a torn gift receipt",
+      "discovers a suspicious shipping label",
+      "uncovers a canceled order confirmation",
+      "locates security footage from the parking lot",
+      "intercepts a complaint to customer service",
+      "finds a crumpled wish list",
+      "discovers a trail of glitter leading away"
+    ],
+    "haunting_messages": {
+      "injury": [
+        "🎄 A gift from the naughty list.",
+        "🎄 Krampus sends his regards.",
+        "🎄 You hear distant sleigh bells... and they're getting closer."
+      ],
+      "win": [
+        "🎄 Enjoy your temporary peace.",
+        "🎄 Krampus remembers who's been naughty.",
+        "🎄 The holiday spirit won't last forever..."
+      ]
+    },
+    "return_message": "🎄 {username}: KRAMPUS RETURNS!",
+    "defeat_announcement": "🎊 HOLIDAY SAVED! 🎊"
   }
 }

@@ -221,5 +221,47 @@
         }
       }
     ]
+  },
+  "boss_hunt": {
+    "bosses": [
+      {
+        "name": "Don Corleone",
+        "description": "The head of the local crime family",
+        "max_hp": 500
+      },
+      {
+        "name": "Big Tony",
+        "description": "The mob's enforcer",
+        "max_hp": 600
+      },
+      {
+        "name": "Lucky Luciano",
+        "description": "The casino owner",
+        "max_hp": 550
+      }
+    ],
+    "clue_messages": [
+      "finds a crucial piece of evidence",
+      "discovers a witness statement",
+      "uncovers a financial record",
+      "locates a surveillance photo",
+      "intercepts a phone conversation",
+      "finds a damning document",
+      "discovers a hidden ledger"
+    ],
+    "haunting_messages": {
+      "injury": [
+        "💀 A gift from an old friend.",
+        "💀 Tony sends his regards.",
+        "💀 You feel a chill... someone's watching."
+      ],
+      "win": [
+        "💀 Enjoy it whilst it lasts.",
+        "💀 Tony remembers.",
+        "💀 The calm before the storm..."
+      ]
+    },
+    "return_message": "💀 {username}: TONY RETURNS!",
+    "defeat_announcement": "🎊 BOSS DEFEATED! 🎊"
   }
 }

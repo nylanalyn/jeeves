@@ -213,6 +213,28 @@ quest:
     boss_encounter_max_level: 20  # Maximum level to trigger boss encounters
     boss_xp_multiplier: 2.5  # Boss encounters give 2.5x XP on victory
 
+    # Boss Hunt System (collaborative clue-finding to defeat major bosses)
+    boss_hunt:
+        enabled: true
+        clue_drop_chance: 0.15  # 15% chance to find a clue after winning a fight
+        boss_damage_per_clue: 10  # HP damage per clue found
+        buff_duration_days: 7  # Default buff duration after defeating a boss
+        buff_xp_multiplier: 1.5  # XP multiplier during buff
+        buff_level_reduction: 2  # Enemy level reduction during buff
+        # Tony-specific settings (Big Tony has special mechanics)
+        tony_buff_duration_days: 2  # Tony's buff only lasts 2 days (vs 7 for others)
+        tony_haunting_duration_days: 7  # Days of haunting messages after Tony's buff expires
+        bosses:
+            - name: "Don Corleone"
+              description: "The head of the local crime family"
+              max_hp: 500
+            - name: "Big Tony"
+              description: "The mob's enforcer"
+              max_hp: 600
+            - name: "Lucky Luciano"
+              description: "The casino owner"
+              max_hp: 550
+
     difficulty:
         easy: { level_mod: -2, xp_mult: 0.7 }
         normal: { level_mod: 1, xp_mult: 1.0 }

@@ -29,6 +29,16 @@ def initialize_boss_hunt_state(quest_module) -> Dict[str, Any]:
             "level_reduction": 0
         }
 
+    # Initialize haunting if missing
+    if "haunting" not in boss_hunt:
+        boss_hunt["haunting"] = {
+            "active": False,
+            "boss_name": None,
+            "started_at": None,
+            "ends_at": None,
+            "users_notified": []
+        }
+
     # Check if we need to spawn a boss or clear expired buff
     boss_hunt = _check_boss_state(quest_module, boss_hunt)
 
@@ -36,41 +46,105 @@ def initialize_boss_hunt_state(quest_module) -> Dict[str, Any]:
     return boss_hunt
 
 
+def _get_big_bad_boss_name(quest_module, channel) -> str:
+    """Get the name of the 'big bad' boss with haunting mechanics.
+
+    By convention, this is the second boss (index 1) in the bosses list.
+    For noir: Big Tony
+    For December: Krampus
+    """
+    # Try to get bosses from quest_content first
+    bosses = quest_module._get_content("boss_hunt.bosses", channel, default=None)
+
+    if not bosses:
+        # Fall back to config
+        bosses = quest_module.get_config_value("boss_hunt.bosses", channel, default=[
+            {"name": "Don Corleone", "description": "The head of the local crime family", "max_hp": 500},
+            {"name": "Big Tony", "description": "The mob's enforcer", "max_hp": 600},
+            {"name": "Lucky Luciano", "description": "The casino owner", "max_hp": 550}
+        ])
+
+    # Return the second boss (index 1) if it exists, otherwise default to "Big Tony"
+    if len(bosses) >= 2:
+        return bosses[1].get("name", "Big Tony")
+    return "Big Tony"
+
+
 def _check_boss_state(quest_module, boss_hunt: Dict[str, Any]) -> Dict[str, Any]:
     """Check and update boss state (clear expired buff, spawn new boss)."""
     channel = None  # We'll use default config since this is global
+    now = datetime.now(UTC)
 
     # Check if buff has expired
     buff = boss_hunt.get("buff", {})
     if buff.get("active") and buff.get("expires_at"):
         try:
             expires_at = datetime.fromisoformat(buff["expires_at"])
-            now = datetime.now(UTC)
             if now >= expires_at:
                 # Buff expired, deactivate it
                 boss_hunt["buff"]["active"] = False
                 quest_module.log_debug("Boss hunt buff expired")
+
+                # Check if we should start haunting (if the "big bad" boss was defeated)
+                last_boss = boss_hunt.get("last_defeated_boss")
+                big_bad_boss = _get_big_bad_boss_name(quest_module, channel)
+
+                if last_boss == big_bad_boss:
+                    haunting_duration_days = quest_module.get_config_value(
+                        "boss_hunt.tony_haunting_duration_days", channel, default=7
+                    )
+                    haunting_ends = now + timedelta(days=haunting_duration_days)
+
+                    boss_hunt["haunting"] = {
+                        "active": True,
+                        "boss_name": big_bad_boss,
+                        "started_at": now.isoformat(),
+                        "ends_at": haunting_ends.isoformat(),
+                        "users_notified": []
+                    }
+                    quest_module.log_debug(f"{big_bad_boss} haunting period started, ends at {haunting_ends}")
+        except (ValueError, TypeError):
+            pass
+
+    # Check if haunting period has expired
+    haunting = boss_hunt.get("haunting", {})
+    if haunting.get("active") and haunting.get("ends_at"):
+        try:
+            haunting_ends = datetime.fromisoformat(haunting["ends_at"])
+            if now >= haunting_ends:
+                # Haunting expired, spawn the haunting boss specifically
+                boss_name = haunting.get("boss_name", "Big Tony")
+                boss_hunt["haunting"]["active"] = False
+                boss_hunt["current_boss"] = _spawn_specific_boss(quest_module, channel, boss_name)
+                quest_module.log_debug(f"{boss_name} returns after haunting period!")
+                return boss_hunt
         except (ValueError, TypeError):
             pass
 
     # Check if we need to spawn a new boss
     current_boss = boss_hunt.get("current_boss")
     if not current_boss or current_boss.get("current_hp", 0) <= 0:
-        # Spawn a new boss
-        boss_hunt["current_boss"] = _spawn_new_boss(quest_module, channel)
-        quest_module.log_debug(f"New boss spawned: {boss_hunt['current_boss']['name']}")
+        # Don't spawn during haunting
+        if not boss_hunt.get("haunting", {}).get("active"):
+            # Spawn a new boss
+            boss_hunt["current_boss"] = _spawn_new_boss(quest_module, channel)
+            quest_module.log_debug(f"New boss spawned: {boss_hunt['current_boss']['name']}")
 
     return boss_hunt
 
 
 def _spawn_new_boss(quest_module, channel) -> Dict[str, Any]:
     """Spawn a new boss for the hunt."""
-    # Get boss configuration
-    bosses = quest_module.get_config_value("boss_hunt.bosses", channel, default=[
-        {"name": "Don Corleone", "description": "The head of the local crime family", "max_hp": 500},
-        {"name": "Big Tony", "description": "The mob's enforcer", "max_hp": 600},
-        {"name": "Lucky Luciano", "description": "The casino owner", "max_hp": 550}
-    ])
+    # Try to get bosses from quest_content first (themed), then fall back to config
+    bosses = quest_module._get_content("boss_hunt.bosses", channel, default=None)
+
+    if not bosses:
+        # Fall back to config
+        bosses = quest_module.get_config_value("boss_hunt.bosses", channel, default=[
+            {"name": "Don Corleone", "description": "The head of the local crime family", "max_hp": 500},
+            {"name": "Big Tony", "description": "The mob's enforcer", "max_hp": 600},
+            {"name": "Lucky Luciano", "description": "The casino owner", "max_hp": 550}
+        ])
 
     # Get default HP if bosses list is empty
     default_hp = quest_module.get_config_value("boss_hunt.boss_spawn_hp", channel, default=500)
@@ -83,6 +157,48 @@ def _spawn_new_boss(quest_module, channel) -> Dict[str, Any]:
 
     return {
         "name": boss_config.get("name", "Crime Boss"),
+        "description": boss_config.get("description", "A dangerous criminal"),
+        "max_hp": max_hp,
+        "current_hp": max_hp,
+        "clues_collected": 0,
+        "spawned_at": datetime.now(UTC).isoformat()
+    }
+
+
+def _spawn_specific_boss(quest_module, channel, boss_name: str) -> Dict[str, Any]:
+    """Spawn a specific boss by name (after haunting period).
+
+    Args:
+        quest_module: Quest module instance
+        channel: Channel name
+        boss_name: Name of the boss to spawn (e.g., "Big Tony", "Krampus")
+    """
+    # Try to get bosses from quest_content first (themed), then fall back to config
+    bosses = quest_module._get_content("boss_hunt.bosses", channel, default=None)
+
+    if not bosses:
+        # Fall back to config
+        bosses = quest_module.get_config_value("boss_hunt.bosses", channel, default=[
+            {"name": "Don Corleone", "description": "The head of the local crime family", "max_hp": 500},
+            {"name": "Big Tony", "description": "The mob's enforcer", "max_hp": 600},
+            {"name": "Lucky Luciano", "description": "The casino owner", "max_hp": 550}
+        ])
+
+    # Find the specific boss in the bosses list
+    boss_config = None
+    for boss in bosses:
+        if boss.get("name") == boss_name:
+            boss_config = boss
+            break
+
+    # Fallback if boss not found
+    if not boss_config:
+        boss_config = {"name": boss_name, "description": "A dangerous criminal", "max_hp": 600}
+
+    max_hp = boss_config.get("max_hp", 600)
+
+    return {
+        "name": boss_name,
         "description": boss_config.get("description", "A dangerous criminal"),
         "max_hp": max_hp,
         "current_hp": max_hp,
@@ -187,7 +303,8 @@ def try_drop_clue(quest_module, connection, event, username: str, channel: str) 
     if boss_defeated:
         _handle_boss_defeat(quest_module, connection, event, username, current_boss, channel)
     else:
-        clue_messages = [
+        # Get themed clue messages
+        clue_messages = quest_module._get_content("boss_hunt.clue_messages", channel, default=[
             "finds a crucial piece of evidence",
             "discovers a witness statement",
             "uncovers a financial record",
@@ -195,7 +312,7 @@ def try_drop_clue(quest_module, connection, event, username: str, channel: str) 
             "intercepts a phone conversation",
             "finds a damning document",
             "discovers a hidden ledger"
-        ]
+        ])
         clue_msg = random.choice(clue_messages)
 
         quest_module.safe_say(
@@ -226,8 +343,17 @@ def _handle_boss_defeat(quest_module, connection, event, username: str, boss: Di
     # Update defeat stats
     boss_hunt["stats"]["total_bosses_defeated"] = boss_hunt["stats"].get("total_bosses_defeated", 0) + 1
 
-    # Activate buff
-    buff_duration_days = quest_module.get_config_value("boss_hunt.buff_duration_days", channel, default=7)
+    # Track last defeated boss
+    boss_hunt["last_defeated_boss"] = boss["name"]
+
+    # Activate buff - use shorter duration if it's the "big bad" boss
+    big_bad_boss = _get_big_bad_boss_name(quest_module, channel)
+    is_big_bad = boss["name"] == big_bad_boss
+    if is_big_bad:
+        buff_duration_days = quest_module.get_config_value("boss_hunt.tony_buff_duration_days", channel, default=2)
+    else:
+        buff_duration_days = quest_module.get_config_value("boss_hunt.buff_duration_days", channel, default=7)
+
     xp_multiplier = quest_module.get_config_value("boss_hunt.buff_xp_multiplier", channel, default=1.5)
     level_reduction = quest_module.get_config_value("boss_hunt.buff_level_reduction", channel, default=2)
 
@@ -247,11 +373,11 @@ def _handle_boss_defeat(quest_module, connection, event, username: str, boss: Di
     quest_module.set_state("boss_hunt", boss_hunt)
     quest_module.save_state()
 
+    # Get themed defeat announcement
+    defeat_announcement = quest_module._get_content("boss_hunt.defeat_announcement", channel, default="🎊 BOSS DEFEATED! 🎊")
+
     # Announce!
-    quest_module.safe_say(
-        f"🎊 BOSS DEFEATED! 🎊",
-        channel
-    )
+    quest_module.safe_say(defeat_announcement, channel)
     quest_module.safe_say(
         f"{username} found the final clue! {boss['name']} has been brought to justice after {boss['clues_collected']} clues!",
         channel
@@ -261,6 +387,145 @@ def _handle_boss_defeat(quest_module, connection, event, username: str, boss: Di
         f"Enemies are easier (Level -{level_reduction}) and XP is increased (x{xp_multiplier})!",
         channel
     )
+
+
+def is_haunting_active(quest_module) -> Tuple[bool, Optional[Dict[str, Any]]]:
+    """Check if Tony's haunting is currently active.
+
+    Returns:
+        Tuple of (is_active, haunting_data)
+    """
+    boss_hunt = quest_module.get_state("boss_hunt", {})
+    haunting = boss_hunt.get("haunting", {})
+
+    if not haunting.get("active"):
+        return False, None
+
+    # Check if expired
+    if haunting.get("ends_at"):
+        try:
+            ends_at = datetime.fromisoformat(haunting["ends_at"])
+            now = datetime.now(UTC)
+            if now >= ends_at:
+                return False, None
+        except (ValueError, TypeError):
+            return False, None
+
+    return True, haunting
+
+
+def _calculate_haunting_chance(haunting: Dict[str, Any], channel) -> float:
+    """Calculate the chance of showing a haunting message based on time elapsed.
+
+    Starts at 20% and increases linearly to 70% over the haunting period.
+    """
+    if not haunting.get("started_at") or not haunting.get("ends_at"):
+        return 0.2
+
+    try:
+        started = datetime.fromisoformat(haunting["started_at"])
+        ends = datetime.fromisoformat(haunting["ends_at"])
+        now = datetime.now(UTC)
+
+        total_duration = (ends - started).total_seconds()
+        elapsed = (now - started).total_seconds()
+
+        if total_duration <= 0:
+            return 0.2
+
+        # Linear interpolation from 20% to 70%
+        progress = min(1.0, elapsed / total_duration)
+        return 0.2 + (0.5 * progress)
+    except (ValueError, TypeError):
+        return 0.2
+
+
+def try_show_haunting_message(quest_module, connection, event, username: str, channel: str, trigger: str) -> bool:
+    """Try to show a haunting message from Tony.
+
+    Args:
+        quest_module: Quest module instance
+        connection: IRC connection
+        event: IRC event
+        username: Username who triggered the message
+        channel: Channel name
+        trigger: Either "injury" or "win"
+
+    Returns:
+        True if a message was shown, False otherwise
+    """
+    is_active, haunting = is_haunting_active(quest_module)
+
+    if not is_active:
+        return False
+
+    # Calculate chance based on time elapsed
+    chance = _calculate_haunting_chance(haunting, channel)
+
+    if random.random() >= chance:
+        return False
+
+    # Get themed haunting messages
+    haunting_messages = quest_module._get_content("boss_hunt.haunting_messages", channel, default={
+        "injury": [
+            "💀 A gift from an old friend.",
+            "💀 Tony sends his regards.",
+            "💀 You feel a chill... someone's watching.",
+        ],
+        "win": [
+            "💀 Enjoy it whilst it lasts.",
+            "💀 Tony remembers.",
+            "💀 The calm before the storm...",
+        ]
+    })
+
+    # Select message based on trigger
+    messages = haunting_messages.get(trigger, [])
+    if not messages:
+        return False
+
+    message = random.choice(messages)
+    quest_module.safe_say(message, channel)
+    return True
+
+
+def check_and_notify_boss_return(quest_module, connection, event, username: str, channel: str) -> bool:
+    """Check if the big bad boss has returned and notify user if they haven't been notified yet.
+
+    Returns:
+        True if notification was shown, False otherwise
+    """
+    boss_hunt = quest_module.get_state("boss_hunt", {})
+    current_boss = boss_hunt.get("current_boss")
+
+    if not current_boss:
+        return False
+
+    # Check if current boss is the big bad boss
+    big_bad_boss = _get_big_bad_boss_name(quest_module, channel)
+    if current_boss.get("name") != big_bad_boss:
+        return False
+
+    # Check if haunting just ended (users_notified will be empty or small)
+    haunting = boss_hunt.get("haunting", {})
+    users_notified = haunting.get("users_notified", [])
+
+    # If user hasn't been notified about boss's return
+    if username not in users_notified:
+        users_notified.append(username)
+        boss_hunt["haunting"]["users_notified"] = users_notified
+        quest_module.set_state("boss_hunt", boss_hunt)
+        quest_module.save_state()
+
+        # Get themed return message
+        return_message = quest_module._get_content("boss_hunt.return_message", channel, default="💀 {username}: {boss_name} RETURNS!")
+        message = return_message.format(username=username, boss_name=big_bad_boss.upper())
+
+        # Show notification
+        quest_module.safe_say(message, channel)
+        return True
+
+    return False
 
 
 def get_boss_status(quest_module, channel) -> Optional[str]:

@@ -186,6 +186,14 @@ class Quest(SimpleCommandModule):
         # For channel messages, use normal dispatch with is_enabled check
         return super()._dispatch_commands(connection, event, msg, username)
 
+    def on_privmsg(self, connection, event):
+        """Dispatch supported quest commands received via private messages."""
+        msg = event.arguments[0] if event.arguments else ""
+        if not msg:
+            return False
+        username = getattr(event.source, "nick", str(event.source))
+        return self._dispatch_commands(connection, event, msg, username)
+
     def _register_commands(self):
         # Register more specific patterns first
         self.register_command(r"^\s*!quest\s+reload\s*$", self._cmd_quest_reload, name="quest_reload",

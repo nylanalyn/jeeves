@@ -107,6 +107,9 @@ def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
         "medkits_used_this_prestige": 0
     })
 
+    if not isinstance(player.get("completed_challenge_paths"), list):
+        player["completed_challenge_paths"] = []
+
     # Dungeon run metadata
     player.setdefault("dungeon_state", {
         "equipped_items": [],
@@ -294,6 +297,11 @@ def check_challenge_completion(quest_module, user_id: str, username: str, player
     if not completion:
         return None
 
+    completed_paths = player.get("completed_challenge_paths")
+    if not isinstance(completed_paths, list):
+        completed_paths = []
+        player["completed_challenge_paths"] = completed_paths
+
     # Check if completion conditions are met
     completed = True
     failure_reason = None
@@ -317,6 +325,9 @@ def check_challenge_completion(quest_module, user_id: str, username: str, player
         f"*** CHALLENGE COMPLETED: {path_data['name']}! ***",
         "You have demonstrated incredible skill and dedication!"
     ]
+
+    if challenge_path_id not in completed_paths:
+        completed_paths.append(challenge_path_id)
 
     rewards = path_data.get("rewards", {})
 
@@ -528,6 +539,12 @@ def handle_challenge_prestige(quest_module, connection, event, username, user_id
     path_data = quest_module.challenge_paths["paths"].get(active_path_id)
     if not path_data:
         quest_module.safe_reply(connection, event, "Challenge path configuration error. Contact an administrator.")
+        return True
+
+    completed_paths = player.get("completed_challenge_paths")
+    if isinstance(completed_paths, list) and active_path_id in completed_paths:
+        path_name = path_data.get("name", active_path_id)
+        quest_module.safe_reply(connection, event, f"Sorry, you have completed this path ({path_name})! Wait for the next challenge.")
         return True
 
     # Check requirements

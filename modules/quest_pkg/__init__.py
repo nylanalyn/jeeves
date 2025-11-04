@@ -129,14 +129,22 @@ class Quest(SimpleCommandModule):
                 max_energy = quest_progression.get_player_max_energy(self, player_data)
                 regen_amount = 1
 
-                # Migrate old format
-                if 'active_injury' in player_data:
-                    player_data['active_injuries'] = [player_data['active_injury']]
-                    del player_data['active_injury']
+                # Clear expired injuries during energy regen so recovery happens even if the player is idle
+                previous_injury_count = 0
+                if 'active_injuries' in player_data and isinstance(player_data['active_injuries'], list):
+                    previous_injury_count = len(player_data['active_injuries'])
+                elif 'active_injury' in player_data:
+                    previous_injury_count = 1
+
+                player_data, recovery_msg = quest_utils.check_and_clear_injury(player_data)
+                players[user_id] = player_data
+                current_injuries = player_data.get('active_injuries', [])
+                if recovery_msg or (previous_injury_count and len(current_injuries) < previous_injury_count):
+                    updated = True
 
                 # Sum all injury effects
-                if 'active_injuries' in player_data:
-                    for injury in player_data['active_injuries']:
+                if current_injuries:
+                    for injury in current_injuries:
                         regen_mod = injury.get('effects', {}).get('energy_regen_modifier', 0)
                         regen_amount += regen_mod
 

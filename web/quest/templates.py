@@ -856,7 +856,7 @@ class TemplateEngine:
             wins = player.get("wins", 0)
             losses = player.get("losses", 0)
             win_rate = calculate_win_rate(wins, losses)
-            streak = format_streak(player.get("streak", 0))
+            streak = format_streak(player.get("win_streak", 0))
 
             # Get XP progress to next level
             current_xp = player.get("xp", 0)

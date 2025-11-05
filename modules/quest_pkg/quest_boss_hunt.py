@@ -112,11 +112,13 @@ def _check_boss_state(quest_module, boss_hunt: Dict[str, Any]) -> Dict[str, Any]
         try:
             haunting_ends = datetime.fromisoformat(haunting["ends_at"])
             if now >= haunting_ends:
-                # Haunting expired, spawn the haunting boss specifically
-                boss_name = haunting.get("boss_name", "Big Tony")
+                # Haunting expired, spawn a random boss (not necessarily the same one)
                 boss_hunt["haunting"]["active"] = False
-                boss_hunt["current_boss"] = _spawn_specific_boss(quest_module, channel, boss_name)
-                quest_module.log_debug(f"{boss_name} returns after haunting period!")
+                new_boss = _spawn_new_boss(quest_module, channel)
+                # Mark this boss as "returned after haunting" so we can notify players
+                new_boss["spawned_after_haunting"] = True
+                boss_hunt["current_boss"] = new_boss
+                quest_module.log_debug(f"A new boss appears after haunting period: {new_boss['name']}")
                 return boss_hunt
         except (ValueError, TypeError):
             pass
@@ -125,10 +127,22 @@ def _check_boss_state(quest_module, boss_hunt: Dict[str, Any]) -> Dict[str, Any]
     current_boss = boss_hunt.get("current_boss")
     if not current_boss or current_boss.get("current_hp", 0) <= 0:
         # Don't spawn during haunting
-        if not boss_hunt.get("haunting", {}).get("active"):
-            # Spawn a new boss
-            boss_hunt["current_boss"] = _spawn_new_boss(quest_module, channel)
-            quest_module.log_debug(f"New boss spawned: {boss_hunt['current_boss']['name']}")
+        if boss_hunt.get("haunting", {}).get("active"):
+            return boss_hunt
+
+        # Don't spawn ANY boss during buff period if we defeated the big bad boss
+        # (we want complete radio silence until the haunting period ends)
+        buff = boss_hunt.get("buff", {})
+        if buff.get("active"):
+            last_boss = boss_hunt.get("last_defeated_boss")
+            big_bad_boss = _get_big_bad_boss_name(quest_module, channel)
+            if last_boss == big_bad_boss:
+                quest_module.log_debug(f"No boss spawns during {big_bad_boss} buff/haunting period")
+                return boss_hunt
+
+        # Spawn a new boss (only if not in Big Tony's buff/haunting period)
+        boss_hunt["current_boss"] = _spawn_new_boss(quest_module, channel)
+        quest_module.log_debug(f"New boss spawned: {boss_hunt['current_boss']['name']}")
 
     return boss_hunt
 
@@ -369,6 +383,10 @@ def _handle_boss_defeat(quest_module, connection, event, username: str, boss: Di
     # Mark boss as defeated (will auto-spawn new one next time)
     boss["current_hp"] = 0
 
+    # Clear the notification flag if it was set
+    if "spawned_after_haunting" in boss:
+        del boss["spawned_after_haunting"]
+
     # Save state
     quest_module.set_state("boss_hunt", boss_hunt)
     quest_module.save_state()
@@ -469,13 +487,15 @@ def try_show_haunting_message(quest_module, connection, event, username: str, ch
     haunting_messages = quest_module._get_content("boss_hunt.haunting_messages", channel, default={
         "injury": [
             "💀 A gift from an old friend.",
-            "💀 Tony sends his regards.",
-            "💀 You feel a chill... someone's watching.",
+            "💀 Someone sends their regards.",
+            "💀 You feel a chill... something's coming.",
+            "💀 The shadows grow longer...",
         ],
         "win": [
             "💀 Enjoy it whilst it lasts.",
-            "💀 Tony remembers.",
+            "💀 Something stirs in the darkness.",
             "💀 The calm before the storm...",
+            "💀 They're watching. Waiting.",
         ]
     })
 
@@ -490,7 +510,7 @@ def try_show_haunting_message(quest_module, connection, event, username: str, ch
 
 
 def check_and_notify_boss_return(quest_module, connection, event, username: str, channel: str) -> bool:
-    """Check if the big bad boss has returned and notify user if they haven't been notified yet.
+    """Check if a boss has appeared after haunting period and notify user if they haven't been notified yet.
 
     Returns:
         True if notification was shown, False otherwise
@@ -501,9 +521,8 @@ def check_and_notify_boss_return(quest_module, connection, event, username: str,
     if not current_boss:
         return False
 
-    # Check if current boss is the big bad boss
-    big_bad_boss = _get_big_bad_boss_name(quest_module, channel)
-    if current_boss.get("name") != big_bad_boss:
+    # Check if this boss spawned after a haunting period
+    if not current_boss.get("spawned_after_haunting"):
         return False
 
     # Check if haunting just ended (users_notified will be empty or small)
@@ -518,8 +537,8 @@ def check_and_notify_boss_return(quest_module, connection, event, username: str,
         quest_module.save_state()
 
         # Get themed return message
-        return_message = quest_module._get_content("boss_hunt.return_message", channel, default="💀 {username}: {boss_name} RETURNS!")
-        message = return_message.format(username=username, boss_name=big_bad_boss.upper())
+        return_message = quest_module._get_content("boss_hunt.return_message", channel, default="💀 {username}: THE HUNT BEGINS ANEW. {boss_name} emerges from the shadows!")
+        message = return_message.format(username=username, boss_name=current_boss["name"].upper())
 
         # Show notification
         quest_module.safe_say(message, channel)

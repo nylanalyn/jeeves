@@ -75,6 +75,8 @@ def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
     player.setdefault("last_win_date", None)
     player.setdefault("energy", max_energy)
     player.setdefault("win_streak", 0)
+    player.setdefault("wins", 0)  # Total wins
+    player.setdefault("losses", 0)  # Total losses
     player.setdefault("prestige", 0)  # Prestige level
     player.setdefault("transcendence", 0)  # Number of times transcended
 
@@ -155,8 +157,9 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
             total_xp_gain = int(total_xp_gain * streak_bonus_mult)
             messages.append(f"{current_streak}-win streak bonus! (+{total_xp_gain - old_xp} XP)")
 
-        # Increment streak
+        # Increment streak and total wins
         player["win_streak"] = current_streak + 1
+        player["wins"] = player.get("wins", 0) + 1
 
     first_win_bonus = quest_module.get_config_value("first_win_bonus_xp", default=50)
 
@@ -255,8 +258,9 @@ def deduct_xp(quest_module, user_id: str, username: str, amount: int) -> Dict[st
         player["xp"] = remaining_xp
         player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, new_level)
 
-    # Reset win streak on loss
+    # Reset win streak on loss and increment loss counter
     player["win_streak"] = 0
+    player["losses"] = player.get("losses", 0) + 1
 
     players = quest_module.get_state("players")
     players[user_id] = player

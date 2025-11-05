@@ -372,14 +372,12 @@ class Hunt(SimpleCommandModule):
 
         self.log_debug(f"_end_hunt: processing animal '{active_animal.get('display_name', active_animal.get('name', 'unknown'))}'")
         # Calculate time to catch
-        time_to_catch_str = ""
         time_to_catch_str = "" # Default to empty string
         if 'spawned_at' in active_animal:
             try:
                 spawn_time = datetime.fromisoformat(active_animal['spawned_at'])
                 catch_time = datetime.now(UTC)
                 duration = self._format_timedelta(catch_time - spawn_time)
-                time_to_catch_str = f" in {duration}"
                 time_to_catch_str = f" in {duration}" # Note the leading space
             except (ValueError, TypeError):
                 self.log_debug("Could not parse spawn time for active animal.")
@@ -407,14 +405,12 @@ class Hunt(SimpleCommandModule):
         # Special murder messages for user "dead"
         if is_dead and action == "murdered":
             murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=display_name.lower())
-            self.safe_reply(connection, event, murder_msg + time_to_catch_str + ".")
             self.safe_reply(connection, event, f"{murder_msg}{time_to_catch_str}.")
         else:
             msg_key = "hug_message" if action == "hugged" else "hunt_message"
             custom_msg = active_animal.get(msg_key)
 
             if custom_msg:
-                self.safe_reply(connection, event, custom_msg.format(username=self.bot.title_for(username), animal=display_name) + time_to_catch_str + ".")
                 self.safe_reply(connection, event, f"{custom_msg.format(username=self.bot.title_for(username), animal=display_name)}{time_to_catch_str}.")
             else:
                 self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {display_name}{time_to_catch_str}.")

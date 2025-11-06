@@ -22,6 +22,7 @@ from irc.bot import SingleServerIRCBot
 from irc.connection import Factory
 import schedule
 from file_lock import FileLock
+import bcrypt
 
 # Import configuration validator
 try:
@@ -512,7 +513,89 @@ class Jeeves(SingleServerIRCBot):
                 updated_courtesy_state["admin_hostnames"] = updated_hosts
                 self.update_module_state("courtesy", updated_courtesy_state)
             self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
-        
+
+        return True
+
+    def is_super_admin(self, nick: str) -> bool:
+        """
+        Check if a nick has authenticated as a super admin with password.
+
+        Super admin authentication is required for dangerous commands like reload.
+        If no password hash is configured, all regular admins are treated as super admins.
+
+        Args:
+            nick: The nickname to check
+
+        Returns:
+            True if the nick is authenticated as super admin, False otherwise
+        """
+        # If no password hash is configured, fall back to regular admin check
+        password_hash = self.config.get("core", {}).get("super_admin_password_hash", "")
+        if not password_hash or not password_hash.strip():
+            # No password protection - all admins are super admins
+            return nick.lower() in {n.strip().lower() for n in self.config.get("core", {}).get("admins", [])}
+
+        # Check if nick is authenticated
+        core_state = self.get_module_state("core")
+        super_admin_sessions = core_state.get("super_admin_sessions", {})
+
+        session_expiry = super_admin_sessions.get(nick.lower())
+        if session_expiry is None:
+            return False
+
+        # Check if session is still valid
+        if time.time() > session_expiry:
+            # Session expired, clean it up
+            self.log_debug(f"[core] Super admin session expired for {nick}")
+            updated_sessions = dict(super_admin_sessions)
+            del updated_sessions[nick.lower()]
+            self.update_module_state("core", {"super_admin_sessions": updated_sessions})
+            return False
+
+        return True
+
+    def authenticate_super_admin(self, nick: str, password: str) -> bool:
+        """
+        Authenticate a user as a super admin using password.
+
+        Args:
+            nick: The nickname attempting to authenticate
+            password: The password to verify
+
+        Returns:
+            True if authentication succeeds, False otherwise
+        """
+        # Check if nick is an admin first
+        if nick.lower() not in {n.strip().lower() for n in self.config.get("core", {}).get("admins", [])}:
+            self.log_debug(f"[core] Super admin auth failed for {nick}: not in admin list")
+            return False
+
+        # Get password hash from config
+        password_hash = self.config.get("core", {}).get("super_admin_password_hash", "")
+        if not password_hash or not password_hash.strip():
+            self.log_debug(f"[core] Super admin auth failed: no password hash configured")
+            return False
+
+        # Verify password
+        try:
+            if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+                self.log_debug(f"[core] Super admin auth failed for {nick}: incorrect password")
+                return False
+        except Exception as e:
+            self.log_debug(f"[core] Super admin auth failed for {nick}: bcrypt error: {e}")
+            return False
+
+        # Authentication successful - create session
+        session_hours = self.config.get("core", {}).get("super_admin_session_hours", 1)
+        expiry_time = time.time() + (session_hours * 3600)
+
+        core_state = self.get_module_state("core")
+        super_admin_sessions = dict(core_state.get("super_admin_sessions", {}))
+        super_admin_sessions[nick.lower()] = expiry_time
+
+        self.update_module_state("core", {"super_admin_sessions": super_admin_sessions})
+        self.log_debug(f"[core] Super admin authenticated: {nick} (expires in {session_hours}h)")
+
         return True
 
     def is_user_ignored(self, username: str) -> bool:

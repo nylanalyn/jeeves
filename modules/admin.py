@@ -30,6 +30,8 @@ class Admin(SimpleCommandModule):
                               name="say", admin_only=True, description="Alias for '!admin say'.")
         self.register_command(r"^\s*!emergency\s+quit(?:\s+(.+))?\s*$", self._cmd_emergency_quit,
                               name="emergency quit", admin_only=True, description="Emergency shutdown.")
+        self.register_command(r"^\s*!pass\s+(.+)$", self._cmd_authenticate,
+                              name="pass", admin_only=True, description="Authenticate as super admin (IM only).")
 
     # --- Master Command Handler ---
 
@@ -78,14 +80,92 @@ class Admin(SimpleCommandModule):
         self.safe_reply(connection, event, f"Usage: !admin {command_args}")
         return True
 
+    # --- Helper Methods ---
+
+    def _require_super_admin(self, connection, event, username):
+        """
+        Check if user is authenticated as super admin. If not, send helpful message.
+
+        Returns:
+            True if user is super admin, False otherwise
+        """
+        nick = event.source.split('!')[0]
+        if not self.bot.is_super_admin(nick):
+            # Check if password auth is enabled
+            password_hash = self.bot.config.get("core", {}).get("super_admin_password_hash", "")
+            if password_hash and password_hash.strip():
+                self.safe_privmsg(username, "This command requires super admin authentication. Please authenticate with: /msg me !pass <password>")
+            else:
+                self.safe_reply(connection, event, "Super admin authentication is not configured.")
+            return False
+        return True
+
     # --- Subcommand Logic ---
-    
+
+    def _cmd_authenticate(self, connection, event, msg, username, match):
+        """Handle !pass <password> command for super admin authentication."""
+        # Only allow in private message
+        if not event.target.startswith(self.bot.connection.get_nickname()):
+            # Quietly ignore in public channels for security
+            return True
+
+        password = match.group(1).strip()
+
+        # Rate limiting: track failed attempts
+        nick = event.source.split('!')[0]
+        state = self.get_state()
+        auth_attempts = state.get("auth_attempts", {})
+        nick_lower = nick.lower()
+
+        # Clean up old attempts (older than 5 minutes)
+        current_time = time.time()
+        auth_attempts = {k: v for k, v in auth_attempts.items() if current_time - v["last_attempt"] < 300}
+
+        # Check rate limit (max 5 attempts per 5 minutes)
+        if nick_lower in auth_attempts:
+            attempts = auth_attempts[nick_lower]
+            if attempts["count"] >= 5:
+                self.safe_privmsg(username, "Too many authentication attempts. Please wait 5 minutes before trying again.")
+                return True
+
+        # Attempt authentication
+        if self.bot.authenticate_super_admin(nick, password):
+            # Success - clear failed attempts
+            if nick_lower in auth_attempts:
+                del auth_attempts[nick_lower]
+                self.set_state("auth_attempts", auth_attempts)
+                self.save_state()
+
+            session_hours = self.bot.config.get("core", {}).get("super_admin_session_hours", 1)
+            self.safe_privmsg(username, f"Authentication successful. Super admin privileges granted for {session_hours} hour(s).")
+        else:
+            # Failed - record attempt
+            if nick_lower not in auth_attempts:
+                auth_attempts[nick_lower] = {"count": 0, "last_attempt": 0}
+
+            auth_attempts[nick_lower]["count"] += 1
+            auth_attempts[nick_lower]["last_attempt"] = current_time
+            self.set_state("auth_attempts", auth_attempts)
+            self.save_state()
+
+            remaining = 5 - auth_attempts[nick_lower]["count"]
+            if remaining > 0:
+                self.safe_privmsg(username, f"Authentication failed. {remaining} attempt(s) remaining before rate limit.")
+            else:
+                self.safe_privmsg(username, "Authentication failed. Rate limit exceeded. Please wait 5 minutes.")
+
+        return True
+
     def _cmd_reload(self, connection, event, username):
+        if not self._require_super_admin(connection, event, username):
+            return True
         loaded = self.bot.core_reload_plugins()
         self.safe_reply(connection, event, f"Modules reloaded: {', '.join(sorted(loaded))}")
         return True
-        
+
     def _cmd_load(self, connection, event, username, module_name):
+        if not self._require_super_admin(connection, event, username):
+            return True
         if self.bot.pm.load_module(module_name):
             self.safe_reply(connection, event, f"Module '{module_name}' loaded successfully.")
         else:
@@ -93,6 +173,8 @@ class Admin(SimpleCommandModule):
         return True
 
     def _cmd_unload(self, connection, event, username, module_name):
+        if not self._require_super_admin(connection, event, username):
+            return True
         if self.bot.pm.unload_module(module_name):
             self.safe_reply(connection, event, f"Module '{module_name}' unloaded successfully.")
         else:
@@ -100,6 +182,8 @@ class Admin(SimpleCommandModule):
         return True
 
     def _cmd_config_reload(self, connection, event, username):
+        if not self._require_super_admin(connection, event, username):
+            return True
         if self.bot.core_reload_config():
             self.safe_reply(connection, event, "Configuration reloaded from config.yaml. Modules NOT reloaded (use !admin reload for that).")
         else:
@@ -150,26 +234,47 @@ class Admin(SimpleCommandModule):
         return True
         
     def _cmd_emergency_quit(self, connection, event, msg, username, match):
+        if not self._require_super_admin(connection, event, username):
+            return True
         self.bot.connection.quit(match.group(1) or "Emergency quit.")
         return True
 
     def _cmd_help(self, connection, event, username):
+        # Check if super admin auth is enabled
+        password_hash = self.bot.config.get("core", {}).get("super_admin_password_hash", "")
+        super_admin_enabled = bool(password_hash and password_hash.strip())
+
         help_lines = [
-            "!admin reload - Reload all modules from disk.",
-            "!admin load <module> - Load a specific module by name.",
-            "!admin unload <module> - Unload a specific module by name.",
+            "=== Admin Commands ==="
+        ]
+
+        if super_admin_enabled:
+            help_lines.extend([
+                "",
+                "SUPER ADMIN COMMANDS (require password authentication):",
+                "!pass <password> - Authenticate as super admin (use in /msg only)",
+                "!admin reload - Reload all modules from disk.",
+                "!admin load <module> - Load a specific module by name.",
+                "!admin unload <module> - Unload a specific module by name.",
+                "!admin config reload - Reload config.yaml (without reloading modules).",
+                "!emergency quit [message] - Emergency shutdown.",
+                "",
+                "REGULAR ADMIN COMMANDS (hostname verification only):",
+            ])
+        else:
+            help_lines.append("")
+
+        help_lines.extend([
             "!admin modules - List all currently loaded modules.",
-            "!admin config reload - Reload config.yaml (without reloading modules).",
             "!admin join <#channel> - Join a channel.",
             "!admin part <#channel> [message] - Leave a channel.",
             "!say [#channel] <message> - Make the bot speak.",
             "!admin debug <on|off> - Toggle verbose file logging.",
             "!admin debug <module_name> <on|off> - Toggle debug for specific module.",
-            "!emergency quit [message] - Emergency shutdown.",
             "",
             "NOTE: Configuration is now read from config.yaml only.",
             "To change settings, edit config.yaml and use !admin config reload."
-        ]
+        ])
 
         self.safe_reply(connection, event, "I have sent you the admin command list privately.")
         for line in help_lines:

@@ -4,6 +4,7 @@ config/
 debug.log
 oracle_prompt.txt
 .claude
+.audit/
 
 # Local environment variable files.
 .env
@@ -94,6 +95,9 @@ Thumbs.db
 # Junk
 Code Review: Jeeves IRC Bot.md
 state.old
+PLANNING.md
+IMPLEMENTATION_SUMMARY.md
+QUICK_START.md
 
 # --- Audit Reports (Private) ---
 docs/AUDIT_*.md

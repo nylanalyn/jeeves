@@ -14,6 +14,14 @@ core:
     debug_mode_on_startup: false
     debug_log_file: "debug.log"
 
+    # --- Super Admin Authentication (Tier 1) ---
+    # Super admins must authenticate with !pass <password> for dangerous commands.
+    # Generate hash with: python3 generate_password_hash.py
+    # Leave empty to disable password authentication (all admins have full access).
+    super_admin_password_hash: ""
+    # Session expiry time in hours (default: 1 hour)
+    super_admin_session_hours: 1
+
 # --- IRC Connection Details ---
 connection:
   server: "irc.libera.chat"

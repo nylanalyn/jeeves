@@ -43,7 +43,11 @@
       "Bash(git branch:*)",
       "Bash(git reset:*)",
       "Bash(git worktree:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(source ~/.pyenv/versions/jeeves/bin/activate)",
+      "Bash(pip install:*)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:files.pythonhosted.org)"
     ],
     "deny": [],
     "ask": []

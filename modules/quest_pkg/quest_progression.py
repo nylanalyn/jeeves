@@ -346,6 +346,9 @@ def check_challenge_completion(quest_module, user_id: str, username: str, player
             messages.append(f"NEW ABILITY UNLOCKED: {ability_name}!")
             messages.append(f"Use !quest ability {ability_data.get('command', ability_id)} to activate it.")
 
+    # Clear challenge path since it's completed
+    player["challenge_path"] = None
+
     # Save player state
     players = quest_module.get_state("players")
     players[user_id] = player
@@ -396,6 +399,12 @@ def handle_prestige(quest_module, connection, event, username, args):
     player["active_injuries"] = []
     if "active_injury" in player:
         del player["active_injury"]
+
+    # Clear challenge path on normal prestige
+    player["challenge_path"] = None
+    player["challenge_stats"] = {
+        "medkits_used_this_prestige": 0
+    }
 
     # Save player state
     players = quest_module.get_state("players")

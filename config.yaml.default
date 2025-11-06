@@ -190,6 +190,8 @@ pron:
     cooldown_seconds: 30
 
 quest:
+    # Active quest theme key (see quest_content.json -> themes)
+    theme: "noir_november"
     cooldown_seconds: 300
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8

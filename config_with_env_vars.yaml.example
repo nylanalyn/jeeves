@@ -67,6 +67,7 @@ adventure:
 
 # Quest module with environment variable for debug mode
 quest:
+    theme: ${QUEST_THEME:-"noir_november"}
     cooldown_seconds: ${QUEST_COOLDOWN_SECONDS:-300}  # Default to 300 if not set
     xp_curve_formula: "level * 100"
     monster_spawn_chance: 0.8

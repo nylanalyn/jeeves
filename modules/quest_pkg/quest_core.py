@@ -4,7 +4,7 @@
 import random
 import time
 import json
-import os
+from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
@@ -20,15 +20,58 @@ from . import quest_boss_hunt
 def load_content(quest_module) -> Dict[str, Any]:
     """Load quest content from JSON file."""
     content_file = "quest_content.json"
+    quest_module.active_theme_key = None
+    quest_module.available_theme_keys = []
+    quest_module._theme_catalog = None
     try:
         with open(content_file, "r") as f:
-            return json.load(f)
+            raw_content = json.load(f)
     except FileNotFoundError:
         quest_module.log_debug(f"Quest content file not found: {content_file}")
         return {}
     except json.JSONDecodeError as e:
         quest_module.log_debug(f"Error parsing quest content: {e}")
         return {}
+
+    if not isinstance(raw_content, dict):
+        quest_module.log_debug(f"Quest content file has unexpected structure ({type(raw_content).__name__}); using empty content.")
+        return {}
+
+    themes = raw_content.get("themes")
+    if isinstance(themes, dict):
+        default_theme = raw_content.get("default_theme")
+        configured_theme = quest_module.get_config_value("theme", default=default_theme)
+        selected_theme = configured_theme or default_theme
+
+        if selected_theme not in themes:
+            if configured_theme:
+                quest_module.log_debug(
+                    f"Configured quest theme '{configured_theme}' was not found in {content_file}; falling back to default."
+                )
+            selected_theme = default_theme
+
+        if selected_theme not in themes and themes:
+            # Fallback to first available theme
+            selected_theme = next(iter(themes.keys()))
+
+        if selected_theme not in themes:
+            quest_module.log_debug(f"No themes available in {content_file}.")
+            return {}
+
+        quest_module.active_theme_key = selected_theme
+        quest_module.available_theme_keys = list(themes.keys())
+        quest_module._theme_catalog = themes
+
+        selected_content = deepcopy(themes[selected_theme])
+        theme_block = selected_content.setdefault("theme", {})
+        theme_block.setdefault("name", selected_theme)
+        return selected_content
+
+    # Legacy single-theme structure
+    quest_module.active_theme_key = raw_content.get("theme", {}).get("name")
+    quest_module.available_theme_keys = []
+    quest_module._theme_catalog = None
+    return raw_content
 
 
 def load_challenge_paths(quest_module) -> Dict[str, Any]:

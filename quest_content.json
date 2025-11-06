@@ -1,267 +1,955 @@
 {
-  "theme": {
-    "name": "noir_november",
-    "background": "#070708",
-    "foreground": "#f2f2f2",
-    "accent": "#c5a880",
-    "accent_text": "#111113",
-    "card_background": "#121316",
-    "card_border": "#c5a880",
-    "table_header": "#1d1e22",
-    "table_stripe": "#151619",
-    "link": "#d8c3a5",
-    "link_hover": "#f1dcc1",
-    "prestige_tiers": [
-      {
-        "max": 3,
-        "icon": "\ud83d\udcdc",
-        "class": "tier-casefile",
-        "color": "#c5a880",
-        "repeat": 3,
-        "banner": null
+  "default_theme": "noir_november",
+  "themes": {
+    "noir_november": {
+      "theme": {
+        "name": "noir_november",
+        "background": "#070708",
+        "foreground": "#f2f2f2",
+        "accent": "#c5a880",
+        "accent_text": "#111113",
+        "card_background": "#121316",
+        "card_border": "#c5a880",
+        "table_header": "#1d1e22",
+        "table_stripe": "#151619",
+        "link": "#d8c3a5",
+        "link_hover": "#f1dcc1",
+        "prestige_tiers": [
+          {
+            "max": 3,
+            "icon": "\ud83d\udcdc",
+            "class": "tier-casefile",
+            "color": "#c5a880",
+            "repeat": 3,
+            "banner": null
+          },
+          {
+            "max": 6,
+            "icon": "\ud83d\udd0d",
+            "class": "tier-magnifier",
+            "color": "#f2f2f2",
+            "repeat": 3,
+            "banner": "shadow"
+          },
+          {
+            "max": null,
+            "icon": "\ud83d\udee1\ufe0f",
+            "class": "tier-shield",
+            "color": "#ffd166",
+            "repeat": 2,
+            "banner": "badge"
+          }
+        ]
       },
-      {
-        "max": 6,
-        "icon": "\ud83d\udd0d",
-        "class": "tier-magnifier",
-        "color": "#f2f2f2",
-        "repeat": 3,
-        "banner": "shadow"
-      },
-      {
-        "max": null,
-        "icon": "\ud83d\udee1\ufe0f",
-        "class": "tier-shield",
-        "color": "#ffd166",
-        "repeat": 2,
-        "banner": "badge"
-      }
-    ]
-  },
-  "world_lore": [
-    "The city hums with secrets\u2014every flickering neon sign another confession waiting to be heard.",
-    "Rain-slick cobblestones remember every deal that ever went south in this part of town.",
-    "Cigarette smoke curls through the blinds like a whisper, promising trouble on the other side.",
-    "Detectives vanish in this city, not because of bullets, but because they ask the wrong questions.",
-    "Some nights the moon stays hidden; even the sky knows better than to witness what happens here."
-  ],
-  "story_beats": {
-    "openers": [
-      "{user} pushes open the agency door and finds a {monster} leaning on their desk like it owns the place.",
-      "Down a crooked alley lit by one buzzing streetlamp, {user} squares up against a {monster}.",
-      "{user}'s stakeout ends when the sedan door opens and a {monster} steps out with bad intentions.",
-      "A tip scrawled on a cocktail napkin leads {user} to a midnight rendezvous with a {monster}.",
-      "The police tape flutters in the wind as {user} realizes the real threat is the {monster} still lurking nearby."
-    ],
-    "actions": [
-      "{user} adjusts their fedora, thumb brushes the safety, and stares the {monster} down.",
-      "{user} mutters a dry quip, flashes the badge, and moves in on the {monster}.",
-      "Knuckles cracked and trench coat flaring, {user} makes the first move on the {monster}.",
-      "{user} studies the {monster}'s tell\u2014a twitch, a glance\u2014and prepares to strike first.",
-      "The city taught {user} to trust their instincts; they slip into the neon haze after the {monster}."
-    ]
-  },
-  "monsters": [
-    {
-      "name": "Two-Bit Hoodlum",
-      "min_level": 1,
-      "max_level": 3,
-      "xp_win_min": 15,
-      "xp_win_max": 30
-    },
-    {
-      "name": "Crooked Cop",
-      "min_level": 2,
-      "max_level": 5,
-      "xp_win_min": 20,
-      "xp_win_max": 40
-    },
-    {
-      "name": "Speakeasy Goon",
-      "min_level": 4,
-      "max_level": 8,
-      "xp_win_min": 35,
-      "xp_win_max": 70
-    },
-    {
-      "name": "Blackmailer",
-      "min_level": 6,
-      "max_level": 10,
-      "xp_win_min": 50,
-      "xp_win_max": 100
-    },
-    {
-      "name": "Bookie's Enforcer",
-      "min_level": 8,
-      "max_level": 12,
-      "xp_win_min": 70,
-      "xp_win_max": 130
-    },
-    {
-      "name": "Crime Boss's Right Hand",
-      "min_level": 10,
-      "max_level": 15,
-      "xp_win_min": 100,
-      "xp_win_max": 180
-    },
-    {
-      "name": "Dirty Politician",
-      "min_level": 14,
-      "max_level": 18,
-      "xp_win_min": 150,
-      "xp_win_max": 250
-    },
-    {
-      "name": "Mafia Hitman",
-      "min_level": 16,
-      "max_level": 22,
-      "xp_win_min": 200,
-      "xp_win_max": 350
-    },
-    {
-      "name": "Crime Syndicate Kingpin",
-      "min_level": 20,
-      "max_level": 28,
-      "xp_win_min": 300,
-      "xp_win_max": 500
-    }
-  ],
-  "boss_monsters": [
-    {
-      "name": "The Crime Lord",
-      "min_level": 10,
-      "max_level": 20,
-      "xp_win_min": 500,
-      "xp_win_max": 1000
-    },
-    {
-      "name": "The Femme Fatale",
-      "min_level": 15,
-      "max_level": 25,
-      "xp_win_min": 800,
-      "xp_win_max": 1500
-    },
-    {
-      "name": "The Big Cheese",
-      "min_level": 20,
-      "max_level": 30,
-      "xp_win_min": 1200,
-      "xp_win_max": 2000
-    }
-  ],
-  "classes": {
-    "detective": {
-      "description": "A hardboiled private eye with a map of the city's sins etched into their memory.",
-      "actions": [
-        "{user} keeps their silhouette framed in the doorway, revolver steady on the {monster}.",
-        "The case files whisper clues as {user} pieces together the {monster}'s next move.",
-        "This ain't their first tail; {user} already has the {monster} pegged."
-      ]
-    },
-    "reporter": {
-      "description": "An ink-stained sleuth chasing the byline that blows the whole city wide open.",
-      "actions": [
-        "{user} flips open a battered notebook, every scribble a leverage point against the {monster}.",
-        "{user} calls in a favor at the Tribune and exposes the {monster}'s cover story.",
-        "The public needs the truth, and {user} will drag it out of the {monster} if they have to."
-      ]
-    },
-    "fixer": {
-      "description": "A connected operator who knows which palms to grease and which shins to break.",
-      "actions": [
-        "{user} makes a quiet call; by the time it connects, the {monster} is already surrounded.",
-        "{user} flashes a knowing grin\u2014they've got dirt on the {monster}'s entire outfit.",
-        "Years of favors pay off when {user}'s network closes the trap on the {monster}."
-      ]
-    }
-  },
-  "injury_system": {
-    "enabled": true,
-    "injury_chance_on_loss": 0.50,
-    "injuries": [
-      {
-        "name": "Pistol Whipped",
-        "description": "Someone got the drop on you - your head is ringing like church bells.",
-        "duration_hours": 2,
-        "effects": {
-          "xp_multiplier": 0.5
-        }
-      },
-      {
-        "name": "Knife Wound",
-        "description": "A blade found its mark in the alley. You're bleeding but still standing.",
-        "duration_hours": 4,
-        "effects": {
-          "energy_regen_modifier": -1
-        }
-      },
-      {
-        "name": "Bourbon Hangover",
-        "description": "That bottle seemed like a good idea last night. It wasn't.",
-        "duration_hours": 1,
-        "effects": {
-          "energy_regen_modifier": -1,
-          "xp_multiplier": 0.75
-        }
-      },
-      {
-        "name": "Cigarette Burn",
-        "description": "They used you as an ashtray during the interrogation.",
-        "duration_hours": 3,
-        "effects": {
-          "xp_multiplier": 0.6
-        }
-      },
-      {
-        "name": "Broken Ribs",
-        "description": "Someone worked you over real good. Every breath is agony.",
-        "duration_hours": 6,
-        "effects": {
-          "energy_regen_modifier": -1
-        }
-      }
-    ]
-  },
-  "boss_hunt": {
-    "bosses": [
-      {
-        "name": "Don Corleone",
-        "description": "The head of the local crime family",
-        "max_hp": 500
-      },
-      {
-        "name": "Big Tony",
-        "description": "The mob's enforcer",
-        "max_hp": 600
-      },
-      {
-        "name": "Lucky Luciano",
-        "description": "The casino owner",
-        "max_hp": 550
-      }
-    ],
-    "clue_messages": [
-      "finds a crucial piece of evidence",
-      "discovers a witness statement",
-      "uncovers a financial record",
-      "locates a surveillance photo",
-      "intercepts a phone conversation",
-      "finds a damning document",
-      "discovers a hidden ledger"
-    ],
-    "haunting_messages": {
-      "injury": [
-        "💀 A gift from an old friend.",
-        "💀 Tony sends his regards.",
-        "💀 You feel a chill... someone's watching."
+      "world_lore": [
+        "The city hums with secrets\u2014every flickering neon sign another confession waiting to be heard.",
+        "Rain-slick cobblestones remember every deal that ever went south in this part of town.",
+        "Cigarette smoke curls through the blinds like a whisper, promising trouble on the other side.",
+        "Detectives vanish in this city, not because of bullets, but because they ask the wrong questions.",
+        "Some nights the moon stays hidden; even the sky knows better than to witness what happens here."
       ],
-      "win": [
-        "💀 Enjoy it whilst it lasts.",
-        "💀 Tony remembers.",
-        "💀 The calm before the storm..."
-      ]
+      "story_beats": {
+        "openers": [
+          "{user} pushes open the agency door and finds a {monster} leaning on their desk like it owns the place.",
+          "Down a crooked alley lit by one buzzing streetlamp, {user} squares up against a {monster}.",
+          "{user}'s stakeout ends when the sedan door opens and a {monster} steps out with bad intentions.",
+          "A tip scrawled on a cocktail napkin leads {user} to a midnight rendezvous with a {monster}.",
+          "The police tape flutters in the wind as {user} realizes the real threat is the {monster} still lurking nearby."
+        ],
+        "actions": [
+          "{user} adjusts their fedora, thumb brushes the safety, and stares the {monster} down.",
+          "{user} mutters a dry quip, flashes the badge, and moves in on the {monster}.",
+          "Knuckles cracked and trench coat flaring, {user} makes the first move on the {monster}.",
+          "{user} studies the {monster}'s tell\u2014a twitch, a glance\u2014and prepares to strike first.",
+          "The city taught {user} to trust their instincts; they slip into the neon haze after the {monster}."
+        ]
+      },
+      "monsters": [
+        {
+          "name": "Two-Bit Hoodlum",
+          "min_level": 1,
+          "max_level": 3,
+          "xp_win_min": 15,
+          "xp_win_max": 30
+        },
+        {
+          "name": "Crooked Cop",
+          "min_level": 2,
+          "max_level": 5,
+          "xp_win_min": 20,
+          "xp_win_max": 40
+        },
+        {
+          "name": "Speakeasy Goon",
+          "min_level": 4,
+          "max_level": 8,
+          "xp_win_min": 35,
+          "xp_win_max": 70
+        },
+        {
+          "name": "Blackmailer",
+          "min_level": 6,
+          "max_level": 10,
+          "xp_win_min": 50,
+          "xp_win_max": 100
+        },
+        {
+          "name": "Bookie's Enforcer",
+          "min_level": 8,
+          "max_level": 12,
+          "xp_win_min": 70,
+          "xp_win_max": 130
+        },
+        {
+          "name": "Crime Boss's Right Hand",
+          "min_level": 10,
+          "max_level": 15,
+          "xp_win_min": 100,
+          "xp_win_max": 180
+        },
+        {
+          "name": "Dirty Politician",
+          "min_level": 14,
+          "max_level": 18,
+          "xp_win_min": 150,
+          "xp_win_max": 250
+        },
+        {
+          "name": "Mafia Hitman",
+          "min_level": 16,
+          "max_level": 22,
+          "xp_win_min": 200,
+          "xp_win_max": 350
+        },
+        {
+          "name": "Crime Syndicate Kingpin",
+          "min_level": 20,
+          "max_level": 28,
+          "xp_win_min": 300,
+          "xp_win_max": 500
+        }
+      ],
+      "boss_monsters": [
+        {
+          "name": "The Crime Lord",
+          "min_level": 10,
+          "max_level": 20,
+          "xp_win_min": 500,
+          "xp_win_max": 1000
+        },
+        {
+          "name": "The Femme Fatale",
+          "min_level": 15,
+          "max_level": 25,
+          "xp_win_min": 800,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "The Big Cheese",
+          "min_level": 20,
+          "max_level": 30,
+          "xp_win_min": 1200,
+          "xp_win_max": 2000
+        }
+      ],
+      "classes": {
+        "detective": {
+          "description": "A hardboiled private eye with a map of the city's sins etched into their memory.",
+          "actions": [
+            "{user} keeps their silhouette framed in the doorway, revolver steady on the {monster}.",
+            "The case files whisper clues as {user} pieces together the {monster}'s next move.",
+            "This ain't their first tail; {user} already has the {monster} pegged."
+          ]
+        },
+        "reporter": {
+          "description": "An ink-stained sleuth chasing the byline that blows the whole city wide open.",
+          "actions": [
+            "{user} flips open a battered notebook, every scribble a leverage point against the {monster}.",
+            "{user} calls in a favor at the Tribune and exposes the {monster}'s cover story.",
+            "The public needs the truth, and {user} will drag it out of the {monster} if they have to."
+          ]
+        },
+        "fixer": {
+          "description": "A connected operator who knows which palms to grease and which shins to break.",
+          "actions": [
+            "{user} makes a quiet call; by the time it connects, the {monster} is already surrounded.",
+            "{user} flashes a knowing grin\u2014they've got dirt on the {monster}'s entire outfit.",
+            "Years of favors pay off when {user}'s network closes the trap on the {monster}."
+          ]
+        }
+      },
+      "injury_system": {
+        "enabled": true,
+        "injury_chance_on_loss": 0.5,
+        "injuries": [
+          {
+            "name": "Pistol Whipped",
+            "description": "Someone got the drop on you - your head is ringing like church bells.",
+            "duration_hours": 2,
+            "effects": {
+              "xp_multiplier": 0.5
+            }
+          },
+          {
+            "name": "Knife Wound",
+            "description": "A blade found its mark in the alley. You're bleeding but still standing.",
+            "duration_hours": 4,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          },
+          {
+            "name": "Bourbon Hangover",
+            "description": "That bottle seemed like a good idea last night. It wasn't.",
+            "duration_hours": 1,
+            "effects": {
+              "energy_regen_modifier": -1,
+              "xp_multiplier": 0.75
+            }
+          },
+          {
+            "name": "Cigarette Burn",
+            "description": "They used you as an ashtray during the interrogation.",
+            "duration_hours": 3,
+            "effects": {
+              "xp_multiplier": 0.6
+            }
+          },
+          {
+            "name": "Broken Ribs",
+            "description": "Someone worked you over real good. Every breath is agony.",
+            "duration_hours": 6,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          }
+        ]
+      },
+      "boss_hunt": {
+        "bosses": [
+          {
+            "name": "Don Corleone",
+            "description": "The head of the local crime family",
+            "max_hp": 500
+          },
+          {
+            "name": "Big Tony",
+            "description": "The mob's enforcer",
+            "max_hp": 600
+          },
+          {
+            "name": "Lucky Luciano",
+            "description": "The casino owner",
+            "max_hp": 550
+          }
+        ],
+        "clue_messages": [
+          "finds a crucial piece of evidence",
+          "discovers a witness statement",
+          "uncovers a financial record",
+          "locates a surveillance photo",
+          "intercepts a phone conversation",
+          "finds a damning document",
+          "discovers a hidden ledger"
+        ],
+        "haunting_messages": {
+          "injury": [
+            "\ud83d\udc80 A gift from an old friend.",
+            "\ud83d\udc80 Tony sends his regards.",
+            "\ud83d\udc80 You feel a chill... someone's watching."
+          ],
+          "win": [
+            "\ud83d\udc80 Enjoy it whilst it lasts.",
+            "\ud83d\udc80 Tony remembers.",
+            "\ud83d\udc80 The calm before the storm..."
+          ]
+        },
+        "return_message": "\ud83d\udc80 {username}: TONY RETURNS!",
+        "defeat_announcement": "\ud83c\udf8a BOSS DEFEATED! \ud83c\udf8a"
+      }
     },
-    "return_message": "💀 {username}: TONY RETURNS!",
-    "defeat_announcement": "🎊 BOSS DEFEATED! 🎊"
+    "noir_classic": {
+      "theme": {
+        "name": "noir_classic",
+        "background": "#0a0a0a",
+        "foreground": "#f5f5f5",
+        "accent": "#c0c0c0",
+        "accent_text": "#0a0a0a",
+        "card_background": "#1a1a1a",
+        "card_border": "#c0c0c0",
+        "table_header": "#2a2a2a",
+        "table_stripe": "#1f1f1f",
+        "link": "#d4d4d4",
+        "link_hover": "#e0e0e0",
+        "prestige_tiers": [
+          {
+            "max": 3,
+            "icon": "\ud83d\udcdc",
+            "class": "tier-casefile",
+            "color": "#c0c0c0",
+            "repeat": 3,
+            "banner": null
+          },
+          {
+            "max": 6,
+            "icon": "\ud83d\udd2b",
+            "class": "tier-magnifier",
+            "color": "#f5f5f5",
+            "repeat": 3,
+            "banner": "shadow"
+          },
+          {
+            "max": null,
+            "icon": "\ud83c\udf9f\ufe0f",
+            "class": "tier-detective",
+            "color": "#ffd700",
+            "repeat": 2,
+            "banner": "badge"
+          }
+        ]
+      },
+      "world_lore": [
+        "The rain never stops washing the sins of this city down the gutter drains.",
+        "Every dame that walks into your office has trouble written all over her, but some are worth the trouble.",
+        "In this town, the cops are on the take and the criminals are better dressed than the politicians.",
+        "The neon sign outside flickers like a dying heartbeat, illuminating the perpetual darkness below.",
+        "Some cases start with a dame and a sob story - this one starts with a corpse and a mystery."
+      ],
+      "story_beats": {
+        "openers": [
+          "{user} walks into a smoke-filled office and finds a {monster} waiting for them.",
+          "The rain pounds the pavement as {user} confronts a {monster} in a dark alley.",
+          "{user} follows a trail of cigarette butts and broken promises to a {monster}.",
+          "The neon sign reflects off wet streets as {user} faces down a {monster}.",
+          "{user} pours a stiff drink and prepares to deal with a {monster} the only way they know how."
+        ],
+        "actions": [
+          "{user} reaches for their piece and gets ready to deal with the {monster}.",
+          "{user} checks their ammo and squares off against the {monster}.",
+          "With a grim determination, {user} prepares to put the {monster} out of business.",
+          "{user} sizes up the {monster} - this isn't going to be pretty.",
+          "{user} cracks their knuckles and prepares to have a little chat with the {monster}."
+        ]
+      },
+      "monsters": [
+        {
+          "name": "Two-Bit Hoodlum",
+          "min_level": 1,
+          "max_level": 3,
+          "xp_win_min": 15,
+          "xp_win_max": 30
+        },
+        {
+          "name": "Crooked Cop",
+          "min_level": 2,
+          "max_level": 5,
+          "xp_win_min": 20,
+          "xp_win_max": 40
+        },
+        {
+          "name": "Speakeasy Goon",
+          "min_level": 4,
+          "max_level": 8,
+          "xp_win_min": 35,
+          "xp_win_max": 70
+        },
+        {
+          "name": "Blackmailer",
+          "min_level": 6,
+          "max_level": 10,
+          "xp_win_min": 50,
+          "xp_win_max": 100
+        },
+        {
+          "name": "Bookie's Enforcer",
+          "min_level": 8,
+          "max_level": 12,
+          "xp_win_min": 70,
+          "xp_win_max": 130
+        },
+        {
+          "name": "Crime Boss's Right Hand",
+          "min_level": 10,
+          "max_level": 15,
+          "xp_win_min": 100,
+          "xp_win_max": 180
+        },
+        {
+          "name": "Dirty Politician",
+          "min_level": 14,
+          "max_level": 18,
+          "xp_win_min": 150,
+          "xp_win_max": 250
+        },
+        {
+          "name": "Mafia Hitman",
+          "min_level": 16,
+          "max_level": 22,
+          "xp_win_min": 200,
+          "xp_win_max": 350
+        },
+        {
+          "name": "Crime Syndicate Kingpin",
+          "min_level": 20,
+          "max_level": 28,
+          "xp_win_min": 300,
+          "xp_win_max": 500
+        }
+      ],
+      "boss_monsters": [
+        {
+          "name": "The Crime Lord",
+          "min_level": 10,
+          "max_level": 20,
+          "xp_win_min": 500,
+          "xp_win_max": 1000
+        },
+        {
+          "name": "The Femme Fatale",
+          "min_level": 15,
+          "max_level": 25,
+          "xp_win_min": 800,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "The Big Cheese - City's Most Notorious Gangster",
+          "min_level": 20,
+          "max_level": 30,
+          "xp_win_min": 1200,
+          "xp_win_max": 2000
+        }
+      ],
+      "classes": {
+        "detective": {
+          "description": "A hardboiled private eye who's seen too much and carries a heavy badge.",
+          "actions": [
+            "{user} pulls out their trusty revolver and aims steady at the {monster}.",
+            "{user} dusts off their trench coat and confronts the {monster} with steely resolve.",
+            "With years of experience, {user} anticipates the {monster}'s every move."
+          ]
+        },
+        "reporter": {
+          "description": "An investigative journalist who's not afraid to get their hands dirty for the big story.",
+          "actions": [
+            "{user} pulls out their press pass and camera, ready to expose the {monster}.",
+            "{user} jots down notes while sizing up the {monster} for tomorrow's headline.",
+            "The public deserves to know the truth about this {monster}, and {user} will make sure they do."
+          ]
+        },
+        "insider": {
+          "description": "Someone who knows the streets from the inside - ex-cop, ex-con, or just survived.",
+          "actions": [
+            "{user} uses their street smarts to get the drop on the {monster}.",
+            "{user} calls in a favor from an old friend to handle the {monster}.",
+            "You learn a few things living in this city, and {user} knows just how to deal with a {monster}."
+          ]
+        }
+      },
+      "injury_system": {
+        "enabled": true,
+        "injury_chance_on_loss": 0.5,
+        "injuries": [
+          {
+            "name": "Pistol Whipped",
+            "description": "Someone got the drop on you - your head is ringing like church bells.",
+            "duration_hours": 2,
+            "effects": {
+              "xp_multiplier": 0.5
+            }
+          },
+          {
+            "name": "Knife Wound",
+            "description": "A blade found its mark in the alley. You're bleeding but still standing.",
+            "duration_hours": 4,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          },
+          {
+            "name": "Bourbon Hangover",
+            "description": "That bottle seemed like a good idea last night. It wasn't.",
+            "duration_hours": 1,
+            "effects": {
+              "energy_regen_modifier": -1,
+              "xp_multiplier": 0.75
+            }
+          },
+          {
+            "name": "Cigarette Burn",
+            "description": "They used you as an ashtray during the interrogation.",
+            "duration_hours": 3,
+            "effects": {
+              "xp_multiplier": 0.6
+            }
+          },
+          {
+            "name": "Broken Ribs",
+            "description": "Someone worked you over real good. Every breath is agony.",
+            "duration_hours": 6,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          }
+        ]
+      }
+    },
+    "december_shopping": {
+      "theme": {
+        "name": "december_shopping",
+        "background": "#0f1a0d",
+        "foreground": "#f5f5f0",
+        "accent": "#c41e3a",
+        "accent_text": "#ffffff",
+        "card_background": "#1a2618",
+        "card_border": "#2d5f3f",
+        "table_header": "#2d5f3f",
+        "table_stripe": "#1e2e1c",
+        "link": "#5fa777",
+        "link_hover": "#7bc99c",
+        "prestige_tiers": [
+          {
+            "max": 3,
+            "icon": "\ud83c\udf81",
+            "class": "tier-gift",
+            "color": "#c41e3a",
+            "repeat": 3,
+            "banner": null
+          },
+          {
+            "max": 6,
+            "icon": "\ud83c\udf84",
+            "class": "tier-tree",
+            "color": "#2d5f3f",
+            "repeat": 3,
+            "banner": "snow"
+          },
+          {
+            "max": null,
+            "icon": "\u2b50",
+            "class": "tier-star",
+            "color": "#ffd700",
+            "repeat": 2,
+            "banner": "garland"
+          }
+        ]
+      },
+      "world_lore": [
+        "The mall speakers play the same six songs on endless repeat, a soundtrack to desperation and determination.",
+        "Parking lots stretch into infinity, each row more crowded than the last, every spot a mirage.",
+        "Returns lines snake through stores like patient serpents, receipts clutched in sweaty hands.",
+        "Online shopping promised convenience, but the delivery windows lie and packages vanish into the void.",
+        "The perfect gift exists somewhere in this chaos - you just have to find it before someone else does."
+      ],
+      "story_beats": {
+        "openers": [
+          "{user} navigates through crowded aisles and encounters {monster} blocking the way to the toy section.",
+          "While waiting in the return line, {user} spots {monster} reaching for the last item on the shelf.",
+          "{user} checks their shopping list one more time before confronting {monster} at the checkout.",
+          "The holiday music crescendos as {user} rounds the corner to find {monster} guarding the gift wrap station.",
+          "{user} braves the parking lot chaos only to discover {monster} claiming the last available space."
+        ],
+        "actions": [
+          "{user} grabs their shopping cart and prepares to navigate around {monster}.",
+          "{user} clutches their coffee tighter and steels themselves against {monster}.",
+          "With determination born of desperation, {user} refuses to let {monster} ruin their shopping trip.",
+          "{user} checks their budget one more time before dealing with {monster}.",
+          "{user} takes a deep breath and channels their inner holiday spirit to overcome {monster}."
+        ]
+      },
+      "monsters": [
+        {
+          "name": "Misplaced Shopping List",
+          "min_level": 1,
+          "max_level": 3,
+          "xp_win_min": 15,
+          "xp_win_max": 30
+        },
+        {
+          "name": "Out of Stock Sign",
+          "min_level": 2,
+          "max_level": 5,
+          "xp_win_min": 20,
+          "xp_win_max": 40
+        },
+        {
+          "name": "Holiday Traffic Jam",
+          "min_level": 4,
+          "max_level": 8,
+          "xp_win_min": 35,
+          "xp_win_max": 70
+        },
+        {
+          "name": "Price Check Delay",
+          "min_level": 6,
+          "max_level": 10,
+          "xp_win_min": 50,
+          "xp_win_max": 100
+        },
+        {
+          "name": "Expired Coupon",
+          "min_level": 8,
+          "max_level": 12,
+          "xp_win_min": 70,
+          "xp_win_max": 130
+        },
+        {
+          "name": "Gift Wrapping Station Line",
+          "min_level": 10,
+          "max_level": 15,
+          "xp_win_min": 100,
+          "xp_win_max": 180
+        },
+        {
+          "name": "Shipping Deadline",
+          "min_level": 14,
+          "max_level": 18,
+          "xp_win_min": 150,
+          "xp_win_max": 250
+        },
+        {
+          "name": "Budget Overrun",
+          "min_level": 16,
+          "max_level": 22,
+          "xp_win_min": 200,
+          "xp_win_max": 350
+        },
+        {
+          "name": "Assembly Required Instructions",
+          "min_level": 20,
+          "max_level": 28,
+          "xp_win_min": 300,
+          "xp_win_max": 500
+        }
+      ],
+      "boss_monsters": [
+        {
+          "name": "Black Friday Stampede",
+          "min_level": 10,
+          "max_level": 20,
+          "xp_win_min": 500,
+          "xp_win_max": 1000
+        },
+        {
+          "name": "The Last Minute Shopper",
+          "min_level": 15,
+          "max_level": 25,
+          "xp_win_min": 800,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "Santa's Naughty List Coordinator",
+          "min_level": 20,
+          "max_level": 30,
+          "xp_win_min": 1200,
+          "xp_win_max": 2000
+        }
+      ],
+      "classes": {
+        "planner": {
+          "description": "An organized shopper with color-coded lists and a battle-tested strategy.",
+          "actions": [
+            "{user} consults their meticulously organized spreadsheet before engaging {monster}.",
+            "{user} cross-references their shopping list and budget calculator while facing {monster}.",
+            "With military precision, {user} executes their pre-planned route around {monster}."
+          ]
+        },
+        "procrastinator": {
+          "description": "Someone who thrives on deadline pressure and last-minute inspiration.",
+          "actions": [
+            "{user} frantically checks their phone for gift ideas while confronting {monster}.",
+            "{user} remembers they forgot someone on their list just as {monster} appears.",
+            "Fueled by panic and peppermint lattes, {user} charges headlong at {monster}."
+          ]
+        },
+        "bargain_hunter": {
+          "description": "A deal-seeking expert who knows every coupon code and clearance rack.",
+          "actions": [
+            "{user} whips out a stack of coupons and promotional codes to deal with {monster}.",
+            "{user} spots a 'Manager's Special' sign and uses it to distract {monster}.",
+            "With the skill of a seasoned deal-hunter, {user} navigates around {monster} to the clearance section."
+          ]
+        }
+      },
+      "injury_system": {
+        "enabled": true,
+        "injury_chance_on_loss": 0.5,
+        "injuries": [
+          {
+            "name": "Paper Cut",
+            "description": "Gift wrapping has drawn blood - the paper cuts sting with every movement.",
+            "duration_hours": 2,
+            "effects": {
+              "xp_multiplier": 0.5
+            }
+          },
+          {
+            "name": "Sore Feet",
+            "description": "Hours of mall walking have left your feet screaming for mercy.",
+            "duration_hours": 4,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          },
+          {
+            "name": "Stress Headache",
+            "description": "The combination of crowds, noise, and pressure has resulted in a pounding headache.",
+            "duration_hours": 1,
+            "effects": {
+              "energy_regen_modifier": -1,
+              "xp_multiplier": 0.75
+            }
+          },
+          {
+            "name": "Cookie Burn",
+            "description": "A baking mishap has left you with a painful burn. Should have used oven mitts.",
+            "duration_hours": 3,
+            "effects": {
+              "xp_multiplier": 0.6
+            }
+          },
+          {
+            "name": "Wallet Strain",
+            "description": "Your wallet feels so light it hurts. The financial stress is weighing on you.",
+            "duration_hours": 6,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          }
+        ]
+      },
+      "boss_hunt": {
+        "bosses": [
+          {
+            "name": "The Grinch",
+            "description": "A green menace stealing joy from the season",
+            "max_hp": 500
+          },
+          {
+            "name": "Krampus",
+            "description": "The dark enforcer of naughty list justice",
+            "max_hp": 600
+          },
+          {
+            "name": "Black Friday",
+            "description": "The manifestation of consumer chaos itself",
+            "max_hp": 550
+          }
+        ],
+        "clue_messages": [
+          "finds a torn gift receipt",
+          "discovers a suspicious shipping label",
+          "uncovers a canceled order confirmation",
+          "locates security footage from the parking lot",
+          "intercepts a complaint to customer service",
+          "finds a crumpled wish list",
+          "discovers a trail of glitter leading away"
+        ],
+        "haunting_messages": {
+          "injury": [
+            "\ud83c\udf84 A gift from the naughty list.",
+            "\ud83c\udf84 Krampus sends his regards.",
+            "\ud83c\udf84 You hear distant sleigh bells... and they're getting closer."
+          ],
+          "win": [
+            "\ud83c\udf84 Enjoy your temporary peace.",
+            "\ud83c\udf84 Krampus remembers who's been naughty.",
+            "\ud83c\udf84 The holiday spirit won't last forever..."
+          ]
+        },
+        "return_message": "\ud83c\udf84 {username}: KRAMPUS RETURNS!",
+        "defeat_announcement": "\ud83c\udf8a HOLIDAY SAVED! \ud83c\udf8a"
+      }
+    },
+    "neon_frontier": {
+      "world_lore": [
+        "The network is old. Older than the concrete and steel that house it. They say it dreams of dial-up tones.",
+        "Some data packets never reach their destination. They just... wander. Ghosts in the machine.",
+        "Firewalls were originally built to keep things out. Now, some say they're to keep something *in*."
+      ],
+      "story_beats": {
+        "openers": [
+          "{user} traces a corrupted data line into a forgotten server room, seeking a {monster}.",
+          "{user} jacks into a dusty terminal, looking for the signature of a {monster}.",
+          "Following a trail of flickering lights, {user} finds the nest of a {monster}."
+        ],
+        "actions": [
+          "{user} initiates a debug sequence to try and quarantine the {monster}.",
+          "{user} deploys a counter-exploit against the {monster}.",
+          "With a burst of static, {user} confronts the {monster} in the digital ether."
+        ]
+      },
+      "monsters": [
+        {
+          "name": "Glitched Packet",
+          "min_level": 1,
+          "max_level": 3,
+          "xp_win_min": 15,
+          "xp_win_max": 30
+        },
+        {
+          "name": "Spam Bot",
+          "min_level": 2,
+          "max_level": 5,
+          "xp_win_min": 20,
+          "xp_win_max": 40
+        },
+        {
+          "name": "Trojan Horse",
+          "min_level": 6,
+          "max_level": 10,
+          "xp_win_min": 50,
+          "xp_win_max": 100
+        },
+        {
+          "name": "Rogue AI Fragment",
+          "min_level": 8,
+          "max_level": 14,
+          "xp_win_min": 80,
+          "xp_win_max": 150
+        },
+        {
+          "name": "Data Wraith",
+          "min_level": 16,
+          "max_level": 25,
+          "xp_win_min": 200,
+          "xp_win_max": 400
+        }
+      ],
+      "boss_monsters": [
+        {
+          "name": "The Tyrant Lizard",
+          "min_level": 10,
+          "max_level": 20,
+          "xp_win_min": 500,
+          "xp_win_max": 1000
+        },
+        {
+          "name": "Matriarch Elephant",
+          "min_level": 15,
+          "max_level": 25,
+          "xp_win_min": 800,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "The Horned One (Rhino)",
+          "min_level": 20,
+          "max_level": 30,
+          "xp_win_min": 1200,
+          "xp_win_max": 2000
+        }
+      ],
+      "classes": {
+        "warrior": {
+          "description": "A battle-hardened fighter who excels in direct combat.",
+          "actions": [
+            "{user} draws their blade and charges the {monster}.",
+            "{user} raises their shield and advances on the {monster}.",
+            "With a battle cry, {user} engages the {monster} in melee combat."
+          ]
+        },
+        "mage": {
+          "description": "A wielder of arcane energies and digital sorcery.",
+          "actions": [
+            "{user} weaves a spell of crackling energy at the {monster}.",
+            "{user} channels raw data into a devastating hex against the {monster}.",
+            "Muttering incantations, {user} unleashes arcane fury upon the {monster}."
+          ]
+        },
+        "rogue": {
+          "description": "A cunning infiltrator who strikes from the shadows.",
+          "actions": [
+            "{user} slips through the shadows to backstab the {monster}.",
+            "{user} exploits a vulnerability to strike the {monster} where it hurts.",
+            "Moving unseen, {user} delivers a critical blow to the {monster}."
+          ]
+        }
+      },
+      "injury_system": {
+        "enabled": true,
+        "injury_chance_on_loss": 0.5,
+        "injuries": [
+          {
+            "name": "Neural Feedback",
+            "description": "Corrupted data has fried your synapses - everything feels fuzzy.",
+            "duration_hours": 2,
+            "effects": {
+              "xp_multiplier": 0.5
+            }
+          },
+          {
+            "name": "System Overload",
+            "description": "Your augments are running hot and need time to cool down.",
+            "duration_hours": 4,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          },
+          {
+            "name": "Code Injection",
+            "description": "Malicious code is wreaking havoc on your systems.",
+            "duration_hours": 1,
+            "effects": {
+              "energy_regen_modifier": -1,
+              "xp_multiplier": 0.75
+            }
+          },
+          {
+            "name": "Data Corruption",
+            "description": "Your memory banks are scrambled - nothing makes sense right now.",
+            "duration_hours": 3,
+            "effects": {
+              "xp_multiplier": 0.6
+            }
+          },
+          {
+            "name": "Power Drain",
+            "description": "Something is leeching energy from your core systems.",
+            "duration_hours": 6,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          }
+        ]
+      },
+      "theme": {
+        "name": "neon_frontier",
+        "background": "#030712",
+        "foreground": "#e2e8f0",
+        "accent": "#38bdf8",
+        "accent_text": "#020617",
+        "card_background": "#0f172a",
+        "card_border": "#38bdf8",
+        "table_header": "#1e293b",
+        "table_stripe": "#111827",
+        "link": "#38bdf8",
+        "link_hover": "#7dd3fc",
+        "prestige_tiers": [
+          {
+            "max": 3,
+            "icon": "\ud83d\udef0",
+            "class": "tier-satellite",
+            "color": "#38bdf8",
+            "repeat": 3,
+            "banner": null
+          },
+          {
+            "max": 6,
+            "icon": "\ud83e\uddec",
+            "class": "tier-genome",
+            "color": "#a855f7",
+            "repeat": 3,
+            "banner": "pulse"
+          },
+          {
+            "max": null,
+            "icon": "\ud83d\ude80",
+            "class": "tier-launch",
+            "color": "#f97316",
+            "repeat": 2,
+            "banner": "thruster"
+          }
+        ]
+      }
+    }
   }
 }

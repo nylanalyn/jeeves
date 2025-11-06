@@ -164,32 +164,50 @@ The web UI respects the same environment variables as the main bot:
 ## 🎯 Theme Customization
 
 ### **Default Theme**
-- **Name**: midnight-spire
-- **Colors**: Dark theme with orange accents
-- **Typography**: System fonts with good readability
-- **Layout**: Card-based, responsive design
+- **Name**: noir_november
+- **Colors**: Noir palette with brass accents
+- **Typography**: System fonts with strong contrast
+- **Layout**: Card-based, responsive design bundled with the quest module
 
 ### **Custom Themes**
-Create a `theme.json` file in your content directory:
+Themes are defined inside `quest_content.json` under the top-level `themes` map.  
+Add a new entry (for example `aurora_station`) and set `quest.theme` in `config/config.yaml` to the matching key:
 
 ```json
 {
-    "name": "custom-theme",
-    "background": "#1a1a1a",
-    "foreground": "#ffffff",
-    "accent": "#00ff00",
-    "card_background": "#2a2a2a",
-    "card_border": "#00ff00",
-    "prestige_tiers": [
-        {
+  "themes": {
+    "aurora_station": {
+      "theme": {
+        "name": "aurora_station",
+        "background": "#041221",
+        "foreground": "#f1fbff",
+        "accent": "#3be6c4",
+        "card_background": "#0b1c30",
+        "card_border": "#3be6c4",
+        "prestige_tiers": [
+          {
             "max": 3,
-            "icon": "★",
-            "class": "tier-star",
-            "color": "#ffd700",
+            "icon": "⭑",
+            "class": "tier-radiant",
+            "color": "#3be6c4",
             "repeat": 3
-        }
-    ]
+          }
+        ]
+      }
+    }
+  }
 }
+```
+
+Set the active theme in config and reload:
+
+```yaml
+quest:
+    theme: "aurora_station"
+```
+
+```bash
+!admin reload quest
 ```
 
 ### **CSS Variables**
@@ -330,7 +348,7 @@ main()
 ### **Styling Issues**
 1. Clear browser cache
 2. Check browser console for errors
-3. Verify theme.json format if using custom themes
+3. Verify the active theme entry in `quest_content.json` is valid JSON
 
 ### **Import Errors**
 1. Ensure all required files are present
@@ -339,7 +357,7 @@ main()
 
 ## 📚 Related Documentation
 
-- **Configuration Validation Guide**: `CONFIG_VALIDATION_GUIDE.md`
+- **Configuration & Validation**: `../docs/README.md`
 - **Quest Module Guide**: Documentation in the quest module
 - **Bot Configuration**: `config.yaml.default`
 
@@ -349,11 +367,7 @@ main()
 No changes needed - full backward compatibility is maintained.
 
 ### **Custom Themes**
-If you have custom themes, place them in your content directory:
-```bash
-# Old: theme.json in root
-# New: theme.json in content directory
-```
+If you maintained a standalone `theme.json`, migrate it into `quest_content.json` under a new `themes.<your_slug>.theme` entry and set `quest.theme` accordingly.
 
 ### **Custom Scripts**
 Update import paths:

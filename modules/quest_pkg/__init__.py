@@ -77,9 +77,24 @@ class Quest(SimpleCommandModule):
 
     def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
         """Get content from JSON file, falling back to config if not found."""
-        # Try to get from content file first
-        if key in self.quest_content:
-            return self.quest_content[key]
+        content = self.quest_content
+        if isinstance(content, dict):
+            if key in content:
+                return content[key]
+
+            # Support dotted paths (e.g. "boss_hunt.bosses")
+            parts = key.split(".")
+            if len(parts) > 1:
+                current: Any = content
+                missing = object()
+                for part in parts:
+                    if isinstance(current, dict) and part in current:
+                        current = current[part]
+                    else:
+                        current = missing
+                        break
+                if current is not missing:
+                    return current
         # Fall back to config
         return self.get_config_value(key, channel, default=default)
 

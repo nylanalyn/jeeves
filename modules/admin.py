@@ -33,6 +33,15 @@ class Admin(SimpleCommandModule):
         self.register_command(r"^\s*!pass\s+(.+)$", self._cmd_authenticate,
                               name="pass", admin_only=True, description="Authenticate as super admin (IM only).")
 
+    # --- Private Message Handler ---
+
+    def on_privmsg(self, connection, event):
+        """Handle private messages by dispatching to command system."""
+        msg = event.arguments[0]
+        username = event.source.nick
+        # Dispatch to the command system just like public messages
+        return self._dispatch_commands(connection, event, msg, username)
+
     # --- Master Command Handler ---
 
     def _cmd_admin_master(self, connection, event, msg, username, match):

@@ -5,6 +5,7 @@ debug.log
 oracle_prompt.txt
 .claude
 .audit/
+audit/
 
 # Local environment variable files.
 .env

@@ -92,3 +92,11 @@ Thumbs.db
 # Junk
 Code Review: Jeeves IRC Bot.md
 state.old
+
+# --- Audit Reports (Private) ---
+docs/AUDIT_*.md
+docs/*_audit.md
+
+# --- Backup Files ---
+*.backup
+config/*.backup

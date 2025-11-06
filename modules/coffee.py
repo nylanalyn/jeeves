@@ -4,11 +4,12 @@ import re
 import random
 import time
 from datetime import datetime
+from typing import Any, Dict, List
 import pytz
 from timezonefinder import TimezoneFinder
 from .base import SimpleCommandModule
 
-def setup(bot):
+def setup(bot: Any) -> 'Coffee':
     return Coffee(bot)
 
 class Coffee(SimpleCommandModule):
@@ -16,27 +17,27 @@ class Coffee(SimpleCommandModule):
     version = "3.0.0" # Dynamic configuration refactor
     description = "Serves a beverage appropriate to the user's local time."
 
-    COFFEE_DRINKS = [
+    COFFEE_DRINKS: List[str] = [
         "a freshly brewed black coffee", "a delightful café au lait", "a strong espresso",
         "a perfectly balanced cappuccino", "a smooth flat white", "a comforting latte",
         "an energizing Americano", "a rich macchiato"
     ]
-    TEA_DRINKS = [
+    TEA_DRINKS: List[str] = [
         "a cup of Earl Grey tea", "a soothing chamomile tea", "a classic English Breakfast tea",
         "a fragrant jasmine green tea", "a refreshing mint tea", "a robust Assam black tea"
     ]
-    EVENING_DRINKS = [
+    EVENING_DRINKS: List[str] = [
         "a warm glass of milk with a dash of nutmeg", "a caffeine-free herbal infusion",
         "a mug of hot chocolate", "a soothing cup of peppermint tea", "a decaffeinated latte"
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self.tf = TimezoneFinder()
+        self.tf: TimezoneFinder = TimezoneFinder()
         self.set_state("user_beverage_counts", self.get_state("user_beverage_counts", {}))
         self.save_state()
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         self.register_command(r"^\s*!coffee(?:\s+--force)?\s*$", self._cmd_coffee,
                               name="coffee",
                               description="Request a beverage. Use --force to insist.",
@@ -58,7 +59,7 @@ class Coffee(SimpleCommandModule):
         
         return datetime.now(pytz.utc).hour
 
-    def _cmd_coffee(self, connection, event, msg, username, match):
+    def _cmd_coffee(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         title = self.bot.title_for(username)
         user_id = self.bot.get_user_id(username)
         channel = event.target

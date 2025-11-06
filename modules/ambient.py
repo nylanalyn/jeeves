@@ -5,10 +5,11 @@ Occasionally responds to certain phrases with emoji.
 
 import random
 import re
+from typing import Any, List, Pattern
 from .base import ModuleBase
 
 
-def setup(bot):
+def setup(bot: Any) -> 'AmbientModule':
     """Module setup function."""
     return AmbientModule(bot)
 
@@ -20,11 +21,11 @@ class AmbientModule(ModuleBase):
     version = "1.0.0"
     description = "Occasionally responds to certain phrases"
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
 
         # Compile patterns for common dog whistles
-        self.patterns = [
+        self.patterns: List[Pattern[str]] = [
             re.compile(r'\b(states?\s+rights?)\b', re.IGNORECASE),
             re.compile(r'\b(cultural\s+marxis[mt])\b', re.IGNORECASE),
             re.compile(r'\b(virtue\s+signal(?:ing|s)?)\b', re.IGNORECASE),
@@ -47,7 +48,7 @@ class AmbientModule(ModuleBase):
             re.compile(r'\b(woke\s+(?:mob|agenda|culture))\b', re.IGNORECASE),
         ]
 
-    def on_ambient_message(self, connection, event, msg, username):
+    def on_ambient_message(self, connection: Any, event: Any, msg: str, username: str) -> bool:
         """Check messages for dog whistle patterns."""
         if not self.is_enabled(event.target):
             return False

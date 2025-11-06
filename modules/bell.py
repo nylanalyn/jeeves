@@ -11,7 +11,7 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
+def setup(bot: Any) -> 'Bell':
     return Bell(bot)
 
 class Bell(SimpleCommandModule):
@@ -19,14 +19,14 @@ class Bell(SimpleCommandModule):
     version = "2.1.1" # Fixed user lookup for top scores
     description = "A reaction game to answer the service bell."
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
         self.set_state("scores", self.get_state("scores", {})) # Keyed by user_id
         self.set_state("active_bell", self.get_state("active_bell", None))
         self.set_state("next_ring_time", self.get_state("next_ring_time", None))
         self.save_state()
 
-    def on_load(self):
+    def on_load(self) -> None:
         super().on_load()
         schedule.clear(f"{self.name}-ring")
         schedule.clear(f"{self.name}-end")
@@ -45,12 +45,12 @@ class Bell(SimpleCommandModule):
         elif not self.get_state("active_bell"):
             self._schedule_next_bell()
 
-    def on_unload(self):
+    def on_unload(self) -> None:
         super().on_unload()
         schedule.clear(f"{self.name}-ring")
         schedule.clear(f"{self.name}-end")
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         self.register_command(r"^\s*!answer\s*$", self._cmd_answer,
                               name="answer", description="Answer the service bell when it rings.")
         self.register_command(r"^\s*!bell\s+score\s*$", self._cmd_score_self,
@@ -60,7 +60,7 @@ class Bell(SimpleCommandModule):
         self.register_command(r"^\s*!bell\s+ring\s*$", self._cmd_ring,
                               name="bell ring", admin_only=True, description="Force the bell to ring now.")
 
-    def _schedule_next_bell(self):
+    def _schedule_next_bell(self) -> None:
         allowed_channels = self.get_config_value("allowed_channels", default=[])
         if not allowed_channels:
             return
@@ -75,7 +75,7 @@ class Bell(SimpleCommandModule):
         
         schedule.every(delay_hours * 3600).seconds.do(self._ring_the_bell).tag(f"{self.name}-ring")
 
-    def _ring_the_bell(self):
+    def _ring_the_bell(self) -> Any:
         schedule.clear(f"{self.name}-ring")
 
         allowed_channels = self.get_config_value("allowed_channels", default=[])
@@ -98,7 +98,7 @@ class Bell(SimpleCommandModule):
         schedule.every(response_window).seconds.do(self._end_bell_round).tag(f"{self.name}-end")
         return schedule.CancelJob
 
-    def _end_bell_round(self):
+    def _end_bell_round(self) -> Any:
         if self.get_state("active_bell"):
             self.set_state("active_bell", None)
             self.save_state()
@@ -106,11 +106,11 @@ class Bell(SimpleCommandModule):
             active_channels = [room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]
             for room in active_channels:
                 self.safe_say("Too slow. The bell has been silenced.", target=room)
-        
+
         self._schedule_next_bell()
         return schedule.CancelJob
 
-    def _cmd_answer(self, connection, event, msg, username, match):
+    def _cmd_answer(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         active_bell = self.get_state("active_bell")
 
         if not active_bell:
@@ -119,7 +119,7 @@ class Bell(SimpleCommandModule):
 
         schedule.clear(f"{self.name}-end")
         self.set_state("active_bell", None)
-        
+
         user_id = self.bot.get_user_id(username)
         scores = self.get_state("scores", {})
         scores[user_id] = scores.get(user_id, 0) + 1
@@ -130,13 +130,13 @@ class Bell(SimpleCommandModule):
         self._schedule_next_bell()
         return True
 
-    def _cmd_score_self(self, connection, event, msg, username, match):
+    def _cmd_score_self(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         user_id = self.bot.get_user_id(username)
         score = self.get_state("scores", {}).get(user_id, 0)
         self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have answered the bell {score} time{'s' if score != 1 else ''}.")
         return True
 
-    def _cmd_top(self, connection, event, msg, username, match):
+    def _cmd_top(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         scores = self.get_state("scores", {})
         if not scores:
             self.safe_reply(connection, event, "No one has yet answered the call of duty.")
@@ -150,18 +150,18 @@ class Bell(SimpleCommandModule):
             self.log_debug("Could not get 'users' module instance to resolve nicknames for top scores.")
 
         sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)[:5]
-        
+
         top_list = []
         for user_id, score in sorted_scores:
             user_profile = user_map.get(user_id)
             display_nick = user_profile.get("canonical_nick", "An unknown user") if user_profile else "An unknown user"
             top_list.append(f"{display_nick} ({score})")
-            
+
         self.safe_reply(connection, event, f"The most attentive members of the household: {', '.join(top_list)}")
         return True
 
     @admin_required
-    def _cmd_ring(self, connection, event, msg, username, match):
+    def _cmd_ring(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if self.get_state("active_bell"):
             self.safe_reply(connection, event, "The bell is already ringing.")
             return True

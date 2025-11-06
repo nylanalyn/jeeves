@@ -1,4 +1,5 @@
 # modules/oracle.py
+from typing import Any
 # An experimental module for a fully AI-driven conversational mode.
 import re
 import sys
@@ -11,7 +12,7 @@ try:
 except ImportError:
     OpenAI = None
 
-def setup(bot):
+def setup(bot: Any) -> "Oracle":
     if not OpenAI:
         print("[oracle] openai library not installed. Module will not load.", file=sys.stderr)
         return None

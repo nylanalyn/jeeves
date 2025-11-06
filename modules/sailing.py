@@ -4,18 +4,18 @@ import re
 import random
 import time
 import functools
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Pattern
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
+def setup(bot: Any) -> 'Sailing':
     return Sailing(bot)
 
 class Sailing(SimpleCommandModule):
     name = "sailing"
     version = "2.0.0" # Dynamic configuration refactor
     description = "Responds to the 'SAIL' trigger from a specific user with nautical lore."
-    
-    NAUTICAL_RESPONSES = [
+
+    NAUTICAL_RESPONSES: List[str] = [
         "Aye, {title}! The wind's fair and the tide's turning - time to splice the mainbrace!",
         "Steady as she goes, {title}! Mind the mizzen and watch for squalls off the starboard bow.",
         "Heave away, {title}! The bosun's pipe calls and the capstan awaits your shanty.",
@@ -48,14 +48,14 @@ class Sailing(SimpleCommandModule):
         "Chart a new course, {title}! The Sargasso Sea won't navigate itself out of your way.",
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self.static_keys = ["nautical_responses"]
+        self.static_keys: List[str] = ["nautical_responses"]
         self.set_state("last_response_time", self.get_state("last_response_time", 0.0))
         self.save_state()
-        self.RE_SAIL = re.compile(r'\bSAIL\b')
+        self.RE_SAIL: Pattern[str] = re.compile(r'\bSAIL\b')
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         # This module has no !commands.
         pass
 

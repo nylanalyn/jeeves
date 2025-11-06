@@ -4,9 +4,10 @@ import re
 import random
 import operator
 import ast
+from typing import Any, Pattern, Union
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
+def setup(bot: Any) -> 'Arithmetic':
     return Arithmetic(bot)
 
 class Arithmetic(SimpleCommandModule):
@@ -14,42 +15,42 @@ class Arithmetic(SimpleCommandModule):
     version = "2.0.1" # Added missing is_enabled check
     description = "Performs calculations with configurable reliability."
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
         self.set_state("calculations_performed", self.get_state("calculations_performed", 0))
         self.set_state("whimsical_results", self.get_state("whimsical_results", 0))
         self.save_state()
-        
+
         name_pat = getattr(self.bot, "JEEVES_NAME_RE", r"(?:jeeves|jeevesbot)")
-        self.RE_NATURAL_CALC = re.compile(
+        self.RE_NATURAL_CALC: Pattern[str] = re.compile(
             rf"\b{name_pat}[,!\s]*\s*(?:what'?s|what\s+is)\s+([0-9\s\+\-\*/\^\.\(\)]+)\??",
             re.IGNORECASE
         )
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         self.register_command(r"^\s*!calc\s+(.+)$", self._cmd_calc,
                               name="calc", description="Calculate a mathematical expression.")
         self.register_command(r"^\s*!arithmetic\s+stats\s*$", self._cmd_stats,
                               name="arithmetic stats", admin_only=True, description="Show calculation statistics.")
 
-    def on_ambient_message(self, connection, event, msg, username):
+    def on_ambient_message(self, connection: Any, event: Any, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
             return False
-            
+
         match = self.RE_NATURAL_CALC.search(msg)
         if match:
             expression = match.group(1).strip()
             self._handle_calculation(connection, event, username, expression)
             return True
-            
+
         return False
 
-    def _cmd_calc(self, connection, event, msg, username, match):
+    def _cmd_calc(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         expression = match.group(1).strip()
         self._handle_calculation(connection, event, username, expression)
         return True
 
-    def _handle_calculation(self, connection, event, username, expression):
+    def _handle_calculation(self, connection: Any, event: Any, username: str, expression: str) -> None:
         try:
             result = self._safe_eval(expression)
             
@@ -82,7 +83,7 @@ class Arithmetic(SimpleCommandModule):
         except Exception:
             self.safe_reply(connection, event, f"That calculation is rougher than a back-alley shakedown, {self.bot.title_for(username)}.")
 
-    def _safe_eval(self, expr):
+    def _safe_eval(self, expr: str) -> Union[int, float]:
         """A safe evaluator for basic arithmetic using AST parsing."""
         if len(expr) > 100:
             raise ValueError("That expression stretches longer than a midnight stakeout.")
@@ -149,7 +150,7 @@ class Arithmetic(SimpleCommandModule):
 
         return eval_node(tree)
 
-    def _ast_depth(self, node, depth=0):
+    def _ast_depth(self, node: Any, depth: int = 0) -> int:
         """Calculate the maximum depth of an AST tree."""
         if not isinstance(node, ast.AST):
             return depth
@@ -160,12 +161,12 @@ class Arithmetic(SimpleCommandModule):
         return max_child_depth
 
     @admin_required
-    def _cmd_stats(self, connection, event, msg, username, match):
+    def _cmd_stats(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         total = self.get_state("calculations_performed", 0)
         whimsical = self.get_state("whimsical_results", 0)
         reliability = ((total - whimsical) / total * 100) if total > 0 else 100
-        
-        self.safe_reply(connection, event, 
+
+        self.safe_reply(connection, event,
             f"Arithmetic stats: {total} calculations performed. "
             f"{whimsical} results were... whimsical. "
             f"Observed reliability: {reliability:.1f}%."

@@ -13,7 +13,7 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
-def setup(bot):
+def setup(bot: Any) -> 'Hunt':
     return Hunt(bot)
 
 class Hunt(SimpleCommandModule):
@@ -21,19 +21,19 @@ class Hunt(SimpleCommandModule):
     version = "2.0.0" # Added catch timer and reverted score complexity.
     description = "A game of hunting or hugging randomly appearing animals."
 
-    SPAWN_ANNOUNCEMENTS = [
+    SPAWN_ANNOUNCEMENTS: List[str] = [
         "Good heavens, it appears a creature has wandered into the premises!",
         "I do apologize for the intrusion, but an animal has made its way inside.",
         "Pardon me, but it seems we have a small, uninvited guest.",
         "Attention, please. A wild animal has been spotted in the vicinity."
     ]
-    RELEASE_MESSAGES = [
+    RELEASE_MESSAGES: List[str] = [
         "Very well, {title}. I shall open the doors. Do try to be more decisive in the future.",
         "As you wish, {title}. The {animal_name} has been... liberated. I shall fetch a dustpan.",
         "If you insist, {title}. The {animal_name} is now free to roam the premises. Again.",
         "Releasing the {animal_name}, {title}. I trust this chaotic cycle will not become a habit."
     ]
-    MURDER_MESSAGES = [
+    MURDER_MESSAGES: List[str] = [
         "YOU KILLED IT!",
         "DEAD! Stone cold dead!",
         "You shot it to death! Good heavens!",
@@ -42,10 +42,10 @@ class Hunt(SimpleCommandModule):
         "FATALITY! The {animal_name} has been slain!"
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self._is_loaded = False
-        self._spawn_lock = threading.Lock()
+        self._is_loaded: bool = False
+        self._spawn_lock: threading.Lock = threading.Lock()
         self._spawn_job_token: Optional[str] = None
         self.set_state("scores", self.get_state("scores", {}))
         self.set_state("active_animal", self.get_state("active_animal", None))
@@ -54,11 +54,11 @@ class Hunt(SimpleCommandModule):
         # The on_config_reload will be called by the bot core on load
         # so we don't need to call it manually here.
 
-    def on_config_reload(self, config):
+    def on_config_reload(self, config: Dict[str, Any]) -> None:
         # Allow for runtime changes via !admin set
         pass
 
-    def on_load(self):
+    def on_load(self) -> None:
         super().on_load()
         self._is_loaded = True
         cleared = self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn")
@@ -93,7 +93,7 @@ class Hunt(SimpleCommandModule):
             total_cleared += count
         return total_cleared
 
-    def _resume_event_scheduler(self):
+    def _resume_event_scheduler(self) -> None:
         self._clear_scheduled_jobs(f"{self.name}-event_spawn")
         event = self.get_state("event")
         next_event_spawn_str = event.get("next_spawn_time")
@@ -109,7 +109,7 @@ class Hunt(SimpleCommandModule):
         else:
             self._start_event_spawn()
 
-    def _resume_normal_spawn_scheduler(self, next_spawn_str):
+    def _resume_normal_spawn_scheduler(self, next_spawn_str: str) -> None:
         self._clear_scheduled_jobs(f"{self.name}-spawn")
         next_spawn_time = datetime.fromisoformat(next_spawn_str)
         now = datetime.now(UTC)
@@ -120,11 +120,11 @@ class Hunt(SimpleCommandModule):
             if remaining_seconds > 0:
                 self._queue_spawn_job(remaining_seconds)
 
-    def on_unload(self):
+    def on_unload(self) -> None:
         super().on_unload()
         self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn")
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         self.register_command(r"^\s*!hug(?:\s+(.+))?\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
         self.register_command(r"^\s*!release\s+(hug|hunt)\s*$", self._cmd_release, name="release", description="Release a previously caught or befriended animal.")
         self.register_command(r"^\s*!hunt(?:\s+(.*))?$", self._cmd_hunt_master, name="hunt", description="The main command for the hunt game. Use '!hunt help' for subcommands.")
@@ -143,11 +143,11 @@ class Hunt(SimpleCommandModule):
         
         return ", ".join(parts)
 
-    def _cmd_hunt_master(self, connection, event, msg, username, match):
+    def _cmd_hunt_master(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target): return False
-        
+
         args_str = (match.group(1) or "").strip()
-        
+
         if not args_str:
             return self._handle_hunt_animal(connection, event, username)
 
@@ -167,27 +167,27 @@ class Hunt(SimpleCommandModule):
         else:
             return self._handle_hunt_guest(connection, event, username, args_str)
 
-    def _handle_hunt_animal(self, connection, event, username):
+    def _handle_hunt_animal(self, connection: Any, event: Any, username: str) -> bool:
         if self.get_state("active_animal"):
             return self._end_hunt(connection, event, username, "hunted")
         self.safe_reply(connection, event, f"There is nothing to hunt at the moment, {self.bot.title_for(username)}.")
         return True
-    
-    def _handle_hunt_guest(self, connection, event, username, target_name):
+
+    def _handle_hunt_guest(self, connection: Any, event: Any, username: str, target_name: str) -> bool:
         self.safe_reply(connection, event, f"I must strongly object, {self.bot.title_for(username)}. Hunting the guests is strictly against household policy.")
         return True
 
-    def _handle_score(self, connection, event, username, args):
+    def _handle_score(self, connection: Any, event: Any, username: str, args: List[str]) -> bool:
         target_user_nick = args[0] if args else username
         self._cmd_score(connection, event, "", username, target_user_nick)
         return True
 
-    def _handle_top(self, connection, event, username):
+    def _handle_top(self, connection: Any, event: Any, username: str) -> bool:
         self._cmd_top(connection, event, "", username, None)
         return True
 
-    def _handle_admin(self, connection, event, username, args):
-        if not self.bot.is_admin(event.source): return True 
+    def _handle_admin(self, connection: Any, event: Any, username: str, args: List[str]) -> bool:
+        if not self.bot.is_admin(event.source): return True
 
         if not args:
             self.safe_reply(connection, event, "Usage: !hunt admin <spawn|add|event>")
@@ -244,21 +244,21 @@ class Hunt(SimpleCommandModule):
         display = self._lookup_display_name(base)
         return f"{display} {action.capitalize()}"
 
-    def _handle_admin_spawn(self, connection, event, username):
+    def _handle_admin_spawn(self, connection: Any, event: Any, username: str) -> bool:
         if not self.bot.is_admin(event.source): return True
         return self._cmd_admin_spawn(connection, event, "", username, None)
 
-    def _handle_help(self, connection, event, username):
+    def _handle_help(self, connection: Any, event: Any, username: str) -> bool:
         help_lines = [ "!hunt - Hunt the currently active animal.", "!hug - Befriend the currently active animal.", "!release <hunt|hug> - Release a captured animal.", "!hunt score [user] - Check your score.", "!hunt top - Show the leaderboard.", "!hunt help - Show this message." ]
         if self.bot.is_admin(event.source):
             help_lines.extend(["Admin:", "!hunt spawn - Force an animal to appear.", "!hunt admin add <user> <animal> <hunted|hugged> <amount> - Add to a score.", "!hunt admin event <user> <animal> <hunted|hugged> - Start a migration event."])
-        
+
         for line in help_lines:
             self.safe_privmsg(username, line)
         self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent you the details privately.")
         return True
 
-    def _schedule_next_spawn(self):
+    def _schedule_next_spawn(self) -> None:
         # Clear any existing spawn jobs to prevent duplicates
         cleared_count = self._clear_scheduled_jobs(f"{self.name}-spawn")
         if cleared_count > 0:
@@ -363,7 +363,7 @@ class Hunt(SimpleCommandModule):
 
             return True
 
-    def _end_hunt(self, connection, event, username, action):
+    def _end_hunt(self, connection: Any, event: Any, username: str, action: str) -> bool:
         self.log_debug(f"_end_hunt called by {username}, action={action}")
         active_animal = self.get_state("active_animal")
         if not active_animal:
@@ -419,37 +419,37 @@ class Hunt(SimpleCommandModule):
         self._schedule_next_spawn()
         return True
 
-    def _cmd_hug(self, connection, event, msg, username, match):
+    def _cmd_hug(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target): return False
-        
+
         if match.group(1):
             self.safe_reply(connection, event, f"While the sentiment is appreciated, {self.bot.title_for(username)}, one must always seek consent before embracing another.")
             return True
-            
+
         if self.get_state("active_animal"):
             return self._end_hunt(connection, event, username, "hugged")
-        
+
         self.safe_reply(connection, event, f"There is nothing to hug at the moment, {self.bot.title_for(username)}.")
         return True
 
-    def _cmd_release(self, connection, event, msg, username, match):
+    def _cmd_release(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target): return False
 
         if self.get_state("active_animal"):
             self.safe_reply(connection, event, f"I must insist we deal with the current creature first, {self.bot.title_for(username)}.")
             return True
-            
+
         action_type = match.group(1)
         score_suffix = "_hugged" if action_type == "hug" else "_hunted"
         user_id = self.bot.get_user_id(username)
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
-        
+
         releasable = [k for k, v in user_scores.items() if k.endswith(score_suffix) and v > 0]
         if not releasable:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but you have no {action_type}ed animals to release.")
             return True
-            
+
         key_to_release = random.choice(releasable)
         animal_name = key_to_release.replace(score_suffix, "")
         display_name = self._lookup_display_name(animal_name)
@@ -457,7 +457,7 @@ class Hunt(SimpleCommandModule):
         user_scores[key_to_release] -= 1
         if user_scores[key_to_release] == 0:
             del user_scores[key_to_release]
-        
+
         self.set_state("scores", scores)
         self.save_state()
 
@@ -466,13 +466,13 @@ class Hunt(SimpleCommandModule):
         self._spawn_animal(target_channel=event.target)
         return True
 
-    def _cmd_score(self, connection, event, msg, username, target_user_nick):
+    def _cmd_score(self, connection: Any, event: Any, msg: str, username: str, target_user_nick: str) -> bool:
         user_id = self.bot.get_user_id(target_user_nick)
         scores = self.get_state("scores", {}).get(user_id, {})
         if not scores:
             self.safe_reply(connection, event, f"{self.bot.title_for(target_user_nick)} has not yet interacted with any animals.")
             return True
-            
+
         parts = [f"{self._format_score_label(k)}: {v}" for k, v in sorted(scores.items()) if v > 0]
         if not parts:
              self.safe_reply(connection, event, f"{self.bot.title_for(target_user_nick)} has not yet interacted with any animals.")
@@ -481,7 +481,7 @@ class Hunt(SimpleCommandModule):
         self.safe_reply(connection, event, f"Score for {self.bot.title_for(target_user_nick)}: {', '.join(parts)}.")
         return True
 
-    def _cmd_top(self, connection, event, msg, username, match):
+    def _cmd_top(self, connection: Any, event: Any, msg: str, username: str, match: Any) -> bool:
         all_scores = self.get_state("scores", {})
         if not all_scores:
             self.safe_reply(connection, event, "No scores have been recorded yet.")
@@ -508,7 +508,7 @@ class Hunt(SimpleCommandModule):
         self.safe_reply(connection, event, f"Top 5 most active members: {'; '.join(top_list)}")
         return True
 
-    def _cmd_admin_spawn(self, connection, event, msg, username, match):
+    def _cmd_admin_spawn(self, connection: Any, event: Any, msg: str, username: str, match: Any) -> bool:
         if self.get_state("active_animal"):
             self.safe_reply(connection, event, "An animal is already active.")
             return True
@@ -518,23 +518,23 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, f"I cannot spawn an animal in this channel ('{event.target}').")
         return True
 
-    def _cmd_admin_add(self, connection, event, msg, username, args):
+    def _cmd_admin_add(self, connection: Any, event: Any, msg: str, username: str, args: List[str]) -> bool:
         target_user, animal_name, action, amount_str = args
-        
+
         user_id = self.bot.get_user_id(target_user)
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
         score_key = f"{self._normalize_animal_key(animal_name)}_{action}"
-        
+
         user_scores[score_key] = user_scores.get(score_key, 0) + int(amount_str)
         scores[user_id] = user_scores
-        
+
         self.set_state("scores", scores)
         self.save_state()
         self.safe_reply(connection, event, f"Very good. Added {amount_str} to {target_user}'s {animal_name} {action} score.")
         return True
 
-    def _cmd_admin_event(self, connection, event, msg, username, args):
+    def _cmd_admin_event(self, connection: Any, event: Any, msg: str, username: str, args: List[str]) -> bool:
         # This function would need significant rework with the simplified score system
         # and is outside the scope of the immediate bugfix.
         self.safe_reply(connection, event, "The event system is not compatible with the simplified scoring model.")

@@ -5,10 +5,10 @@ import random
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
+def setup(bot: Any) -> 'Fortune':
     return Fortune(bot)
 
 class Fortune(SimpleCommandModule):
@@ -16,40 +16,40 @@ class Fortune(SimpleCommandModule):
     version = "2.1.0" # Made ambient trigger more specific
     description = "Provides fortunes from a fortune cookie."
     
-    CATEGORIES = ["spooky", "happy", "sad", "silly", "sexy"]
-    
-    def __init__(self, bot):
+    CATEGORIES: List[str] = ["spooky", "happy", "sad", "silly", "sexy"]
+
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        
+
         self.set_state("last_fortune_time", self.get_state("last_fortune_time", {}))
         self.save_state()
-        self._fortunes = {}
+        self._fortunes: Dict[str, List[str]] = {}
         self._load_all_fortunes()
 
-    def on_config_reload(self, config):
+    def on_config_reload(self, config: Dict[str, Any]) -> None:
         # Settings are now fetched on-demand via get_config_value
         pass
 
-    def _register_commands(self):
-        self.register_command(r"^\s*!fortune(?:\s+(\w+))?\s*$", self._cmd_fortune, 
+    def _register_commands(self) -> None:
+        self.register_command(r"^\s*!fortune(?:\s+(\w+))?\s*$", self._cmd_fortune,
                               name="fortune", description="Get a fortune. Use !fortune [category] for specific fortunes.")
         self.register_command(r"^\s*!fortune\s+reload\s*$", self._cmd_reload,
                               name="fortune reload", admin_only=True, description="Reload fortune files.")
     
-    def _cmd_fortune(self, connection, event, msg, username, match):
+    def _cmd_fortune(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         user_id = self.bot.get_user_id(username)
         cooldown = self.get_config_value("cooldown_seconds", event.target, default=10.0)
 
         if not self.check_user_cooldown(username, "fortune", cooldown):
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, please wait a moment before requesting another fortune.")
             return True
-            
+
         category = match.group(1).lower() if match.group(1) else None
         self._give_fortune(connection, event, username, category)
         return True
 
     @admin_required
-    def _cmd_reload(self, connection, event, msg, username, match):
+    def _cmd_reload(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         self._load_all_fortunes()
         total_loaded = sum(len(fortunes) for fortunes in self._fortunes.values())
         self.safe_reply(connection, event, f"Fortune files reloaded. {total_loaded} fortunes available.")
@@ -67,7 +67,7 @@ class Fortune(SimpleCommandModule):
             return True
         return False
 
-    def _give_fortune(self, connection, event, username, category):
+    def _give_fortune(self, connection: Any, event: Any, username: str, category: Optional[str]) -> None:
         fortune_text, actual_category = self._get_fortune(category)
         if actual_category == "error":
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {fortune_text}")
@@ -75,7 +75,7 @@ class Fortune(SimpleCommandModule):
         response = self._format_fortune_response(username, fortune_text, actual_category)
         self.safe_reply(connection, event, response)
 
-    def _load_all_fortunes(self):
+    def _load_all_fortunes(self) -> None:
         fortune_dir = Path(self.bot.ROOT) / "fortunes"
         if not fortune_dir.exists(): return
         self._fortunes.clear()

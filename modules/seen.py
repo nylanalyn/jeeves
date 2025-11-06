@@ -2,11 +2,12 @@
 # A module to track user activity and provide a !seen command.
 import re
 from datetime import datetime, timezone
+from typing import Any
 from .base import SimpleCommandModule
 
 UTC = timezone.utc
 
-def setup(bot):
+def setup(bot: Any) -> 'Seen':
     """Initializes the Seen module."""
     return Seen(bot)
 
@@ -16,14 +17,14 @@ class Seen(SimpleCommandModule):
     version = "1.0.0"
     description = "Tracks user activity to report when they were last seen."
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         """Initializes the module's state."""
         super().__init__(bot)
         # State structure: { "#channel": { "user_id": { "when": ISO_STRING, "message": "text" } } }
         self.set_state("last_seen", self.get_state("last_seen", {}))
         self.save_state()
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         """Registers the !seen command."""
         self.register_command(r"^\s*!seen\s+(\S+)\s*$", self._cmd_seen,
                               name="seen", description="Reports when a user was last seen speaking in this channel.")
@@ -68,7 +69,7 @@ class Seen(SimpleCommandModule):
         days, hours = divmod(hours, 24)
         return f"{days} day{'s' if days != 1 else ''} ago"
 
-    def _cmd_seen(self, connection, event, msg, username, match):
+    def _cmd_seen(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Handles the !seen command."""
         target_user_nick = match.group(1)
         target_user_id = self.bot.get_user_id(target_user_nick)
@@ -85,7 +86,7 @@ class Seen(SimpleCommandModule):
             when_dt = datetime.fromisoformat(user_data["when"])
             time_ago = self._format_timedelta(when_dt)
             last_message = user_data["message"]
-            
+
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I last saw {target_user_nick} here {time_ago}, saying: \"{last_message}\"")
         except (ValueError, KeyError):
             self.safe_reply(connection, event, f"I seem to have faulty records for {target_user_nick}.")

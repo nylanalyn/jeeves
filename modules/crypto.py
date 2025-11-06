@@ -1,4 +1,5 @@
 """
+from typing import Any
 Cryptocurrency price checking module using CoinGecko API.
 """
 
@@ -6,7 +7,7 @@ import requests
 from .base import SimpleCommandModule
 
 
-def setup(bot):
+def setup(bot: Any) -> "CryptoModule":
     """Module setup function."""
     return CryptoModule(bot)
 

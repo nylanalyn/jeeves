@@ -1,9 +1,11 @@
 # modules/users.py
 # A module to provide a persistent, canonical identity for users.
+import re
 import uuid
+from typing import Any
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
+def setup(bot: Any) -> 'Users':
     """Initializes the Users module."""
     return Users(bot)
 
@@ -17,14 +19,14 @@ class Users(SimpleCommandModule):
     # as it has no user-facing commands or ambient triggers to be disabled.
     # It will always be active to ensure user identity is tracked correctly.
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         """Initializes the module's state."""
         super().__init__(bot)
         self.set_state("user_map", self.get_state("user_map", {})) # Maps UUID -> user object
         self.set_state("nick_map", self.get_state("nick_map", {})) # Maps lower_nick -> UUID
         self.save_state()
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         """Register user preference commands."""
         self.register_command(r"^\s*!flavor\s+(on|off)$", self._cmd_flavor, name="flavor", description="Toggle flavor text on/off")
 
@@ -57,7 +59,7 @@ class Users(SimpleCommandModule):
         
         return user_id
 
-    def on_nick(self, connection, event, old_nick: str, new_nick: str):
+    def on_nick(self, connection: Any, event: Any, old_nick: str, new_nick: str) -> None:
         """Handles a user changing their nickname."""
         lower_old = old_nick.lower()
         lower_new = new_nick.lower()
@@ -101,7 +103,7 @@ class Users(SimpleCommandModule):
         self.set_state("nick_map", nick_map)
         self.save_state()
 
-    def _cmd_flavor(self, connection, event, msg, username, match):
+    def _cmd_flavor(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Toggle flavor text preference for a user."""
         setting = match.group(1).lower()
         user_id = self.get_user_id(username)

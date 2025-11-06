@@ -1,9 +1,11 @@
 # modules/pron.py
 # A module for the wholesome erotica joke.
 import random
+import re
+from typing import Any, List
 from .base import SimpleCommandModule
 
-def setup(bot):
+def setup(bot: Any) -> 'Pron':
     return Pron(bot)
 
 class Pron(SimpleCommandModule):
@@ -11,7 +13,7 @@ class Pron(SimpleCommandModule):
     version = "2.0.0" # Dynamic configuration refactor
     description = "Provides wholesome, helpful scenarios with a suggestive trigger."
 
-    SCENARIOS = [
+    SCENARIOS: List[str] = [
         "You come home to find a reasonably attractive person has done all of your dishes and put them away for you.",
         "You walk into your bedroom to find someone incredibly hot has made your bed, having washed and ironed your sheets.",
         "As you sit down to your computer, you notice a charming individual has perfectly organized your desktop icons and cleared out 3.2 GB of temp files.",
@@ -54,16 +56,16 @@ class Pron(SimpleCommandModule):
         "A dangerously thoughtful individual has organized your photos into albums by date and event.",
     ]
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         # Cooldown is now handled by the command registration and dynamic config.
         super().__init__(bot)
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         self.register_command(r"^\s*!pron\s*$", self._cmd_pron,
                               name="pron", cooldown=30.0, # This is the default cooldown
                               description="Receive a wholesome scenario.")
 
-    def _cmd_pron(self, connection, event, msg, username, match):
+    def _cmd_pron(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         scenario = random.choice(self.SCENARIOS)
         self.safe_reply(connection, event, f"{username}, {scenario}")
         return True

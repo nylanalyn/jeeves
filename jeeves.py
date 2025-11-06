@@ -15,6 +15,7 @@ import yaml
 import shutil
 import functools
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
@@ -362,7 +363,14 @@ class Jeeves(SingleServerIRCBot):
         self.logger = logging.getLogger('jeeves_debug')
         self.logger.setLevel(logging.INFO)
 
-        handler = logging.FileHandler(ROOT / log_file, encoding='utf-8')
+        # Use RotatingFileHandler for automatic log rotation
+        # maxBytes=10485760 = 10MB per file, backupCount=5 keeps 5 old log files
+        handler = RotatingFileHandler(
+            ROOT / log_file,
+            maxBytes=10485760,  # 10MB
+            backupCount=5,
+            encoding='utf-8'
+        )
         formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         handler.setFormatter(formatter)
 
@@ -371,19 +379,43 @@ class Jeeves(SingleServerIRCBot):
 
         self.logger.addHandler(handler)
         # Always write initialization message to ensure file is created
-        self.logger.info(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}.")
+        self.logger.info(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}. Log rotation: 10MB per file, 5 backups.")
+
+    def _redact_sensitive_data(self, message: str) -> str:
+        """Redact sensitive information from log messages."""
+        # Patterns for sensitive data
+        patterns = [
+            (r'(password["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+            (r'(api_key["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+            (r'(token["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+            (r'(secret["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+            (r'(key["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+            # Redact bearer tokens
+            (r'(Bearer\s+)([A-Za-z0-9\-._~+/]+)', r'\1[REDACTED]'),
+            # Redact long alphanumeric strings that look like tokens (32+ chars)
+            (r'\b([A-Za-z0-9]{32,})\b', r'[REDACTED_TOKEN]'),
+        ]
+
+        redacted = message
+        for pattern, replacement in patterns:
+            redacted = re.sub(pattern, replacement, redacted, flags=re.IGNORECASE)
+
+        return redacted
 
     def log_debug(self, message: str):
+        # Redact sensitive data before logging
+        safe_message = self._redact_sensitive_data(message)
+
         # Extract module name from message like "[modulename] ..."
-        module_match = re.match(r'^\[(\w+)\]', message)
+        module_match = re.match(r'^\[(\w+)\]', safe_message)
         if module_match:
             module_name = module_match.group(1)
             # Log if global debug is on OR module-specific debug is on
             if self.debug_mode or self.module_debug.get(module_name, False):
-                self.logger.info(message)
+                self.logger.info(safe_message)
         elif self.debug_mode:
             # No module prefix, log if global debug is on
-            self.logger.info(message)
+            self.logger.info(safe_message)
 
     def set_debug_mode(self, status: bool):
         self.debug_mode = status

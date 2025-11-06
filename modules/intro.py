@@ -1,9 +1,11 @@
 # modules/intro.py
 # A module to provide a one-time introduction for new users.
 
+import re
+from typing import Any, List
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
+def setup(bot: Any) -> 'Intro':
     """Initializes the Intro module."""
     return Intro(bot)
 
@@ -13,21 +15,21 @@ class Intro(SimpleCommandModule):
     version = "3.0.0" # Dynamic configuration refactor
     description = "Provides a one-time introduction for new users."
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         """Initializes the module's state and registers commands."""
         super().__init__(bot)
         self.set_state("users_introduced", self.get_state("users_introduced", [])) # List of user_ids
         self.save_state()
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         """Registers the !intro command."""
         self.register_command(
-            r"^\s*!intro\s*$", self._cmd_intro, 
-            name="intro", 
+            r"^\s*!intro\s*$", self._cmd_intro,
+            name="intro",
             description="Get a brief introduction to my services."
         )
 
-    def _cmd_intro(self, connection, event, msg, username, match):
+    def _cmd_intro(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Handles the !intro command logic."""
         # The is_enabled check is handled by the base class's command dispatcher.
         user_id = self.bot.get_user_id(username)

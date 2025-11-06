@@ -1,4 +1,5 @@
 # modules/admin.py
+from typing import Any
 # Administrative bot controls with dynamic configuration management.
 import re
 import time
@@ -7,7 +8,7 @@ import yaml
 from pathlib import Path
 from .base import SimpleCommandModule, admin_required
 
-def setup(bot):
+def setup(bot: Any) -> "Admin":
     return Admin(bot)
 
 class Admin(SimpleCommandModule):

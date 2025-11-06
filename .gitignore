@@ -65,6 +65,8 @@ venv.bak/
 # --- Log and Data Files ---
 # Ignore various log files and local databases.
 *.log
+*.log.*
+debug.log*
 *.db
 *.sqlite3
 

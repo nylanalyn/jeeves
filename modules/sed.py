@@ -3,9 +3,10 @@
 import re
 import signal
 from collections import deque
+from typing import Any, Dict, Tuple
 from .base import SimpleCommandModule
 
-def setup(bot):
+def setup(bot: Any) -> 'Sed':
     return Sed(bot)
 
 class Sed(SimpleCommandModule):
@@ -15,15 +16,15 @@ class Sed(SimpleCommandModule):
 
     SED_PATTERN = re.compile(r"^\s*s/([^/]+)/([^/]*)/?\s*$")
 
-    def __init__(self, bot):
+    def __init__(self, bot: Any) -> None:
         super().__init__(bot)
-        self.history = {} # Keyed by channel, contains deques
+        self.history: Dict[str, deque] = {} # Keyed by channel, contains deques
 
-    def _register_commands(self):
+    def _register_commands(self) -> None:
         # This module has no !commands.
         pass
 
-    def _add_to_history(self, channel, username, message):
+    def _add_to_history(self, channel: str, username: str, message: str) -> None:
         history_size = self.get_config_value("history_size", channel, 20)
         if channel not in self.history:
             self.history[channel] = deque(maxlen=history_size)
@@ -111,7 +112,7 @@ class Sed(SimpleCommandModule):
 
         return True
 
-    def _safe_regex_subn(self, pattern: str, replacement: str, text: str, timeout: int = 1) -> tuple:
+    def _safe_regex_subn(self, pattern: str, replacement: str, text: str, timeout: int = 1) -> Tuple[str, int]:
         """Perform regex substitution with timeout protection."""
         result = [None, 0]
         exception = [None]

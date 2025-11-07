@@ -139,11 +139,13 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         return True
 
     # Check for boss encounter (levels 17-20, 10% chance)
+    # Don't trigger random bosses in hardcore mode - those should be opt-in only via !mob
     boss_encounter_chance = quest_module.get_config_value("boss_encounter_chance", event.target, default=0.10)
     boss_min_level = quest_module.get_config_value("boss_encounter_min_level", event.target, default=17)
     boss_max_level = quest_module.get_config_value("boss_encounter_max_level", event.target, default=20)
 
-    if boss_min_level <= player_level <= boss_max_level and random.random() < boss_encounter_chance:
+    is_hardcore = player.get("hardcore_mode", False)
+    if not is_hardcore and boss_min_level <= player_level <= boss_max_level and random.random() < boss_encounter_chance:
         return quest_combat.trigger_boss_encounter(quest_module, connection, event, username, user_id, player, energy_enabled)
 
     if energy_enabled:
@@ -901,15 +903,39 @@ def _medkit_self_heal(quest_module, connection, event, username, user_id, player
         player['active_injuries'] = [player['active_injury']]
         del player['active_injury']
 
-    if 'active_injuries' not in player or not player['active_injuries']:
+    # Check if in hardcore mode
+    is_hardcore = player.get("hardcore_mode", False)
+    has_injuries = 'active_injuries' in player and player['active_injuries']
+
+    # In hardcore mode, can use medkit to heal HP even without injuries
+    if not is_hardcore and not has_injuries:
         quest_module.safe_reply(connection, event, f"You're not injured, {quest_module.bot.title_for(username)}!")
         return True
 
-    injury_names = [inj['name'] for inj in player['active_injuries']]
+    # If in hardcore and at full HP with no injuries, can't use medkit
+    if is_hardcore and not has_injuries:
+        current_hp = player.get("hardcore_hp", 0)
+        max_hp = player.get("hardcore_max_hp", 0)
+        if current_hp >= max_hp:
+            quest_module.safe_reply(connection, event, f"You're at full health ({current_hp}/{max_hp} HP), {quest_module.bot.title_for(username)}!")
+            return True
+
+    injury_names = [inj['name'] for inj in player.get('active_injuries', [])]
     injury_count = len(injury_names)
 
     # Remove all injuries
     player['active_injuries'] = []
+
+    # Hardcore mode: heal HP
+    hp_healed = 0
+    if is_hardcore:
+        current_hp = player.get("hardcore_hp", 0)
+        max_hp = player.get("hardcore_max_hp", 0)
+        # Heal 50% of max HP (configurable)
+        heal_amount = int(max_hp * 0.5)
+        new_hp = min(current_hp + heal_amount, max_hp)
+        hp_healed = new_hp - current_hp
+        player["hardcore_hp"] = new_hp
 
     # Deduct medkit
     player["inventory"]["medkits"] -= 1
@@ -919,14 +945,14 @@ def _medkit_self_heal(quest_module, connection, event, username, user_id, player
         player["challenge_stats"] = {}
     player["challenge_stats"]["medkits_used_this_prestige"] = player["challenge_stats"].get("medkits_used_this_prestige", 0) + 1
 
-    # Grant partial XP
-    base_xp = quest_module.get_config_value("base_xp_reward", event.target, default=50)
-    self_heal_multiplier = quest_module.get_config_value("medic_quests.self_heal_xp_multiplier", event.target, default=0.75)
-    xp_reward = int(base_xp * self_heal_multiplier)
-
+    # Grant partial XP (only if not in hardcore mode - hardcore is risky enough!)
     xp_messages = []
-    for msg in quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=False, is_crit=False):
-        xp_messages.append(msg)
+    if not is_hardcore:
+        base_xp = quest_module.get_config_value("base_xp_reward", event.target, default=50)
+        self_heal_multiplier = quest_module.get_config_value("medic_quests.self_heal_xp_multiplier", event.target, default=0.75)
+        xp_reward = int(base_xp * self_heal_multiplier)
+        for msg in quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=False, is_crit=False):
+            xp_messages.append(msg)
 
     # Save state
     players_state = quest_module.get_state("players", {})
@@ -934,13 +960,22 @@ def _medkit_self_heal(quest_module, connection, event, username, user_id, player
     quest_module.set_state("players", players_state)
     quest_module.save_state()
 
-    if injury_count == 1:
-        response = f"{quest_module.bot.title_for(username)} uses a medkit and recovers from {injury_names[0]}! (+{xp_reward} XP)"
+    # Build response message
+    if is_hardcore and hp_healed > 0:
+        if injury_count > 0:
+            response = f"{quest_module.bot.title_for(username)} uses a medkit: healed {hp_healed} HP and recovered from {', '.join(injury_names)}!"
+        else:
+            current_hp = player.get("hardcore_hp", 0)
+            max_hp = player.get("hardcore_max_hp", 0)
+            response = f"{quest_module.bot.title_for(username)} uses a medkit and heals {hp_healed} HP! ({current_hp}/{max_hp} HP)"
     else:
-        response = f"{quest_module.bot.title_for(username)} uses a medkit and recovers from all injuries ({', '.join(injury_names)})! (+{xp_reward} XP)"
+        if injury_count == 1:
+            response = f"{quest_module.bot.title_for(username)} uses a medkit and recovers from {injury_names[0]}!"
+        else:
+            response = f"{quest_module.bot.title_for(username)} uses a medkit and recovers from all injuries ({', '.join(injury_names)})!"
 
-    if xp_messages:
-        response += " " + " ".join(xp_messages)
+    if xp_messages and not is_hardcore:
+        response += " (+XP: " + " ".join(xp_messages) + ")"
 
     quest_module.safe_reply(connection, event, response)
     return True

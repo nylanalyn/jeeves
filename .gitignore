@@ -6,6 +6,7 @@ oracle_prompt.txt
 .claude
 .audit/
 audit/
+solo_quest/save.json
 
 # Local environment variable files.
 .env

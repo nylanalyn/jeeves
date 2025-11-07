@@ -48,6 +48,7 @@ class Courtesy(SimpleCommandModule):
     def _register_commands(self):
         self.register_command(r"^\s*!gender\s+(.+)\s*$", self._cmd_gender, name="gender", description="Set your gender/title")
         self.register_command(r"^\s*!pronouns\s+(.+)\s*$", self._cmd_pronouns, name="pronouns", description="Set your pronouns")
+        self.register_command(r"^\s*!title\s+(.+)\s*$", self._cmd_title, name="title", description="Set your custom title")
         self.register_command(r"^\s*!whoami\s*$", self._cmd_whoami, name="whoami", description="Show your profile")
         self.register_command(r"^\s*!profile\s+(\S+)\s*$", self._cmd_profile, name="profile", description="Show someone's profile")
         self.register_command(r"^\s*!forgetme\s*$", self._cmd_forget, name="forgetme", description="Delete your profile")
@@ -55,6 +56,7 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!unignore(?:\s+(\S+))?\s*$", self._cmd_unignore, name="unignore", description="Remove user from the ignore list. Admin required to unignore others.")
         self.register_command(r"^\s*!setgender\s+(\S+)\s+(.+)\s*$", self._cmd_set_gender, name="setgender", admin_only=True, description="[Admin] Set a user's gender/title.")
         self.register_command(r"^\s*!setpronouns\s+(\S+)\s+(.+)\s*$", self._cmd_set_pronouns, name="setpronouns", admin_only=True, description="[Admin] Set a user's pronouns.")
+        self.register_command(r"^\s*!settitle\s+(\S+)\s+(.+)\s*$", self._cmd_set_title, name="settitle", admin_only=True, description="[Admin] Set a user's custom title.")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
@@ -141,6 +143,17 @@ class Courtesy(SimpleCommandModule):
         self.safe_reply(connection, event, f"{username}, recorded: {pronouns}.")
         return True
 
+    def _cmd_title(self, connection, event, msg, username, match):
+        user_id = self.bot.get_user_id(username)
+        title_str = match.group(1).strip()
+        title = self._validate_title(title_str)
+        if title is None:
+            self.safe_reply(connection, event, f"{username}, that title is not acceptable. Please use a simple word (20 characters or less).")
+            return True
+        self._set_user_profile(user_id, title=title)
+        self.safe_reply(connection, event, f"{username}, recorded: {self.bot.title_for(username)}.")
+        return True
+
     @admin_required
     def _cmd_set_gender(self, connection, event, msg, username, match):
         target_user, gender_str = match.groups()
@@ -159,6 +172,18 @@ class Courtesy(SimpleCommandModule):
         self.safe_reply(connection, event, f"Noted. {target_user}'s pronouns have been set to {pronouns}.")
         return True
 
+    @admin_required
+    def _cmd_set_title(self, connection, event, msg, username, match):
+        target_user, title_str = match.groups()
+        user_id = self.bot.get_user_id(target_user)
+        title = self._validate_title(title_str.strip())
+        if title is None:
+            self.safe_reply(connection, event, f"{username}, that title is not acceptable. Please use a simple word (20 characters or less).")
+            return True
+        self._set_user_profile(user_id, title=title)
+        self.safe_reply(connection, event, f"Very good. {target_user}'s title has been set to {self.bot.title_for(target_user)}.")
+        return True
+
     def _cmd_whoami(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         self._display_profile(connection, event, username, user_id)
@@ -174,10 +199,8 @@ class Courtesy(SimpleCommandModule):
         profile = self._get_user_profile(user_id)
         if profile:
             profile_title_raw = profile.get("title")
-            title_display = "Not set"
-            if profile_title_raw == "sir": title_display = "Sir"
-            elif profile_title_raw == "madam": title_display = "Madam"
-            
+            title_display = profile_title_raw.capitalize() if profile_title_raw else "Not set"
+
             pronouns = profile.get("pronouns", "Not set")
             self.safe_reply(connection, event, f"Preferences for {nick}: title={title_display}, pronouns={pronouns}.")
         else:
@@ -197,7 +220,7 @@ class Courtesy(SimpleCommandModule):
     # --- Helper Methods ---
     def _gender_pattern(self) -> str:
         return "|".join(re.escape(g) for g in self.GENDER_MAP.keys())
-        
+
     def _normalize_pronouns(self, s: str) -> str:
         spaceless = s.strip().lower().replace(" ", "").replace("/", "")
         if spaceless in self.PRONOUN_MAP:
@@ -208,6 +231,15 @@ class Courtesy(SimpleCommandModule):
 
     def _normalize_gender_to_title(self, gender: str) -> str:
         return self.GENDER_MAP.get(gender.lower().strip(), "neutral")
+
+    def _validate_title(self, title: str) -> Optional[str]:
+        """Validate and normalize a custom title. Returns None if invalid."""
+        title = title.strip().lower()
+        if len(title) == 0 or len(title) > 20:
+            return None
+        if not re.match(r"^[a-zA-Z]+$", title):
+            return None
+        return title
         
     def _get_user_profile(self, user_id: str) -> Optional[Dict[str, Any]]:
         return self.get_state("profiles", {}).get(user_id)

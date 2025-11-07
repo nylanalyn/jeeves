@@ -41,6 +41,23 @@ def get_prestige_xp_bonus(prestige: int) -> float:
         return 2.0  # Prestige 10: +100% (double XP)
 
 
+def get_prestige_damage_multiplier(prestige: int) -> float:
+    """
+    Calculate damage multiplier from prestige level for hardcore mode.
+    Mirrors XP bonus structure - higher prestige means tougher enemies.
+    """
+    if prestige < 2:
+        return 1.0  # No increase for prestige 0-1
+    elif prestige < 5:
+        return 1.25  # Prestige 2-4: +25% damage
+    elif prestige < 8:
+        return 1.50  # Prestige 5-7: +50% damage
+    elif prestige < 10:
+        return 1.75  # Prestige 8-9: +75% damage
+    else:  # prestige == 10
+        return 2.0  # Prestige 10: +100% damage (double)
+
+
 def get_prestige_energy_bonus(prestige: int) -> int:
     """Calculate max energy bonus from prestige level."""
     if prestige < 3:
@@ -197,10 +214,11 @@ def exit_hardcore_mode(player: Dict[str, Any], completed: bool = False):
         player["hardcore_stats"]["highest_level_reached"] = current_level
 
 
-def calculate_hardcore_damage(monster_level: int, player_level: int, is_win: bool, is_boss: bool = False) -> int:
+def calculate_hardcore_damage(monster_level: int, player_level: int, is_win: bool, is_boss: bool = False, prestige: int = 0) -> int:
     """
     Calculate HP damage for hardcore mode combat.
     Even wins deal damage - this is the core challenge of hardcore mode.
+    Higher prestige = tougher enemies = more damage.
     """
     # Base damage calculation
     level_diff = monster_level - player_level
@@ -215,6 +233,10 @@ def calculate_hardcore_damage(monster_level: int, player_level: int, is_win: boo
         base_damage = max(40, 60 + (level_diff * 10))
         if is_boss:
             base_damage = int(base_damage * 2.0)  # Boss losses are devastating
+
+    # Apply prestige damage multiplier (seasoned warriors face tougher monsters)
+    prestige_mult = get_prestige_damage_multiplier(prestige)
+    base_damage = int(base_damage * prestige_mult)
 
     # Add some randomness (+/- 20%)
     import random

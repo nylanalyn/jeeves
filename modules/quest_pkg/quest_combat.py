@@ -437,7 +437,8 @@ def close_mob_window(quest_module):
                         monster_level=monster_level,
                         player_level=player.get("level", 1),
                         is_win=True,
-                        is_boss=is_boss or is_legend
+                        is_boss=is_boss or is_legend,
+                        prestige=player.get("prestige", 0)
                     )
                     player["hardcore_hp"] = max(0, player["hardcore_hp"] - damage)
                     quest_module.safe_say(f"{p['username']}: HP: {player['hardcore_hp']}/{player['hardcore_max_hp']} (-{damage} damage)", channel)
@@ -473,7 +474,8 @@ def close_mob_window(quest_module):
                         monster_level=monster_level,
                         player_level=player.get("level", 1),
                         is_win=False,
-                        is_boss=is_boss or is_legend
+                        is_boss=is_boss or is_legend,
+                        prestige=player.get("prestige", 0)
                     )
                     player["hardcore_hp"] = max(0, player["hardcore_hp"] - damage)
                     quest_module.safe_say(f"{p['username']}: HP: {player['hardcore_hp']}/{player['hardcore_max_hp']} (-{damage} damage)", channel)

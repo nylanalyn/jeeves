@@ -292,7 +292,8 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
             monster_level=monster_level,
             player_level=player_level,
             is_win=win,
-            is_boss=False
+            is_boss=False,
+            prestige=player.get("prestige", 0)
         )
         player["hardcore_hp"] = max(0, player["hardcore_hp"] - damage)
 

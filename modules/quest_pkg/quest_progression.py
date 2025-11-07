@@ -70,7 +70,7 @@ def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
 
     max_energy = get_player_max_energy(quest_module, player)
 
-    player.setdefault("xp_to_next_level", quest_utils.calculate_xp_for_level(quest_module, player.get("level", 1) + 1))
+    player.setdefault("xp_to_next_level", quest_utils.calculate_xp_for_level(quest_module, player.get("level", 1)))
     player.setdefault("last_fight", None)
     player.setdefault("last_win_date", None)
     player.setdefault("energy", max_energy)
@@ -442,7 +442,7 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
     while player["xp"] >= player["xp_to_next_level"] and player["level"] < level_cap:
         player["xp"] -= player["xp_to_next_level"]
         player["level"] += 1
-        player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, player["level"] + 1)
+        player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, player["level"])
         leveled_up = True
 
         # Hardcore mode: heal to full HP on level up + increase max HP

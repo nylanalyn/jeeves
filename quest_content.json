@@ -127,6 +127,55 @@
           "max_level": 28,
           "xp_win_min": 300,
           "xp_win_max": 500
+        },
+        {
+          "name": "International Arms Dealer",
+          "min_level": 26,
+          "max_level": 32,
+          "xp_win_min": 400,
+          "xp_win_max": 650
+        },
+        {
+          "name": "Shadow Government Agent",
+          "min_level": 30,
+          "max_level": 36,
+          "xp_win_min": 500,
+          "xp_win_max": 800
+        },
+        {
+          "name": "Corrupt Judge",
+          "min_level": 34,
+          "max_level": 40,
+          "xp_win_min": 600,
+          "xp_win_max": 950
+        },
+        {
+          "name": "Underground Casino Owner",
+          "min_level": 38,
+          "max_level": 44,
+          "xp_win_min": 700,
+          "xp_win_max": 1100
+        },
+        {
+          "name": "Cartel Lieutenant",
+          "min_level": 42,
+          "max_level": 48,
+          "xp_win_min": 850,
+          "xp_win_max": 1300
+        },
+        {
+          "name": "Master Assassin",
+          "min_level": 46,
+          "max_level": 52,
+          "xp_win_min": 1000,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "Shadow Conspiracy Mastermind",
+          "min_level": 50,
+          "max_level": 58,
+          "xp_win_min": 1200,
+          "xp_win_max": 1800
         }
       ],
       "boss_monsters": [
@@ -394,6 +443,55 @@
           "max_level": 28,
           "xp_win_min": 300,
           "xp_win_max": 500
+        },
+        {
+          "name": "International Arms Dealer",
+          "min_level": 26,
+          "max_level": 32,
+          "xp_win_min": 400,
+          "xp_win_max": 650
+        },
+        {
+          "name": "Shadow Government Agent",
+          "min_level": 30,
+          "max_level": 36,
+          "xp_win_min": 500,
+          "xp_win_max": 800
+        },
+        {
+          "name": "Corrupt Judge",
+          "min_level": 34,
+          "max_level": 40,
+          "xp_win_min": 600,
+          "xp_win_max": 950
+        },
+        {
+          "name": "Underground Casino Owner",
+          "min_level": 38,
+          "max_level": 44,
+          "xp_win_min": 700,
+          "xp_win_max": 1100
+        },
+        {
+          "name": "Cartel Lieutenant",
+          "min_level": 42,
+          "max_level": 48,
+          "xp_win_min": 850,
+          "xp_win_max": 1300
+        },
+        {
+          "name": "Master Assassin",
+          "min_level": 46,
+          "max_level": 52,
+          "xp_win_min": 1000,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "Shadow Conspiracy Mastermind",
+          "min_level": 50,
+          "max_level": 58,
+          "xp_win_min": 1200,
+          "xp_win_max": 1800
         }
       ],
       "boss_monsters": [
@@ -619,6 +717,55 @@
           "max_level": 28,
           "xp_win_min": 300,
           "xp_win_max": 500
+        },
+        {
+          "name": "Sold Out Doorbusters",
+          "min_level": 26,
+          "max_level": 32,
+          "xp_win_min": 400,
+          "xp_win_max": 650
+        },
+        {
+          "name": "Credit Card Declined",
+          "min_level": 30,
+          "max_level": 36,
+          "xp_win_min": 500,
+          "xp_win_max": 800
+        },
+        {
+          "name": "Wrong Size Exchange",
+          "min_level": 34,
+          "max_level": 40,
+          "xp_win_min": 600,
+          "xp_win_max": 950
+        },
+        {
+          "name": "Delayed Shipment Notification",
+          "min_level": 38,
+          "max_level": 44,
+          "xp_win_min": 700,
+          "xp_win_max": 1100
+        },
+        {
+          "name": "Warranty Expiration",
+          "min_level": 42,
+          "max_level": 48,
+          "xp_win_min": 850,
+          "xp_win_max": 1300
+        },
+        {
+          "name": "Online Order Cancellation",
+          "min_level": 46,
+          "max_level": 52,
+          "xp_win_min": 1000,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "The Perfect Gift Paradox",
+          "min_level": 50,
+          "max_level": 58,
+          "xp_win_min": 1200,
+          "xp_win_max": 1800
         }
       ],
       "boss_monsters": [
@@ -813,6 +960,62 @@
           "max_level": 25,
           "xp_win_min": 200,
           "xp_win_max": 400
+        },
+        {
+          "name": "Malicious Rootkit",
+          "min_level": 23,
+          "max_level": 29,
+          "xp_win_min": 350,
+          "xp_win_max": 600
+        },
+        {
+          "name": "Quantum Virus",
+          "min_level": 27,
+          "max_level": 33,
+          "xp_win_min": 450,
+          "xp_win_max": 700
+        },
+        {
+          "name": "Neural Network Parasite",
+          "min_level": 31,
+          "max_level": 37,
+          "xp_win_min": 550,
+          "xp_win_max": 850
+        },
+        {
+          "name": "Sentient Firewall",
+          "min_level": 35,
+          "max_level": 41,
+          "xp_win_min": 650,
+          "xp_win_max": 1000
+        },
+        {
+          "name": "Digital Phantom",
+          "min_level": 39,
+          "max_level": 45,
+          "xp_win_min": 750,
+          "xp_win_max": 1150
+        },
+        {
+          "name": "Zero-Day Exploit",
+          "min_level": 43,
+          "max_level": 49,
+          "xp_win_min": 900,
+          "xp_win_max": 1350
+        },
+        {
+          "name": "Corrupted Mainframe",
+          "min_level": 47,
+          "max_level": 53,
+          "xp_win_min": 1050,
+          "xp_win_max": 1550
+        },
+        {
+          "name": "Singularity Protocol",
+          "min_level": 51,
+          "max_level": 58,
+          "xp_win_min": 1250,
+          "xp_win_max": 1850
         }
       ],
       "boss_monsters": [

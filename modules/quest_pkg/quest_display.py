@@ -46,12 +46,25 @@ def handle_profile(quest_module, connection, event, username, args):
     else:
         profile_parts = [f"Profile for {title}{legend_suffix}: Level {player['level']}"]
 
+    # Hardcore mode indicator
+    if player.get("hardcore_mode", False):
+        hp = player.get("hardcore_hp", 0)
+        max_hp = player.get("hardcore_max_hp", 0)
+        profile_parts.append(f"[HARDCORE] HP: {hp}/{max_hp}")
+
     # Add XP (unless at level cap)
-    level_cap = quest_module.get_config_value("level_cap", event.target, default=20)
+    if player.get("hardcore_mode", False):
+        level_cap = 50  # Hardcore cap
+    else:
+        level_cap = quest_module.get_config_value("level_cap", event.target, default=20)
+
     if player['level'] < level_cap:
         profile_parts.append(f"XP: {player['xp']}/{player['xp_to_next_level']}")
     else:
-        profile_parts.append(f"XP: MAX (use !quest prestige to ascend)")
+        if player.get("hardcore_mode", False):
+            profile_parts.append(f"XP: MAX (HARDCORE COMPLETE!)")
+        else:
+            profile_parts.append(f"XP: MAX (use !quest prestige to ascend)")
 
     profile_parts.append(f"Class: {player_class.capitalize()}")
 
@@ -144,6 +157,19 @@ def handle_profile(quest_module, connection, event, username, args):
         quest_module.safe_reply(connection, event, f"Injuries: {', '.join(injuries)}")
     elif not effects:
         quest_module.safe_reply(connection, event, "Status: Healthy")
+
+    # Hardcore mode stats
+    if player.get("hardcore_stats", {}).get("completions", 0) > 0 or player.get("hardcore_stats", {}).get("deaths", 0) > 0:
+        hc_stats = player["hardcore_stats"]
+        completions = hc_stats.get("completions", 0)
+        deaths = hc_stats.get("deaths", 0)
+        highest = hc_stats.get("highest_level_reached", 0)
+        quest_module.safe_reply(connection, event, f"Hardcore Stats: {completions} completions, {deaths} deaths, highest level: {highest}")
+
+    # Hardcore permanent items
+    if player.get("hardcore_permanent_items"):
+        perm_items = ", ".join([item.replace('_', ' ').title() for item in player["hardcore_permanent_items"]])
+        quest_module.safe_reply(connection, event, f"Hardcore Permanent Items: {perm_items}")
 
     return True
 

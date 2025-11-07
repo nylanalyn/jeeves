@@ -284,6 +284,33 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     # Consume active effects after combat
     quest_combat.consume_combat_effects(player, is_win=win)
 
+    # Hardcore mode: Apply HP damage and check for death
+    if player.get("hardcore_mode", False):
+        damage = quest_progression.calculate_hardcore_damage(
+            monster_level=monster_level,
+            player_level=player_level,
+            is_win=win,
+            is_boss=False
+        )
+        player["hardcore_hp"] = max(0, player["hardcore_hp"] - damage)
+
+        # Show HP status
+        hp_msg = f"HP: {player['hardcore_hp']}/{player['hardcore_max_hp']} (-{damage} damage)"
+        quest_module.safe_reply(connection, event, hp_msg)
+
+        # Check for permadeath
+        if player["hardcore_hp"] <= 0:
+            death_messages = quest_progression.handle_hardcore_death(quest_module, player, user_id, username)
+            for msg in death_messages:
+                quest_module.safe_reply(connection, event, msg)
+
+            # Save state after death
+            players = quest_module.get_state("players")
+            players[user_id] = player
+            quest_module.set_state("players", players)
+            quest_module.save_state()
+            return True
+
     players = quest_module.get_state("players")
     players[user_id] = player
     quest_module.set_state("players", players)

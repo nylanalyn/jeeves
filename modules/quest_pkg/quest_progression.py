@@ -119,9 +119,238 @@ def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
         "last_run": None
     })
 
+    # Hardcore mode state
+    player.setdefault("hardcore_mode", False)
+    player.setdefault("hardcore_hp", 0)
+    player.setdefault("hardcore_max_hp", 0)
+    player.setdefault("hardcore_locker", {})  # Items stored during hardcore run
+    player.setdefault("hardcore_permanent_items", [])  # Item keys that persist in hardcore
+    player.setdefault("hardcore_stats", {
+        "completions": 0,
+        "deaths": 0,
+        "highest_level_reached": 0
+    })
+
     player["name"] = username
 
     return player
+
+
+def calculate_hardcore_max_hp(level: int) -> int:
+    """Calculate max HP for hardcore mode based on level."""
+    # Base HP: 100 + (level * 20)
+    # Level 1: 120 HP
+    # Level 20: 500 HP
+    # Level 50: 1100 HP
+    return 100 + (level * 20)
+
+
+def enter_hardcore_mode(player: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Enter hardcore mode: move non-permanent items to locker, set HP.
+    Returns a dict of items moved to locker.
+    """
+    player["hardcore_mode"] = True
+    player["hardcore_max_hp"] = calculate_hardcore_max_hp(player["level"])
+    player["hardcore_hp"] = player["hardcore_max_hp"]
+
+    # Move all non-permanent items to locker
+    locker = {}
+    permanent_items = player.get("hardcore_permanent_items", [])
+
+    for item_key, quantity in player["inventory"].items():
+        if quantity > 0 and item_key not in permanent_items:
+            locker[item_key] = quantity
+            player["inventory"][item_key] = 0
+
+    player["hardcore_locker"] = locker
+    return locker
+
+
+def exit_hardcore_mode(player: Dict[str, Any], completed: bool = False):
+    """
+    Exit hardcore mode: restore locker items, reset hardcore state.
+    If completed=True, grants prestige and completion rewards.
+    """
+    # Restore items from locker
+    locker = player.get("hardcore_locker", {})
+    for item_key, quantity in locker.items():
+        player["inventory"][item_key] = player["inventory"].get(item_key, 0) + quantity
+
+    # Clear hardcore state
+    player["hardcore_mode"] = False
+    player["hardcore_hp"] = 0
+    player["hardcore_max_hp"] = 0
+    player["hardcore_locker"] = {}
+
+    # Update stats
+    if completed:
+        player["hardcore_stats"]["completions"] = player["hardcore_stats"].get("completions", 0) + 1
+
+    # Track highest level reached
+    current_level = player.get("level", 1)
+    if current_level > player["hardcore_stats"].get("highest_level_reached", 0):
+        player["hardcore_stats"]["highest_level_reached"] = current_level
+
+
+def calculate_hardcore_damage(monster_level: int, player_level: int, is_win: bool, is_boss: bool = False) -> int:
+    """
+    Calculate HP damage for hardcore mode combat.
+    Even wins deal damage - this is the core challenge of hardcore mode.
+    """
+    # Base damage calculation
+    level_diff = monster_level - player_level
+
+    if is_win:
+        # Wins deal reduced damage: 10-30 HP depending on level difference
+        base_damage = max(10, 20 + (level_diff * 5))
+        if is_boss:
+            base_damage = int(base_damage * 1.5)  # Boss fights hurt more
+    else:
+        # Losses deal heavy damage: 40-80 HP depending on level difference
+        base_damage = max(40, 60 + (level_diff * 10))
+        if is_boss:
+            base_damage = int(base_damage * 2.0)  # Boss losses are devastating
+
+    # Add some randomness (+/- 20%)
+    import random
+    variance = int(base_damage * 0.2)
+    damage = base_damage + random.randint(-variance, variance)
+
+    return max(1, damage)  # Minimum 1 damage
+
+
+def handle_hardcore_death(quest_module, player: Dict[str, Any], user_id: str, username: str) -> List[str]:
+    """
+    Handle permadeath in hardcore mode.
+    Returns messages to display to the player.
+    """
+    messages = []
+
+    # Track death
+    player["hardcore_stats"]["deaths"] = player["hardcore_stats"].get("deaths", 0) + 1
+
+    # Track highest level reached
+    current_level = player.get("level", 1)
+    if current_level > player["hardcore_stats"].get("highest_level_reached", 0):
+        player["hardcore_stats"]["highest_level_reached"] = current_level
+
+    # Build death announcement
+    messages.append(f"\u2620\ufe0f PERMADEATH! \u2620\ufe0f")
+    messages.append(f"{username} has fallen in hardcore mode at level {current_level}!")
+    messages.append(f"All progress has been lost. Items return to your inventory.")
+
+    # Exit hardcore mode (restores items, clears state)
+    exit_hardcore_mode(player, completed=False)
+
+    # No prestige reward - that's the risk!
+
+    return messages
+
+
+def complete_hardcore_mode(quest_module, player: Dict[str, Any], user_id: str, username: str) -> List[str]:
+    """
+    Handle successful hardcore mode completion at level 50.
+    Returns messages to display to the player.
+    """
+    messages = []
+
+    # Announce completion!
+    messages.append(f"\u2b50 *** HARDCORE MODE COMPLETED! *** \u2b50")
+    messages.append(f"{username} has conquered hardcore mode and reached level 50!")
+
+    # Grant prestige reward
+    current_prestige = player.get("prestige", 0)
+    max_prestige = quest_module.get_config_value("max_prestige", default=10)
+
+    if current_prestige < max_prestige:
+        new_prestige = current_prestige + 1
+        player["prestige"] = new_prestige
+
+        # Calculate prestige bonuses
+        win_bonus = get_prestige_win_bonus(new_prestige)
+        xp_bonus = get_prestige_xp_bonus(new_prestige)
+        energy_bonus = get_prestige_energy_bonus(new_prestige)
+
+        bonus_parts = []
+        if win_bonus > 0:
+            bonus_parts.append(f"+{int(win_bonus * 100)}% win chance")
+        if xp_bonus > 1.0:
+            bonus_parts.append(f"{int((xp_bonus - 1.0) * 100)}% bonus XP")
+        if energy_bonus > 0:
+            bonus_parts.append(f"+{energy_bonus} max energy")
+
+        bonus_text = ", ".join(bonus_parts) if bonus_parts else "preparing for future bonuses"
+        messages.append(f"Prestige {new_prestige} achieved! Bonuses: {bonus_text}")
+    else:
+        messages.append(f"Already at max prestige ({max_prestige}), but the glory is eternal!")
+
+    # Exit hardcore mode (restores items)
+    exit_hardcore_mode(player, completed=True)
+
+    # Reset to level 20 (standard prestige behavior)
+    player["level"] = 20
+    player["xp"] = 0
+    player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, 20)
+    player["win_streak"] = 0
+    player["active_injuries"] = []
+    if "active_injury" in player:
+        del player["active_injury"]
+
+    # Restore energy
+    player["energy"] = get_player_max_energy(quest_module, player)
+
+    messages.append(f"You return to level 20 with your prestige bonuses. Your items have been restored!")
+    messages.append(f"Use !quest hardcore select <item> to mark one item as permanent for future hardcore runs!")
+    messages.append(f"Available items: medkits, energy_potions, lucky_charms, armor_shards, xp_scrolls, dungeon_relics")
+
+    return messages
+
+
+def handle_hardcore_select_item(quest_module, connection, event, username, args):
+    """Handle selecting a permanent item after hardcore completion."""
+    user_id = quest_module.bot.get_user_id(username)
+    player = get_player(quest_module, user_id, username)
+
+    if not args:
+        quest_module.safe_reply(connection, event, "Usage: !quest hardcore select <item>")
+        quest_module.safe_reply(connection, event, "Available: medkits, energy_potions, lucky_charms, armor_shards, xp_scrolls, dungeon_relics")
+        return True
+
+    item_key = args[0].lower()
+
+    # Valid item keys
+    valid_items = ["medkits", "energy_potions", "lucky_charms", "armor_shards", "xp_scrolls", "dungeon_relics"]
+    if item_key not in valid_items:
+        quest_module.safe_reply(connection, event, f"Invalid item: {item_key}. Choose from: {', '.join(valid_items)}")
+        return True
+
+    # Check if player has this item in inventory
+    if player["inventory"].get(item_key, 0) <= 0:
+        quest_module.safe_reply(connection, event, f"You don't have any {item_key} to mark as permanent!")
+        return True
+
+    # Check if already permanent
+    if item_key in player.get("hardcore_permanent_items", []):
+        quest_module.safe_reply(connection, event, f"{item_key.replace('_', ' ').title()} are already permanent in hardcore mode!")
+        return True
+
+    # Add to permanent items
+    if "hardcore_permanent_items" not in player:
+        player["hardcore_permanent_items"] = []
+
+    player["hardcore_permanent_items"].append(item_key)
+
+    # Save player state
+    players = quest_module.get_state("players")
+    players[user_id] = player
+    quest_module.set_state("players", players)
+    quest_module.save_state()
+
+    quest_module.safe_reply(connection, event, f"\u2728 {item_key.replace('_', ' ').title()} are now permanently available in hardcore mode! \u2728")
+    quest_module.safe_reply(connection, event, f"These items will never be locked away in future hardcore runs.")
+
+    return True
 
 
 def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: bool = False, is_crit: bool = False) -> List[str]:
@@ -131,11 +360,29 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
     total_xp_gain = int(amount)
     today = datetime.now(UTC).date().isoformat()
 
-    # Check if player is at level cap
-    level_cap = quest_module.get_config_value("level_cap", default=20)
+    # Check if player is at level cap (different for hardcore mode)
+    is_hardcore = player.get("hardcore_mode", False)
+    if is_hardcore:
+        level_cap = 50  # Hardcore mode cap is 50
+    else:
+        level_cap = quest_module.get_config_value("level_cap", default=20)
+
     if player.get("level", 1) >= level_cap:
-        messages.append(f"You are at the level cap ({level_cap}). Use !quest prestige to reset and gain permanent bonuses!")
-        return messages
+        if is_hardcore:
+            # Hardcore mode completion at level 50!
+            completion_messages = complete_hardcore_mode(quest_module, player, user_id, username)
+
+            # Save player state after completion
+            players = quest_module.get_state("players")
+            players[user_id] = player
+            quest_module.set_state("players", players)
+            quest_module.save_state()
+
+            messages.extend(completion_messages)
+            return messages
+        else:
+            messages.append(f"You are at the level cap ({level_cap}). Use !quest prestige to reset and gain permanent bonuses!")
+            return messages
 
     # Apply prestige XP bonus
     prestige_xp_mult = get_prestige_xp_bonus(player.get("prestige", 0))
@@ -193,6 +440,13 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
         player["level"] += 1
         player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, player["level"])
         leveled_up = True
+
+        # Hardcore mode: heal to full HP on level up + increase max HP
+        if player.get("hardcore_mode", False):
+            new_max_hp = calculate_hardcore_max_hp(player["level"])
+            player["hardcore_max_hp"] = new_max_hp
+            player["hardcore_hp"] = new_max_hp
+            messages.append(f"Level up! HP fully restored! ({new_max_hp} HP)")
 
     # Cap XP at level cap
     if player["level"] >= level_cap:
@@ -359,10 +613,84 @@ def check_challenge_completion(quest_module, user_id: str, username: str, player
     return messages
 
 
+def handle_hardcore(quest_module, connection, event, username, args):
+    """Handle hardcore mode commands."""
+    user_id = quest_module.bot.get_user_id(username)
+    player = get_player(quest_module, user_id, username)
+
+    # Check for subcommands
+    subcommand = args[0].lower() if args else "enter"
+
+    if subcommand == "quit":
+        # Exit hardcore mode early
+        if not player.get("hardcore_mode", False):
+            quest_module.safe_reply(connection, event, "You are not currently in hardcore mode.")
+            return True
+
+        level_reached = player.get("level", 1)
+        exit_hardcore_mode(player, completed=False)
+
+        # Save player state
+        players = quest_module.get_state("players")
+        players[user_id] = player
+        quest_module.set_state("players", players)
+        quest_module.save_state()
+
+        quest_module.safe_reply(connection, event, f"{username} has exited hardcore mode at level {level_reached}.")
+        quest_module.safe_reply(connection, event, f"Your items have been restored. No prestige was earned, but you kept your progress.")
+        return True
+
+    elif subcommand == "select":
+        # Select a permanent item after hardcore completion
+        return handle_hardcore_select_item(quest_module, connection, event, username, args[1:])
+
+    elif subcommand == "enter" or not args:
+        # Enter hardcore mode
+        if player.get("hardcore_mode", False):
+            quest_module.safe_reply(connection, event, "You are already in hardcore mode!")
+            return True
+
+        # Check if player is at level 20
+        level_cap = quest_module.get_config_value("level_cap", default=20)
+        if player.get("level", 1) < level_cap:
+            quest_module.safe_reply(connection, event, f"You must reach level {level_cap} before you can enter hardcore mode. Current level: {player['level']}")
+            return True
+
+        # Enter hardcore mode
+        locker = enter_hardcore_mode(player)
+
+        # Save player state
+        players = quest_module.get_state("players")
+        players[user_id] = player
+        quest_module.set_state("players", players)
+        quest_module.save_state()
+
+        # Announce entry
+        quest_module.safe_reply(connection, event, f"\u2620\ufe0f *** {quest_module.bot.title_for(username)} HAS ENTERED HARDCORE MODE! *** \u2620\ufe0f")
+        quest_module.safe_reply(connection, event, f"You begin at level {player['level']} with {player['hardcore_hp']}/{player['hardcore_max_hp']} HP.")
+        quest_module.safe_reply(connection, event, f"Your items have been moved to storage. Reach level 50 to complete the challenge!")
+
+        if player.get("hardcore_permanent_items"):
+            perm_items = ", ".join(player["hardcore_permanent_items"])
+            quest_module.safe_reply(connection, event, f"Permanent items available: {perm_items}")
+
+        quest_module.safe_reply(connection, event, f"Death means permadeath - all progress lost! Use !quest hardcore quit to exit early.")
+        return True
+
+    else:
+        quest_module.safe_reply(connection, event, "Usage: !quest hardcore [enter|quit|select <item>]")
+        return True
+
+
 def handle_prestige(quest_module, connection, event, username, args):
     """Handle prestige - reset to level 1 with permanent bonuses."""
     user_id = quest_module.bot.get_user_id(username)
     player = get_player(quest_module, user_id, username)
+
+    # Prevent prestige during hardcore mode
+    if player.get("hardcore_mode", False):
+        quest_module.safe_reply(connection, event, "You cannot prestige while in hardcore mode! Use !quest hardcore quit to exit first.")
+        return True
 
     # Check if player is at level cap
     level_cap = quest_module.get_config_value("level_cap", default=20)

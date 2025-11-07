@@ -1191,7 +1191,76 @@ class TemplateEngine:
                 <div class="value" style="font-size: 1.5em;">{xp_display}</div>
             </div>
         </div>
+        """
 
+        # Hardcore mode display
+        hardcore_mode = player.get("hardcore_mode", False)
+        if hardcore_mode:
+            hardcore_hp = player.get("hardcore_hp", 0)
+            hardcore_max_hp = player.get("hardcore_max_hp", 0)
+            content += f"""
+        <div class="card" style="margin-top: 20px; border: 2px solid #ef4444; background: linear-gradient(135deg, var(--card_background), rgba(239, 68, 68, 0.1));">
+            <div style="padding: 20px;">
+                <h2 style="color: #ef4444; margin-bottom: 15px;">☠️ HARDCORE MODE ACTIVE</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 1.2em; color: #ef4444; margin-bottom: 5px;">❤️ HP</div>
+                        <div style="font-size: 2em; font-weight: bold;">{hardcore_hp}/{hardcore_max_hp}</div>
+                        <div style="font-size: 0.85em; opacity: 0.7; margin-top: 5px;">Death = Permadeath!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+        # Hardcore stats (if player has completed or died)
+        hardcore_stats = player.get("hardcore_stats", {})
+        if hardcore_stats.get("completions", 0) > 0 or hardcore_stats.get("deaths", 0) > 0:
+            completions = hardcore_stats.get("completions", 0)
+            deaths = hardcore_stats.get("deaths", 0)
+            highest_level = hardcore_stats.get("highest_level_reached", 0)
+            content += f"""
+        <div class="card" style="margin-top: 20px;">
+            <div style="padding: 20px;">
+                <h2 style="color: var(--accent); margin-bottom: 15px;">☠️ Hardcore History</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">✅</div>
+                        <div style="font-weight: bold; font-size: 1.5em;">{completions}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Completions</div>
+                    </div>
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">☠️</div>
+                        <div style="font-weight: bold; font-size: 1.5em;">{deaths}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Deaths</div>
+                    </div>
+                    <div style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center;">
+                        <div style="font-size: 2em;">📈</div>
+                        <div style="font-weight: bold; font-size: 1.5em;">{highest_level}</div>
+                        <div style="font-size: 0.9em; opacity: 0.8;">Highest Level</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
+        # Hardcore permanent items
+        hardcore_permanent_items = player.get("hardcore_permanent_items", [])
+        if hardcore_permanent_items:
+            item_display = ", ".join([sanitize(item.replace('_', ' ').title()) for item in hardcore_permanent_items])
+            content += f"""
+        <div class="card" style="margin-top: 20px;">
+            <div style="padding: 20px;">
+                <h2 style="color: var(--accent); margin-bottom: 15px;">✨ Hardcore Permanent Items</h2>
+                <p style="color: var(--text_secondary);">These items are never locked away in hardcore mode:</p>
+                <div style="margin-top: 10px; padding: 15px; background: var(--table_stripe); border-radius: 6px;">
+                    <strong>{item_display}</strong>
+                </div>
+            </div>
+        </div>
+        """
+
+        content += """
         <div class="card" style="margin-top: 20px;">
             <div style="padding: 20px;">
                 <h2 style="color: var(--accent); margin-bottom: 15px;">🎒 Inventory</h2>

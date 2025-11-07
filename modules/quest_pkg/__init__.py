@@ -428,8 +428,10 @@ class Quest(SimpleCommandModule):
             return quest_display.handle_leaderboard(self, connection, event)
         elif subcommand == "prestige":
             return quest_progression.handle_prestige(self, connection, event, username, args[1:])
+        elif subcommand == "hardcore":
+            return quest_progression.handle_hardcore(self, connection, event, username, args[1:])
         else:
-            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <search|use|medic|profile|story|class|top|prestige>'.")
+            self.safe_reply(connection, event, f"Unknown quest command. Use '!quest', or '!quest <search|use|medic|profile|story|class|top|prestige|hardcore>'.")
             return True
 
     def _cmd_quest_easy(self, connection, event, msg, username, match):

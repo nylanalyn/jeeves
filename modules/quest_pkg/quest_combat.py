@@ -429,6 +429,26 @@ def close_mob_window(quest_module):
                 xp_msgs = quest_progression.grant_xp(quest_module, p["user_id"], p["username"], total_xp, is_win=True, is_crit=is_crit)
                 for m in xp_msgs:
                     quest_module.safe_say(f"{p['username']}: {m}", channel)
+
+                # Hardcore mode: Apply HP damage even on wins
+                player = players_state.get(p["user_id"])
+                if player and player.get("hardcore_mode", False):
+                    damage = quest_progression.calculate_hardcore_damage(
+                        monster_level=monster_level,
+                        player_level=player.get("level", 1),
+                        is_win=True,
+                        is_boss=is_boss or is_legend
+                    )
+                    player["hardcore_hp"] = max(0, player["hardcore_hp"] - damage)
+                    quest_module.safe_say(f"{p['username']}: HP: {player['hardcore_hp']}/{player['hardcore_max_hp']} (-{damage} damage)", channel)
+
+                    # Check for permadeath
+                    if player["hardcore_hp"] <= 0:
+                        death_messages = quest_progression.handle_hardcore_death(quest_module, player, p["user_id"], p["username"])
+                        for msg in death_messages:
+                            quest_module.safe_say(f"{p['username']}: {msg}", channel)
+
+                    players_state[p["user_id"]] = player
         else:
             # Defeat - lose XP and potentially get injured
             xp_loss_perc = quest_module.get_config_value("xp_loss_percentage", channel, default=0.25)
@@ -446,6 +466,28 @@ def close_mob_window(quest_module):
                 if injury_msg:
                     quest_module.safe_say(f"{p['username']}: {injury_msg}", channel)
 
+                # Hardcore mode: Apply HP damage (heavy on defeats!)
+                player = players_state.get(p["user_id"])
+                if player and player.get("hardcore_mode", False):
+                    damage = quest_progression.calculate_hardcore_damage(
+                        monster_level=monster_level,
+                        player_level=player.get("level", 1),
+                        is_win=False,
+                        is_boss=is_boss or is_legend
+                    )
+                    player["hardcore_hp"] = max(0, player["hardcore_hp"] - damage)
+                    quest_module.safe_say(f"{p['username']}: HP: {player['hardcore_hp']}/{player['hardcore_max_hp']} (-{damage} damage)", channel)
+
+                    # Check for permadeath
+                    if player["hardcore_hp"] <= 0:
+                        death_messages = quest_progression.handle_hardcore_death(quest_module, player, p["user_id"], p["username"])
+                        for msg in death_messages:
+                            quest_module.safe_say(f"{p['username']}: {msg}", channel)
+
+                    players_state[p["user_id"]] = player
+
+        # Save all player states
+        quest_module.set_state("players", players_state)
         quest_module.save_state()
 
         quest_module.set_state("active_mob", None)

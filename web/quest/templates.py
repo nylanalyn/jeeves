@@ -1260,7 +1260,7 @@ class TemplateEngine:
         </div>
         """
 
-        content += """
+        content += f"""
         <div class="card" style="margin-top: 20px;">
             <div style="padding: 20px;">
                 <h2 style="color: var(--accent); margin-bottom: 15px;">🎒 Inventory</h2>

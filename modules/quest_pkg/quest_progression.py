@@ -467,12 +467,14 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
         player["xp_to_next_level"] = quest_utils.calculate_xp_for_level(quest_module, player["level"])
         leveled_up = True
 
-        # Hardcore mode: heal to full HP on level up + increase max HP
+        # Hardcore mode: heal partial HP on level up + increase max HP
         if player.get("hardcore_mode", False):
             new_max_hp = calculate_hardcore_max_hp(player["level"])
             player["hardcore_max_hp"] = new_max_hp
-            player["hardcore_hp"] = new_max_hp
-            messages.append(f"Level up! HP fully restored! ({new_max_hp} HP)")
+            # Restore 20% of max HP on level up (not full heal)
+            hp_restore = int(new_max_hp * 0.20)
+            player["hardcore_hp"] = min(player["hardcore_hp"] + hp_restore, new_max_hp)
+            messages.append(f"Level up! Restored {hp_restore} HP! ({player['hardcore_hp']}/{new_max_hp} HP)")
 
     # Cap XP at level cap
     if player["level"] >= level_cap:

@@ -154,6 +154,10 @@ def enter_hardcore_mode(player: Dict[str, Any]) -> Dict[str, str]:
     player["hardcore_max_hp"] = calculate_hardcore_max_hp(player["level"])
     player["hardcore_hp"] = player["hardcore_max_hp"]
 
+    # Reset XP to 0 when entering hardcore to avoid confusion
+    # Player will start fresh from their current level (usually 20)
+    player["xp"] = 0
+
     # Move all non-permanent items to locker
     locker = {}
     permanent_items = player.get("hardcore_permanent_items", [])
@@ -483,7 +487,13 @@ def deduct_xp(quest_module, user_id: str, username: str, amount: int) -> Dict[st
         return get_player(quest_module, user_id, username)
 
     player = get_player(quest_module, user_id, username)
-    level_cap = quest_module.get_config_value("level_cap", default=20)
+
+    # Check if player is in hardcore mode (different level cap)
+    is_hardcore = player.get("hardcore_mode", False)
+    if is_hardcore:
+        level_cap = 50  # Hardcore mode cap is 50
+    else:
+        level_cap = quest_module.get_config_value("level_cap", default=20)
 
     # Convert to total accumulated XP across all levels
     total_xp = player.get("xp", 0)

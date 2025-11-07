@@ -53,7 +53,7 @@
     "ask": []
   },
   "sandbox": {
-    "autoAllowBashIfSandboxed": true,
+    "autoAllowBashIfSandboxed": false,
     "enabled": true
   }
 }

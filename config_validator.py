@@ -119,6 +119,10 @@ class ConfigValidator:
 
     def _substitute_env_string(self, value: str, path: str) -> str:
         """Substitute environment variables in a string value."""
+        # Skip substitution for bcrypt hashes (they contain $ signs)
+        if path == "core.super_admin_password_hash":
+            return value
+
         # Pattern for ${VAR_NAME} or $VAR_NAME
         pattern = r'\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)'
 

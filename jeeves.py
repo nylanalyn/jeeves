@@ -572,6 +572,7 @@ class Jeeves(SingleServerIRCBot):
 
         # Get password hash from config
         password_hash = self.config.get("core", {}).get("super_admin_password_hash", "")
+        self.log_debug(f"[core] DEBUG: password_hash = {repr(password_hash)}, length = {len(password_hash) if password_hash else 0}")
         if not password_hash or not password_hash.strip():
             self.log_debug(f"[core] Super admin auth failed: no password hash configured")
             return False

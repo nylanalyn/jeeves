@@ -47,7 +47,8 @@
       "Bash(source ~/.pyenv/versions/jeeves/bin/activate)",
       "Bash(pip install:*)",
       "WebFetch(domain:pypi.org)",
-      "WebFetch(domain:files.pythonhosted.org)"
+      "WebFetch(domain:files.pythonhosted.org)",
+      "Bash(git revert:*)"
     ],
     "deny": [],
     "ask": []

@@ -489,16 +489,20 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
         if player["level"] >= level_cap:
             messages.append(f"*** LEVEL {player['level']} ACHIEVED - MAXIMUM POWER! ***")
 
-            # Check if player completed a challenge path
-            challenge_path = player.get("challenge_path")
-            if challenge_path:
-                completion_result = check_challenge_completion(quest_module, user_id, username, player, challenge_path)
-                if completion_result:
-                    messages.extend(completion_result)
+            # For hardcore mode, completion is handled automatically on next XP gain
+            if is_hardcore:
+                messages.append(f"You have conquered the hardcore challenge! Quest again to complete and claim your rewards!")
+            else:
+                # Check if player completed a challenge path
+                challenge_path = player.get("challenge_path")
+                if challenge_path:
+                    completion_result = check_challenge_completion(quest_module, user_id, username, player, challenge_path)
+                    if completion_result:
+                        messages.extend(completion_result)
+                    else:
+                        messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
                 else:
                     messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
-            else:
-                messages.append(f"You have reached the peak of mortal strength. Use !quest prestige to transcend your limits and be reborn with permanent bonuses!")
         else:
             messages.append(f"Congratulations, you have reached Level {player['level']}!")
     return messages

@@ -52,7 +52,8 @@ class Convenience(ModuleBase):
 
     def _register_commands(self):
         self.register_command(r"^\s*!g\s+(.+)$", self._cmd_google, name="g")
-        self.register_command(r"^\s*!ud\s+(.+)$", self._cmd_ud, name="ud")
+        self.register_command(r"^\s*!dict\s+(.+)$", self._cmd_dict, name="dict")
+        self.register_command(r"^\s*!ud\s+(.+)$", self._cmd_dict, name="ud")
         self.register_command(r"^\s*!wiki\s+(.+)$", self._cmd_wiki, name="wiki")
         self.register_command(r"^\s*!news\s*$", self._cmd_news, name="news")
         self.register_command(r"^\s*!yt\s+(.+)$", self._cmd_yt, name="yt")
@@ -183,43 +184,103 @@ class Convenience(ModuleBase):
             self.safe_reply(connection, event, self._get_short_url(search_url))
         return True
 
-    def _cmd_ud(self, connection, event, msg, username, match):
-        term = match.group(1).strip()
-        sassy_chance = self.get_config_value("sassy_ud_chance", event.target, default=0.05)
-        sassy_terms = self.get_config_value("sassy_ud_terms", event.target, default=[])
+    def _cmd_dict(self, connection, event, msg, username, match):
+        word = match.group(1).strip().lower()
         has_flavor = self.has_flavor_enabled(username)
+        sassy_chance = self.get_config_value("sassy_dict_chance", event.target, default=0.02)
+        lazy_words = ["indolent", "slothful", "idle", "lethargic", "languid", "sluggish", "lazy", "lackadaisical", "listless", "torpid"]
 
-        if sassy_terms and random.random() < sassy_chance:
-            original_term, term = term, random.choice(sassy_terms)
-            if has_flavor:
-                intro_message = f"While searching for '{original_term}', I was reminded of a more relevant term, {self.bot.title_for(username)}. For '{term}':"
-            else:
-                intro_message = f"'{term}':"
-        else:
-            intro_message = f"For '{term}':" if has_flavor else f"'{term}':"
+        # 2% chance to be sassy and define a word meaning lazy instead
+        original_word = None
+        if random.random() < sassy_chance:
+            original_word = word
+            word = random.choice(lazy_words)
 
-        api_url = f"http://api.urbandictionary.com/v0/define?term={quote_plus(term)}"
+        api_url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{quote_plus(word)}"
         try:
             response = self.http_session.get(api_url, timeout=5)
             response.raise_for_status()
             data = response.json()
-            if not data or not data.get("list"):
+
+            if not data or not isinstance(data, list) or len(data) == 0:
                 if has_flavor:
-                    self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{term}'.")
+                    self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{word}'.")
                 else:
-                    self.safe_reply(connection, event, f"No definition found for '{term}'.")
+                    self.safe_reply(connection, event, f"No definition found for '{word}'.")
                 return True
-            top_result = data["list"][0]
-            definition = top_result.get("definition", "No definition provided.")
-            cleaned_def = re.sub(r'\[|\]', '', definition).replace('\r', ' ').replace('\n', ' ').strip()
-            self.safe_reply(connection, event, intro_message)
-            self.safe_reply(connection, event, cleaned_def)
-        except requests.exceptions.RequestException as e:
-            self._record_error(f"Urban Dictionary API request failed: {e}")
+
+            entry = data[0]
+            word_text = entry.get("word", word)
+            phonetic = entry.get("phonetic", "")
+
+            # Get first meaning and definition
+            meanings = entry.get("meanings", [])
+            if not meanings:
+                if has_flavor:
+                    self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{word}'.")
+                else:
+                    self.safe_reply(connection, event, f"No definition found for '{word}'.")
+                return True
+
+            first_meaning = meanings[0]
+            part_of_speech = first_meaning.get("partOfSpeech", "")
+            definitions = first_meaning.get("definitions", [])
+
+            if not definitions:
+                if has_flavor:
+                    self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{word}'.")
+                else:
+                    self.safe_reply(connection, event, f"No definition found for '{word}'.")
+                return True
+
+            first_def = definitions[0].get("definition", "No definition available.")
+            example = definitions[0].get("example", "")
+
+            # Format the output
             if has_flavor:
-                self.safe_reply(connection, event, "I'm afraid the Urban Dictionary service is unavailable at the moment.")
+                if original_word:
+                    header = f"While searching for '{original_word}', I was reminded of a more relevant term, {self.bot.title_for(username)}. For '{word_text}'"
+                else:
+                    header = f"{self.bot.title_for(username)}, for '{word_text}'"
+                if phonetic:
+                    header += f" ({phonetic})"
+                header += ":"
+                self.safe_reply(connection, event, header)
             else:
-                self.safe_reply(connection, event, "Urban Dictionary service unavailable.")
+                header = f"'{word_text}'"
+                if phonetic:
+                    header += f" ({phonetic})"
+                header += ":"
+                self.safe_reply(connection, event, header)
+
+            # Definition line
+            def_line = f"({part_of_speech}) {first_def}" if part_of_speech else first_def
+            self.safe_reply(connection, event, def_line)
+
+            # Example if available
+            if example and has_flavor:
+                self.safe_reply(connection, event, f"Example: \"{example}\"")
+            elif example:
+                self.safe_reply(connection, event, f"e.g., \"{example}\"")
+
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                if has_flavor:
+                    self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could find no definition for '{word}'.")
+                else:
+                    self.safe_reply(connection, event, f"No definition found for '{word}'.")
+            else:
+                self._record_error(f"Dictionary API request failed: {e}")
+                if has_flavor:
+                    self.safe_reply(connection, event, "I'm afraid the dictionary service is unavailable at the moment.")
+                else:
+                    self.safe_reply(connection, event, "Dictionary service unavailable.")
+        except requests.exceptions.RequestException as e:
+            self._record_error(f"Dictionary API request failed: {e}")
+            if has_flavor:
+                self.safe_reply(connection, event, "I'm afraid the dictionary service is unavailable at the moment.")
+            else:
+                self.safe_reply(connection, event, "Dictionary service unavailable.")
         return True
 
     def _cmd_wiki(self, connection, event, msg, username, match):

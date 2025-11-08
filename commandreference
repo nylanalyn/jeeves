@@ -120,7 +120,7 @@ Convenience & Utility Module (convenience.py)
 
     !g <query>: Performs a Google search.
 
-    !ud <term>: Looks up a term on Urban Dictionary.
+    !dict <word> (or !ud): Looks up a word in the dictionary, providing definition, pronunciation, and examples.
 
     !wiki <query>: Searches for a Wikipedia article.
 

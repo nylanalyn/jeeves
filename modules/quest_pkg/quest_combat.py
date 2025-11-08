@@ -254,7 +254,7 @@ def cmd_mob_start(quest_module, connection, event, msg, username, match):
             rare_spawn_chance = quest_module.get_config_value("rare_spawn_chance", event.target, default=0.10)
             is_rare = random.random() < rare_spawn_chance
 
-        join_window_seconds = quest_module.get_config_value("mob_join_window_seconds", event.target, default=60)
+        join_window_seconds = quest_module.get_config_value("mob_join_window_seconds", event.target, default=300)
         close_time = time.time() + join_window_seconds
 
         mob_data = {

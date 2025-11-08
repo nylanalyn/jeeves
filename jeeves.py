@@ -347,10 +347,12 @@ class Jeeves(SingleServerIRCBot):
         self.JEEVES_NAME_RE = self.config.get("core", {}).get("name_pattern", "(?:jeeves|jeevesbot)")
         self.nickserv_pass = self.config.get("connection", {}).get("nickserv_pass", "")
         self.pm = PluginManager(self)
-        
+
         core_state = state_manager.get_module_state("core")
         persisted_channels = set(core_state.get("joined_channels", []))
+        print(f"[core] Loaded persisted channels from state: {persisted_channels}", file=sys.stderr)
         persisted_channels.add(self.primary_channel)
+        print(f"[core] After adding primary channel ({self.primary_channel}): {persisted_channels}", file=sys.stderr)
         self.joined_channels = persisted_channels
         self.state_manager = state_manager
 
@@ -612,13 +614,16 @@ class Jeeves(SingleServerIRCBot):
         self.log_debug("[core] on_welcome received, identifying and joining channels...")
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
-        
+
         loaded_modules = self.pm.load_all()
         self.log_debug(f"[core] Modules loaded: {', '.join(sorted(loaded_modules))}")
 
-        for channel in list(self.joined_channels):
+        channels_to_join = list(self.joined_channels)
+        self.log_debug(f"[core] Channels to auto-join: {channels_to_join}")
+        for channel in channels_to_join:
+            self.log_debug(f"[core] Sending JOIN command for: {channel}")
             connection.join(channel)
-            
+
         self._ensure_scheduler_thread()
 
     def on_join(self, connection, event):

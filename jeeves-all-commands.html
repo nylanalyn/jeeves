@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeeves IRC Bot - Complete Command Reference</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e8e8e8;
+            line-height: 1.6;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(15, 15, 30, 0.85);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        header {
+            background: linear-gradient(135deg, #2c1810 0%, #1a0f08 100%);
+            padding: 30px;
+            text-align: center;
+            border-bottom: 3px solid #d4af37;
+            border-radius: 8px 8px 0 0;
+        }
+
+        h1 {
+            color: #d4af37;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            margin-bottom: 10px;
+            font-weight: normal;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #c9c9c9;
+            font-style: italic;
+            font-size: 1.1em;
+        }
+
+        .intro {
+            padding: 25px 30px;
+            background: rgba(212, 175, 55, 0.05);
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .intro h2 {
+            color: #d4af37;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+
+        .intro ul {
+            list-style: none;
+            padding-left: 20px;
+        }
+
+        .intro li:before {
+            content: "▸ ";
+            color: #d4af37;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .search-container {
+            padding: 20px 30px;
+            background: rgba(212, 175, 55, 0.03);
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .search-box {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px 20px;
+            font-size: 1em;
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            border-radius: 6px;
+            background: rgba(15, 15, 30, 0.6);
+            color: #e8e8e8;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #d4af37;
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+        }
+
+        .modules {
+            padding: 20px;
+        }
+
+        .category-header {
+            padding: 30px 0 15px 10px;
+        }
+
+        .category-header h2 {
+            color: #d4af37;
+            font-size: 1.6em;
+            border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+            padding-bottom: 10px;
+        }
+
+        .module {
+            margin-bottom: 15px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .module:hover {
+            border-color: #d4af37;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2);
+        }
+
+        .module-header {
+            background: linear-gradient(135deg, rgba(44, 24, 16, 0.6) 0%, rgba(26, 15, 8, 0.6) 100%);
+            padding: 18px 25px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+
+        .module-header:hover {
+            background: linear-gradient(135deg, rgba(44, 24, 16, 0.8) 0%, rgba(26, 15, 8, 0.8) 100%);
+        }
+
+        .module-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .module-title h3 {
+            color: #d4af37;
+            font-size: 1.3em;
+            font-weight: normal;
+        }
+
+        .module-badge {
+            background: rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            border: 1px solid rgba(212, 175, 55, 0.4);
+        }
+
+        .module-desc {
+            color: #b8b8b8;
+            font-size: 0.9em;
+            font-style: italic;
+        }
+
+        .expand-icon {
+            color: #d4af37;
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+
+        .module.expanded .expand-icon {
+            transform: rotate(90deg);
+        }
+
+        .module-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease;
+            background: rgba(10, 10, 20, 0.4);
+        }
+
+        .module.expanded .module-content {
+            max-height: 5000px;
+        }
+
+        .module-inner {
+            padding: 25px;
+        }
+
+        .command-group {
+            margin-bottom: 25px;
+        }
+
+        .command-group h4 {
+            color: #c9a961;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+            border-bottom: 1px solid rgba(201, 169, 97, 0.3);
+            padding-bottom: 5px;
+        }
+
+        .command {
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            background: rgba(255, 255, 255, 0.02);
+            border-left: 3px solid #d4af37;
+            border-radius: 4px;
+        }
+
+        .command-syntax {
+            font-family: 'Courier New', monospace;
+            color: #88c0d0;
+            font-size: 1em;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .command-desc {
+            color: #b8b8b8;
+            font-size: 0.95em;
+            padding-left: 10px;
+        }
+
+        .admin-badge {
+            display: inline-block;
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            margin-left: 8px;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .admin-warning {
+            background: rgba(212, 175, 55, 0.1);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            color: #d4af37;
+            font-style: italic;
+        }
+
+        .ambient-note {
+            background: rgba(138, 180, 248, 0.1);
+            border-left: 3px solid #8ab4f8;
+            padding: 12px 15px;
+            margin-top: 15px;
+            border-radius: 4px;
+        }
+
+        .ambient-note strong {
+            color: #8ab4f8;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+            font-size: 0.9em;
+            border-top: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .module-title {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎩 Jeeves IRC Bot 🎩</h1>
+            <p class="subtitle">Complete Command Reference - At Your Service</p>
+        </header>
+
+        <div class="intro">
+            <h2>Welcome to the Complete Command Reference</h2>
+            <ul>
+                <li><strong>Natural Language:</strong> Many features respond when you mention Jeeves by name (e.g., "jeeves, what is the weather?")</li>
+                <li><strong>Admin Commands:</strong> Commands marked with a red "ADMIN" badge require administrative privileges</li>
+                <li><strong>Per-Channel Configuration:</strong> Administrators can enable/disable modules per channel</li>
+                <li><strong>User Profiles:</strong> Set your preferences for personalized interactions</li>
+                <li><strong>Search:</strong> Use the search box below to quickly find specific commands</li>
+            </ul>
+        </div>
+
+        <div class="search-container">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search commands... (e.g., 'weather', 'quest', 'admin')">
+            </div>
+        </div>
+
+        <div class="modules">
+            <!-- Administration Category -->
+            <div class="category-header">
+                <h2>⚙️ Administration & Configuration</h2>
+            </div>
+
+            <!-- Admin Module -->
+            <div class="module" data-module="admin">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>⚙️ Administration</h3>
+                        <span class="module-badge">Admin Only</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Core administrative controls for bot management, module loading, and system configuration</p>
+                        <div class="admin-warning">
+                            ⚠️ All commands in this module require administrative privileges
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Quick Commands</h4>
+                            <div class="command">
+                                <div class="command-syntax">!reload</div>
+                                <div class="command-desc">Reload all modules from disk (alias for !admin reload)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!say [#channel] &lt;message&gt;</div>
+                                <div class="command-desc">Make the bot say something in current or specified channel</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!emergency quit [message]</div>
+                                <div class="command-desc">Emergency shutdown of the bot (Super Admin only)</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Module Management</h4>
+                            <div class="command">
+                                <div class="command-syntax">!admin reload</div>
+                                <div class="command-desc">Reload all modules from disk</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!admin load &lt;module&gt;</div>
+                                <div class="command-desc">Load a specific module</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!admin unload &lt;module&gt;</div>
+                                <div class="command-desc">Unload a specific module</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!admin modules</div>
+                                <div class="command-desc">List all currently loaded modules</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Configuration</h4>
+                            <div class="command">
+                                <div class="command-syntax">!admin config reload</div>
+                                <div class="command-desc">Reload config.yaml without restarting the bot</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Channel Control</h4>
+                            <div class="command">
+                                <div class="command-syntax">!admin join &lt;#channel&gt;</div>
+                                <div class="command-desc">Make the bot join a channel</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!admin part &lt;#channel&gt; [message]</div>
+                                <div class="command-desc">Make the bot leave a channel with optional parting message</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>System & Debugging</h4>
+                            <div class="command">
+                                <div class="command-syntax">!admin debug &lt;on|off&gt;</div>
+                                <div class="command-desc">Toggle verbose file logging for all modules</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!admin debug &lt;module&gt; &lt;on|off&gt;</div>
+                                <div class="command-desc">Toggle debug logging for a specific module</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Profiles Module -->
+            <div class="module" data-module="courtesy users">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>👤 User Profiles & Preferences</h3>
+                        <span class="module-badge">courtesy.py, users.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Manage your personal preferences, pronouns, and interaction settings</p>
+
+                        <div class="command-group">
+                            <h4>Personal Settings</h4>
+                            <div class="command">
+                                <div class="command-syntax">!gender &lt;identity&gt;</div>
+                                <div class="command-desc">Set your preferred title (sir, madam, etc.)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!pronouns &lt;pronouns&gt;</div>
+                                <div class="command-desc">Set your pronouns (he/him, she/her, they/them, etc.)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!title &lt;custom title&gt;</div>
+                                <div class="command-desc">Set a custom title for yourself</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!flavor &lt;on|off&gt;</div>
+                                <div class="command-desc">Toggle butler-style flavor text on/off (default: on). When off, responses are data-only with no elaborate preamble</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!whoami</div>
+                                <div class="command-desc">Display your saved preferences and profile</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!profile &lt;user&gt;</div>
+                                <div class="command-desc">View another user's profile</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!forgetme</div>
+                                <div class="command-desc">Delete all your profile data from the bot</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Ignore List</h4>
+                            <div class="command">
+                                <div class="command-syntax">!ignore [user]</div>
+                                <div class="command-desc">Add yourself (or specified user if admin) to ignore list</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!unignore [user]</div>
+                                <div class="command-desc">Remove from ignore list</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Admin Commands</h4>
+                            <div class="command">
+                                <div class="command-syntax">!setgender &lt;user&gt; &lt;identity&gt;<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Set another user's gender/title</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!setpronouns &lt;user&gt; &lt;pronouns&gt;<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Set another user's pronouns</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!settitle &lt;user&gt; &lt;title&gt;<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Set another user's custom title</div>
+                            </div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Natural Language:</strong> You can say things like "jeeves, my pronouns are they/them" or "jeeves, I am a woman"
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Games & Activities Category -->
+            <div class="category-header">
+                <h2>🎮 Games & Activities</h2>
+            </div>
+
+            <!-- Quest Module -->
+            <div class="module" data-module="quest rpg">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>⚔️ RPG Quest System</h3>
+                        <span class="module-badge">quest.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Comprehensive RPG system with solo quests, group bosses, hardcore mode, prestige, challenge paths, and dungeon runs</p>
+
+                        <div class="command-group">
+                            <h4>Solo Quests</h4>
+                            <div class="command">
+                                <div class="command-syntax">!quest [difficulty]</div>
+                                <div class="command-syntax">!q</div>
+                                <div class="command-desc">Go on a solo quest (easy, normal, or hard). Short alias: !qe (easy), !qh (hard)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest medic</div>
+                                <div class="command-syntax">!qm</div>
+                                <div class="command-desc">Fight monsters for medkit rewards instead of XP</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest profile [user]</div>
+                                <div class="command-syntax">!qp [user]</div>
+                                <div class="command-desc">View your or another player's RPG profile (level, XP, energy, inventory)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest class [class_name]</div>
+                                <div class="command-syntax">!qc [class_name]</div>
+                                <div class="command-desc">View or set your character class</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest story</div>
+                                <div class="command-desc">Get a random piece of world lore</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest top</div>
+                                <div class="command-syntax">!quest leaderboard</div>
+                                <div class="command-syntax">!qt</div>
+                                <div class="command-desc">View top 10 adventurers by prestige and level</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Items & Inventory</h4>
+                            <div class="command">
+                                <div class="command-syntax">!quest search [amount]</div>
+                                <div class="command-syntax">!qs [amount]</div>
+                                <div class="command-desc">Search for items (1-20 searches). Find medkits, energy potions, lucky charms, armor shards, and XP scrolls</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest use &lt;item&gt;</div>
+                                <div class="command-syntax">!qu &lt;item&gt;</div>
+                                <div class="command-desc">Use an item from your inventory (medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!inv</div>
+                                <div class="command-syntax">!inventory</div>
+                                <div class="command-syntax">!qi</div>
+                                <div class="command-desc">View your items, active effects, and injuries</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!medkit [target_user]</div>
+                                <div class="command-desc">Use a medkit to heal injuries. Heal others for 3x XP!</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Progression</h4>
+                            <div class="command">
+                                <div class="command-syntax">!quest prestige</div>
+                                <div class="command-desc">Reset to level 1 with permanent bonuses (requires level cap)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest prestige challenge</div>
+                                <div class="command-desc">Start a challenge path prestige run with special objectives and rewards</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest transcend</div>
+                                <div class="command-desc">Transcend beyond max prestige to become a Legend (resets all progress for legendary status)</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Hardcore Mode</h4>
+                            <div class="command">
+                                <div class="command-syntax">!quest hardcore [enter|quit|select &lt;item&gt;]</div>
+                                <div class="command-desc">Enter hardcore mode - permadeath challenge! Reach level 50 to earn permanent items. Quit early to abandon run.</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Group Content</h4>
+                            <div class="command">
+                                <div class="command-syntax">!mob</div>
+                                <div class="command-desc">Start a group boss fight (opens join window)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!join</div>
+                                <div class="command-desc">Join an active mob encounter</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mob ping &lt;on|off&gt;</div>
+                                <div class="command-desc">Toggle notifications when mob encounters start</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest boss</div>
+                                <div class="command-desc">Show current boss hunt status and buffs</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Abilities</h4>
+                            <div class="command">
+                                <div class="command-syntax">!quest ability [name]</div>
+                                <div class="command-desc">Show or use unlocked abilities from challenge paths (doctor, bloodlust, rally)</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Dungeons</h4>
+                            <div class="command">
+                                <div class="command-syntax">!dungeon</div>
+                                <div class="command-desc">Run a ten-room dungeon via private messages (high difficulty, high reward)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!dungeon continue</div>
+                                <div class="command-desc">Continue your dungeon run from a safe haven</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!dungeon quit</div>
+                                <div class="command-desc">Abandon your dungeon run and claim partial rewards</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!equip</div>
+                                <div class="command-desc">Equip random dungeon gear that can counter threats in dungeon runs</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Web Integration</h4>
+                            <div class="command">
+                                <div class="command-syntax">!weblink</div>
+                                <div class="command-desc">Generate a short-lived code to link your IRC account to the quest website for browser play</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Admin Commands</h4>
+                            <div class="command">
+                                <div class="command-syntax">!quest reload<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Reload quest content from JSON files</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest challenge activate &lt;path&gt;<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Activate a challenge path</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest challenge deactivate<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Deactivate the current challenge path</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest admin boss spawn<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Spawn a new boss for boss hunt</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!quest admin boss damage &lt;amount&gt;<span class="admin-badge">ADMIN</span></div>
+                                <div class="command-desc">Deal damage to the current boss</div>
+                            </div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Note:</strong> Quest has many short aliases: !q, !qe, !qh, !qp, !qs, !qu, !qm, !qt, !qi for quick access. See the quest website for detailed info on hardcore mode and challenge paths.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Adventure Module -->
+            <div class="module" data-module="adventure">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🗺️ Choose-Your-Own-Adventure</h3>
+                        <span class="module-badge">adventure.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Group voting adventure game with collectible items</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!adventure</div>
+                            <div class="command-desc">Start a new group adventure vote</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!adventure status</div>
+                            <div class="command-syntax">!adventure now</div>
+                            <div class="command-desc">Show current adventure status and vote counts</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!adventure last</div>
+                            <div class="command-syntax">!adventure history</div>
+                            <div class="command-desc">Display results of the last adventure</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!items [user]</div>
+                            <div class="command-desc">Show collected cosmetic items for you or another user</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!adventure cancel<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Cancel the current adventure</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Voting:</strong> During an adventure, simply type <code>1</code> or <code>2</code> to cast your vote
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bell Module -->
+            <div class="module" data-module="bell">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔔 Service Bell</h3>
+                        <span class="module-badge">bell.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Reaction game - be the first to answer the service bell</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!answer</div>
+                            <div class="command-desc">Answer the service bell (first to answer wins!)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!bell score</div>
+                            <div class="command-desc">Check your score</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!bell top</div>
+                            <div class="command-desc">View the leaderboard</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!bell ring<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Force the bell to ring</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>How it works:</strong> The service bell rings at random intervals. Be the first to answer!
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hunt Module -->
+            <div class="module" data-module="hunt">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🦌 Animal Hunt</h3>
+                        <span class="module-badge">hunt.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Hunt or befriend randomly appearing animals</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!hunt</div>
+                            <div class="command-desc">Hunt an animal that appears</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!hug</div>
+                            <div class="command-desc">Befriend the animal instead</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!release &lt;hunt|hug&gt;</div>
+                            <div class="command-desc">Release a previously caught/hugged animal</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!hunt score [user]</div>
+                            <div class="command-desc">Check hunting/hugging scores</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!hunt top</div>
+                            <div class="command-desc">View the leaderboard</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!hunt help</div>
+                            <div class="command-desc">Get detailed help via PM</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!hunt admin spawn<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Force an animal to spawn</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Random Events:</strong> Animals appear randomly in the channel. Act fast!
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Roadtrip Module -->
+            <div class="module" data-module="roadtrip">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🚗 Roadtrip</h3>
+                        <span class="module-badge">roadtrip.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Surprise roadtrips for channel members</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!roadtrip</div>
+                            <div class="command-desc">View information about the most recent trip</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!roadtrip stats<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Show roadtrip statistics</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!roadtrip trigger<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Force a roadtrip to start</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Joining:</strong> When Jeeves asks who's coming on a roadtrip, say "coming jeeves" or "!me" to join
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Utilities Category -->
+            <div class="category-header">
+                <h2>🛠️ Utilities & Information</h2>
+            </div>
+
+            <!-- Convenience Module -->
+            <div class="module" data-module="convenience search">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔍 Search & Lookup</h3>
+                        <span class="module-badge">convenience.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Search engines, reference lookups, and automatic URL title fetching</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!g &lt;query&gt;</div>
+                            <div class="command-desc">Google search</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!ud &lt;term&gt;</div>
+                            <div class="command-syntax">!dict &lt;word&gt;</div>
+                            <div class="command-desc">Urban Dictionary / dictionary lookup</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!wiki &lt;query&gt;</div>
+                            <div class="command-desc">Wikipedia search</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!yt &lt;query&gt;</div>
+                            <div class="command-desc">YouTube search</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!news</div>
+                            <div class="command-desc">Top news story based on your location</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Automatic Title Fetching:</strong> Jeeves automatically displays titles for URLs posted in chat, including enhanced YouTube information
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weather Module -->
+            <div class="module" data-module="weather">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🌦️ Weather</h3>
+                        <span class="module-badge">weather.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Weather information for locations and users</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!location &lt;city, country&gt;</div>
+                            <div class="command-desc">Set your default location</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!weather [user|location]</div>
+                            <div class="command-syntax">!w [user|location]</div>
+                            <div class="command-desc">Get weather for your location, another user, or a specific location</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Natural Language:</strong> "Jeeves, what's the weather?" or similar questions
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Clock Module -->
+            <div class="module" data-module="clock time">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🕐 Clock & Time</h3>
+                        <span class="module-badge">clock.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Timezone-aware time for users and locations</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!time</div>
+                            <div class="command-desc">Get current time for your location</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!time &lt;user|location&gt;</div>
+                            <div class="command-desc">Get time for another user or a location</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!time &lt;12|24&gt;</div>
+                            <div class="command-desc">Set your time format preference</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Communication Tools -->
+            <div class="module" data-module="memos reminders seen">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>💬 Communication Tools</h3>
+                        <span class="module-badge">memos.py, reminders.py, seen.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Leave messages, set reminders, and track user activity</p>
+
+                        <div class="command-group">
+                            <h4>Memos</h4>
+                            <div class="command">
+                                <div class="command-syntax">!memo &lt;user&gt; &lt;message&gt;</div>
+                                <div class="command-syntax">!note &lt;user&gt; &lt;message&gt;</div>
+                                <div class="command-syntax">!tell &lt;user&gt; &lt;message&gt;</div>
+                                <div class="command-desc">Leave a message for someone (delivered when they speak)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!memos mine</div>
+                                <div class="command-desc">View your pending memos</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Reminders</h4>
+                            <div class="command">
+                                <div class="command-syntax">!remind &lt;me|user&gt; in &lt;time&gt; &lt;message&gt;</div>
+                                <div class="command-desc">Set a timed reminder (e.g., "!remind me in 10 minutes to check the oven")</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>User Tracking</h4>
+                            <div class="command">
+                                <div class="command-syntax">!seen &lt;user&gt;</div>
+                                <div class="command-desc">Check when a user was last seen speaking in the channel</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Translate Module -->
+            <div class="module" data-module="translate">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🌍 Translation</h3>
+                        <span class="module-badge">translate.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Text translation using DeepL API</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!translate &lt;text&gt;</div>
+                            <div class="command-syntax">!tr &lt;text&gt;</div>
+                            <div class="command-desc">Translate text to your default language</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!translate &lt;lang&gt; &lt;text&gt;</div>
+                            <div class="command-syntax">!tr &lt;lang&gt; &lt;text&gt;</div>
+                            <div class="command-desc">Translate to a specific language (e.g., es for Spanish)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!tr</div>
+                            <div class="command-desc">Translate the last non-command message in the channel</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!translate langs</div>
+                            <div class="command-desc">Get a link to supported language codes</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Arithmetic Module -->
+            <div class="module" data-module="arithmetic calc">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔢 Calculator</h3>
+                        <span class="module-badge">arithmetic.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Calculate mathematical expressions with whimsical butler flair</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!calc &lt;expression&gt;</div>
+                            <div class="command-desc">Calculate a math expression (e.g., "!calc 2+2", "!calc sqrt(144)")</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!arithmetic stats<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Show calculation statistics</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Natural Language:</strong> "Jeeves, what is 5 + 5?" or similar questions
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crypto Module -->
+            <div class="module" data-module="crypto">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>₿ Cryptocurrency Prices</h3>
+                        <span class="module-badge">crypto.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Check cryptocurrency prices in various currencies</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!crypto &lt;symbol&gt; [currency]</div>
+                            <div class="command-syntax">!price &lt;symbol&gt; [currency]</div>
+                            <div class="command-desc">Get cryptocurrency price (e.g., "!crypto btc", "!crypto eth eur")</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shorten Module -->
+            <div class="module" data-module="shorten url">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔗 URL Shortener</h3>
+                        <span class="module-badge">shorten.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Shorten long URLs using self-hosted Shlink</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!shorten &lt;url&gt;</div>
+                            <div class="command-desc">Shorten a long URL</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Automatic:</strong> Jeeves automatically shortens very long URLs posted in chat
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Integrations -->
+            <div class="module" data-module="apioverload api">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🎲 Fun API Integrations</h3>
+                        <span class="module-badge">apioverload.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Collection of fun third-party API integrations</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!dad</div>
+                            <div class="command-desc">Get a random dad joke</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!card &lt;card name&gt;</div>
+                            <div class="command-desc">Search for trading cards (Pokemon)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!verse &lt;reference&gt;</div>
+                            <div class="command-desc">Get a Bible verse (e.g., "!verse John 3:16")</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!brewery [city or name]</div>
+                            <div class="command-desc">Search for breweries</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!cat [tag]</div>
+                            <div class="command-desc">Get a random cat picture</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!holiday [country code]</div>
+                            <div class="command-desc">Get today's holidays (default: US)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Entertainment Category -->
+            <div class="category-header">
+                <h2>🎭 Entertainment & Fun</h2>
+            </div>
+
+            <!-- Coffee Module -->
+            <div class="module" data-module="coffee">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>☕ Coffee & Beverages</h3>
+                        <span class="module-badge">coffee.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Serves time-appropriate beverages based on your local time</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!coffee</div>
+                            <div class="command-desc">Request a beverage appropriate to your local time</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!coffee --force</div>
+                            <div class="command-desc">Insist on coffee at any time of day</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fortune Module -->
+            <div class="module" data-module="fortune">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🥠 Fortune Cookies</h3>
+                        <span class="module-badge">fortune.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Fortune cookie fortunes in various categories</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!fortune [category]</div>
+                            <div class="command-desc">Get a fortune cookie (categories: happy, sad, silly, spooky, sexy)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!fortune reload<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Reload fortune files from disk</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Natural Language:</strong> "Jeeves fortune" or "Jeeves spooky fortune"
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GIF Module -->
+            <div class="module" data-module="gif">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>📸 GIF Search</h3>
+                        <span class="module-badge">gif.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Search for GIFs using Giphy</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!gif &lt;search term&gt;</div>
+                            <div class="command-desc">Fetch a random GIF from Giphy matching your search</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!gif stats<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Show GIF module statistics</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pron Module -->
+            <div class="module" data-module="pron">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🏠 Wholesome Scenarios</h3>
+                        <span class="module-badge">pron.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Wholesome, humorously suggestive domestic scenarios (not what you think!)</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!pron</div>
+                            <div class="command-desc">Get a wholesome domestic scenario</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Scare Module -->
+            <div class="module" data-module="scare">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>👻 Horror Stories</h3>
+                        <span class="module-badge">scare.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Short spooky horror stories</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!scare</div>
+                            <div class="command-desc">Hear a frightening tale</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI & Conversational Category -->
+            <div class="category-header">
+                <h2>🤖 AI & Conversational Features</h2>
+            </div>
+
+            <!-- Oracle Module -->
+            <div class="module" data-module="oracle ai">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔮 Oracle (AI Conversation)</h3>
+                        <span class="module-badge">oracle.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">AI-powered conversational mode using OpenAI</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!oracle reset<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Reset conversation history in the current channel</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!oracle reload<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Reload system prompt from config file</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>AI-Powered:</strong> Oracle provides fully AI-driven conversational responses when enabled in specific channels. Mention Jeeves by name to engage.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Replies Module -->
+            <div class="module" data-module="replies">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>💭 Question Replies</h3>
+                        <span class="module-badge">replies.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Answers questions with butler flair and philosophy</p>
+
+                        <div class="ambient-note">
+                            <strong>Natural Language:</strong>
+                            <ul style="margin-top: 10px; padding-left: 20px;">
+                                <li>"Jeeves, should I...?" - Yes/no/maybe responses</li>
+                                <li>"Jeeves, what should I...?" - Advice responses</li>
+                                <li>"Jeeves, what is the meaning of life?" - Philosophical responses</li>
+                                <li>"Jeeves, hide" - Refuses with dignity</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chatter Module -->
+            <div class="module" data-module="chatter">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>💬 Chatter & Ambient Responses</h3>
+                        <span class="module-badge">chatter.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Scheduled messages and conversational responses about various topics</p>
+
+                        <div class="command">
+                            <div class="command-syntax">!chatter stats<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Show chatter statistics</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!chatter test daily<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Force a daily scheduled message</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!chatter test weekly<span class="admin-badge">ADMIN</span></div>
+                            <div class="command-desc">Force a weekly scheduled message</div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Responds to:</strong> Mentions about animals, weather, technology, food, and greetings
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Passive Features Category -->
+            <div class="category-header">
+                <h2>⚙️ Passive & Background Features</h2>
+            </div>
+
+            <!-- Passive Features -->
+            <div class="module" data-module="flirt sailing sed intro help">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🔄 Passive & Background Features</h3>
+                        <span class="module-badge">various</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <p class="module-desc">Features that work passively or in response to patterns</p>
+
+                        <div class="command-group">
+                            <h4>Help System</h4>
+                            <div class="command">
+                                <div class="command-syntax">!help</div>
+                                <div class="command-desc">Show available commands (sends to PM)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!help &lt;command&gt;</div>
+                                <div class="command-desc">Get help for a specific command (sends to PM)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!intro</div>
+                                <div class="command-desc">Get a brief introduction to Jeeves (one-time message)</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Message Editing</h4>
+                            <div class="command">
+                                <div class="command-syntax">s/find/replace/</div>
+                                <div class="command-desc">Correct your last message with sed-like syntax</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Passive Responses</h4>
+                            <div class="command">
+                                <div class="command-syntax">Flirt Detection</div>
+                                <div class="command-desc">Responds politely and professionally to flirtatious comments</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">Sailing</div>
+                                <div class="command-desc">Responds with nautical lore when specific users say "SAIL"</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Automated Tasks</h4>
+                            <div class="command">
+                                <div class="command-syntax">Backups</div>
+                                <div class="command-desc">Automated daily backups at 2am (no user commands)</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Jeeves IRC Bot - At Your Service</p>
+            <p style="font-size: 0.8em; margin-top: 5px;">A distinguished digital butler for the modern IRC channel</p>
+            <p style="font-size: 0.75em; margin-top: 10px; opacity: 0.7;">
+                This page documents all available commands across 34 modules (excluding ambient.py)
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        function toggleModule(header) {
+            const module = header.parentElement;
+            module.classList.toggle('expanded');
+        }
+
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        const modules = document.querySelectorAll('.module');
+
+        searchInput.addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase().trim();
+
+            if (!searchTerm) {
+                // Show all modules if search is empty
+                modules.forEach(module => {
+                    module.classList.remove('hidden');
+                    module.classList.remove('expanded');
+                });
+                return;
+            }
+
+            modules.forEach(module => {
+                const moduleText = module.textContent.toLowerCase();
+                const moduleData = module.getAttribute('data-module') || '';
+
+                if (moduleText.includes(searchTerm) || moduleData.includes(searchTerm)) {
+                    module.classList.remove('hidden');
+                    module.classList.add('expanded'); // Auto-expand matching modules
+                } else {
+                    module.classList.add('hidden');
+                }
+            });
+        });
+
+        // Optional: Expand first module by default
+        // document.querySelector('.module').classList.add('expanded');
+    </script>
+</body>
+</html>

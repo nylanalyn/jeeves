@@ -980,60 +980,100 @@ class TemplateEngine:
         """Render the commands reference."""
         commands = [
             {
-                "cmd": "!quest",
-                "desc": "Go on a solo quest (normal difficulty)"
+                "cmd": "!quest [difficulty]",
+                "desc": "Go on a solo quest (easy, normal, or hard)"
             },
             {
-                "cmd": "!quest easy",
-                "desc": "Go on an easy quest"
+                "cmd": "!quest medic",
+                "desc": "Fight monsters for medkit rewards instead of XP"
             },
             {
-                "cmd": "!quest hard",
-                "desc": "Go on a hard quest"
+                "cmd": "!quest search [amount]",
+                "desc": "Search for items (1-20 searches). Find medkits, energy potions, lucky charms, armor shards, and XP scrolls"
             },
             {
-                "cmd": "!search",
-                "desc": "Search for items in the digital realm"
+                "cmd": "!quest use <item>",
+                "desc": "Use an item from your inventory (medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic)"
             },
             {
-                "cmd": "!inv / !inventory",
-                "desc": "View your inventory and active effects"
+                "cmd": "!quest profile [user]",
+                "desc": "View your or another player's RPG profile (level, XP, energy, inventory)"
             },
             {
-                "cmd": "!use <item>",
-                "desc": "Use an item from your inventory"
-            },
-            {
-                "cmd": "!medkit [target]",
-                "desc": "Use a medkit to heal yourself or others"
-            },
-            {
-                "cmd": "!profile / !p",
-                "desc": "Show your detailed player profile"
-            },
-            {
-                "cmd": "!leaderboard / !l",
-                "desc": "Show the quest leaderboard"
-            },
-            {
-                "cmd": "!class [name]",
+                "cmd": "!quest class [class_name]",
                 "desc": "View or set your character class"
             },
             {
-                "cmd": "!prestige",
-                "desc": "Prestige at max level for permanent bonuses"
+                "cmd": "!quest story",
+                "desc": "Get a random piece of world lore"
             },
             {
-                "cmd": "!mob start",
-                "desc": "Start a mob encounter for group play"
+                "cmd": "!quest top / !quest leaderboard",
+                "desc": "View top 10 adventurers by prestige and level"
+            },
+            {
+                "cmd": "!quest prestige",
+                "desc": "Reset to level 1 with permanent bonuses (requires level cap)"
+            },
+            {
+                "cmd": "!quest prestige challenge",
+                "desc": "Start a challenge path prestige run with special objectives and rewards"
+            },
+            {
+                "cmd": "!quest hardcore [enter|quit|select <item>]",
+                "desc": "Enter hardcore mode - permadeath challenge! Reach level 50 to earn permanent items. Quit early to abandon run."
+            },
+            {
+                "cmd": "!quest transcend",
+                "desc": "Transcend beyond max prestige to become a Legend (resets all progress for legendary status)"
+            },
+            {
+                "cmd": "!inv / !inventory",
+                "desc": "View your items, active effects, and injuries"
+            },
+            {
+                "cmd": "!medkit [target_user]",
+                "desc": "Use a medkit to heal injuries. Heal others for 3x XP!"
+            },
+            {
+                "cmd": "!mob",
+                "desc": "Start a group boss fight (opens join window)"
             },
             {
                 "cmd": "!join",
                 "desc": "Join an active mob encounter"
             },
             {
-                "cmd": "!ability [name]",
-                "desc": "Show or use unlocked abilities"
+                "cmd": "!mob ping <on|off>",
+                "desc": "Toggle notifications when mob encounters start"
+            },
+            {
+                "cmd": "!quest ability [name]",
+                "desc": "Show or use unlocked abilities from challenge paths (doctor, bloodlust, rally)"
+            },
+            {
+                "cmd": "!quest boss",
+                "desc": "Show current boss hunt status and buffs"
+            },
+            {
+                "cmd": "!dungeon",
+                "desc": "Run a ten-room dungeon via private messages (high difficulty, high reward)"
+            },
+            {
+                "cmd": "!dungeon continue",
+                "desc": "Continue your dungeon run from a safe haven"
+            },
+            {
+                "cmd": "!dungeon quit",
+                "desc": "Abandon your dungeon run and claim partial rewards"
+            },
+            {
+                "cmd": "!equip",
+                "desc": "Equip random dungeon gear that can counter threats in dungeon runs"
+            },
+            {
+                "cmd": "!weblink",
+                "desc": "Generate a short-lived code to link your IRC account to the quest website for browser play"
             }
         ]
 
@@ -1059,9 +1099,31 @@ class TemplateEngine:
                 <li>Use <strong>!search</strong> between quests to find useful items</li>
                 <li>Save <strong>medkits</strong> for healing injuries</li>
                 <li>Join <strong>mob encounters</strong> for group content and better rewards</li>
-                <li>Complete <strong>challenge paths</strong> to unlock special abilities</li>
+                <li>Complete <strong>challenge paths</strong> to unlock special abilities (doctor, bloodlust, rally)</li>
                 <li>Watch your <strong>energy</strong> levels and plan accordingly</li>
                 <li>Use <strong>items strategically</strong> for difficult encounters</li>
+                <li>Try <strong>hardcore mode</strong> at level 20 for the ultimate permadeath challenge - reach level 50 to earn permanent items</li>
+                <li>Use <strong>!prestige challenge</strong> to start a challenge path run with special objectives and unlock powerful abilities</li>
+                <li>Boss Hunt buffs reduce monster levels and increase XP when a boss is defeated - participate to help!</li>
+                <li><strong>Dungeon runs</strong> are high-risk, high-reward solo adventures - equip gear first for better survival</li>
+            </ul>
+
+            <h3>⚔️ Challenge Paths</h3>
+            <p style="margin-top: 15px;">Challenge paths are special prestige modes with unique objectives and rewards:</p>
+            <ul style="margin-top: 10px; padding-left: 20px;">
+                <li><strong>Ironman Challenge:</strong> Complete prestige without using medkits to unlock the Doctor ability (heal all injuries for all players)</li>
+                <li><strong>Hard Mode:</strong> Reduced XP gain and win chance, but gain +5 max energy. Unlock Bloodlust ability (party-wide +20% win chance buff)</li>
+            </ul>
+
+            <h3>☠️ Hardcore Mode</h3>
+            <p style="margin-top: 15px;">The ultimate challenge for max-level players:</p>
+            <ul style="margin-top: 10px; padding-left: 20px;">
+                <li>Enter at level 20 with <strong>!quest hardcore enter</strong></li>
+                <li>Your items are locked away (except permanent ones from previous completions)</li>
+                <li>You have limited HP - death means PERMADEATH and all progress is lost</li>
+                <li>Reach level 50 to complete the challenge and select a permanent item</li>
+                <li>Use <strong>!quest hardcore quit</strong> to exit early (keeps progress but no prestige)</li>
+                <li>Hardcore stats track your completions, deaths, and highest level reached</li>
             </ul>
         </div>
         """

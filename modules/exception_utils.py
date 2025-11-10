@@ -149,61 +149,55 @@ def handle_exceptions(
 
 
 def safe_api_call(
-    func: Callable,
-    *args,
     api_name: str = "external API",
-    user_message: str = "The service is temporarily unavailable. Please try again later.",
-    **kwargs
-) -> Any:
+    user_message: str = "The service is temporarily unavailable. Please try again later."
+):
     """
-    Safely call external APIs with standardized error handling.
+    Decorator for safely calling external APIs with standardized error handling.
     
     Args:
-        func: API call function
         api_name: Name of the API for logging
         user_message: User-friendly error message
-        *args, **kwargs: Arguments to pass to the function
-        
-    Returns:
-        API response or None if call failed
     """
-    return safe_execute(
-        func,
-        *args,
-        error_message=f"{api_name} call failed",
-        user_message=user_message,
-        exception_types=(ExternalAPIException, ConnectionError, TimeoutError, ValueError),
-        **kwargs
-    )
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return safe_execute(
+                func,
+                *args,
+                error_message=f"{api_name} call failed",
+                user_message=user_message,
+                exception_types=(ExternalAPIException, ConnectionError, TimeoutError, ValueError),
+                **kwargs
+            )
+        return wrapper
+    return decorator
 
 
 def safe_file_operation(
-    func: Callable,
-    *args,
     operation: str = "file operation",
-    user_message: str = "Unable to process the request due to a system error.",
-    **kwargs
-) -> Any:
+    user_message: str = "Unable to process the request due to a system error."
+):
     """
-    Safely perform file operations with standardized error handling.
+    Decorator for safely performing file operations with standardized error handling.
     
     Args:
-        func: File operation function
         operation: Description of the operation for logging
         user_message: User-friendly error message
-        *args, **kwargs: Arguments to pass to the function
-        
-    Returns:
-        Operation result or None if failed
     """
-    return safe_execute(
-        func,
-        *args,
-        error_message=f"{operation} failed",
-        user_message=user_message,
-        exception_types=(IOError, OSError, PermissionError, FileNotFoundError),
-        **kwargs
-    )
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return safe_execute(
+                func,
+                *args,
+                error_message=f"{operation} failed",
+                user_message=user_message,
+                exception_types=(IOError, OSError, PermissionError, FileNotFoundError),
+                **kwargs
+            )
+        return wrapper
+    return decorator
 
 
 def validate_user_input(

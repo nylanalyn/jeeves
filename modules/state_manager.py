@@ -27,7 +27,7 @@ class StateManager:
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(exist_ok=True)
     
-    @safe_file_operation
+    @safe_file_operation()
     def load_state(self, filename: str, default: Optional[Dict] = None) -> Dict[str, Any]:
         """Load state from JSON file.
         
@@ -57,7 +57,7 @@ class StateManager:
         
         return state
     
-    @safe_file_operation
+    @safe_file_operation()
     def save_state(self, filename: str, state: Dict[str, Any]) -> None:
         """Save state to JSON file.
         
@@ -80,7 +80,7 @@ class StateManager:
             "size": len(state)
         })
     
-    @safe_file_operation
+    @safe_file_operation()
     def update_state(self, filename: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """Update state with new values.
         

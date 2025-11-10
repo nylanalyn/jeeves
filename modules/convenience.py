@@ -1,7 +1,6 @@
 # modules/convenience.py
 # Merged module for common, convenient search commands and URL title fetching.
 import re
-import requests
 import xml.etree.ElementTree as ET
 import random
 import html
@@ -26,7 +25,17 @@ except ImportError:
     class NetworkException(Exception): pass
     class UserInputException(Exception): pass
 
-from .base import ModuleBase 
+from .base import ModuleBase
+
+# Import shared utilities
+try:
+    from .http_utils import get_http_client
+    from .config_manager import create_config_manager
+    HTTP_CLIENT = get_http_client()
+except ImportError:
+    # Fallback for when shared utilities are not available
+    HTTP_CLIENT = None
+    create_config_manager = None 
 
 try:
     from bs4 import BeautifulSoup
@@ -57,9 +66,20 @@ class Convenience(ModuleBase):
     def __init__(self, bot):
         super().__init__(bot)
         self._register_commands()
-        self.http_session = self.requests_retry_session()
         
-        youtube_api_key = self.bot.config.get("api_keys", {}).get("youtube")
+        # Use shared HTTP client if available, otherwise fallback
+        if HTTP_CLIENT:
+            self.http_session = HTTP_CLIENT.session
+        else:
+            self.http_session = self.requests_retry_session()
+        
+        # Use config manager if available
+        if create_config_manager:
+            self.config_manager = create_config_manager(self.bot.config)
+            youtube_api_key = self.config_manager.get_api_key("youtube", required=False)
+        else:
+            youtube_api_key = self.bot.config.get("api_keys", {}).get("youtube")
+        
         self.youtube_service = None
         if youtube_api_key and build:
             try:
@@ -125,7 +145,11 @@ class Convenience(ModuleBase):
         
         if "youtube.com" in url or "youtu.be" in url:
             return False
-        shlink_config = self.bot.config.get("api_keys", {}).get("shlink_url", "")
+        # Use config manager if available
+        if create_config_manager:
+            shlink_config = self.config_manager.get_api_key("shlink_url", required=False) or ""
+        else:
+            shlink_config = self.bot.config.get("api_keys", {}).get("shlink_url", "")
         if shlink_config and shlink_config in url:
             return False
 
@@ -150,37 +174,73 @@ class Convenience(ModuleBase):
         headers = {'User-Agent': 'JeevesIRCBot/1.0 (URL Title Fetcher)'}
         max_bytes = self.get_config_value("titles_max_download_bytes", default=32768)
         max_total_time = 10  # Maximum 10 seconds for entire download
-        try:
-            with self.http_session.get(url, headers=headers, stream=True, timeout=5) as response:
-                response.raise_for_status()
-                content_chunk = response.iter_content(chunk_size=1024, decode_unicode=True)
-                html_head = ""
-                start_time = time.time()
+        
+        # Use shared HTTP client if available
+        if HTTP_CLIENT:
+            try:
+                # For streaming downloads, we still need to use the session directly
+                with self.http_session.get(url, headers=headers, stream=True, timeout=5) as response:
+                    response.raise_for_status()
+                    content_chunk = response.iter_content(chunk_size=1024, decode_unicode=True)
+                    html_head = ""
+                    start_time = time.time()
 
-                for part in content_chunk:
-                    # Check total elapsed time
-                    if time.time() - start_time > max_total_time:
-                        self.log_module_event("WARNING", f"URL title fetch timed out for {url}")
-                        break
+                    for part in content_chunk:
+                        # Check total elapsed time
+                        if time.time() - start_time > max_total_time:
+                            self.log_module_event("WARNING", f"URL title fetch timed out for {url}")
+                            break
 
-                    html_head += part
-                    title_match = self.TITLE_PATTERN.search(html_head)
-                    if title_match:
-                        # Extract and clean title text
-                        title_text = title_match.group(1).strip()
-                        # Remove any HTML tags that might be inside the title
-                        title_text = re.sub(r'<[^>]+>', '', title_text)
-                        return html.unescape(title_text)
-                    if len(html_head) > max_bytes:
-                        break
+                        html_head += part
+                        title_match = self.TITLE_PATTERN.search(html_head)
+                        if title_match:
+                            # Extract and clean title text
+                            title_text = title_match.group(1).strip()
+                            # Remove any HTML tags that might be inside the title
+                            title_text = re.sub(r'<[^>]+>', '', title_text)
+                            return html.unescape(title_text)
+                        if len(html_head) > max_bytes:
+                            break
 
-                if html_head:
-                    soup = BeautifulSoup(html_head, 'html.parser')
-                    if soup.title and soup.title.string:
-                        return html.unescape(soup.title.string)
-        except (requests.RequestException, ValueError, AttributeError, TimeoutError) as e:
-            self.log_module_event("WARNING", f"Error parsing title for {url}: {e}")
-            return None
+                    if html_head:
+                        soup = BeautifulSoup(html_head, 'html.parser')
+                        if soup.title and soup.title.string:
+                            return html.unescape(soup.title.string)
+            except Exception as e:
+                self.log_module_event("WARNING", f"Error parsing title for {url}: {e}")
+                return None
+        else:
+            try:
+                with self.http_session.get(url, headers=headers, stream=True, timeout=5) as response:
+                    response.raise_for_status()
+                    content_chunk = response.iter_content(chunk_size=1024, decode_unicode=True)
+                    html_head = ""
+                    start_time = time.time()
+
+                    for part in content_chunk:
+                        # Check total elapsed time
+                        if time.time() - start_time > max_total_time:
+                            self.log_module_event("WARNING", f"URL title fetch timed out for {url}")
+                            break
+
+                        html_head += part
+                        title_match = self.TITLE_PATTERN.search(html_head)
+                        if title_match:
+                            # Extract and clean title text
+                            title_text = title_match.group(1).strip()
+                            # Remove any HTML tags that might be inside the title
+                            title_text = re.sub(r'<[^>]+>', '', title_text)
+                            return html.unescape(title_text)
+                        if len(html_head) > max_bytes:
+                            break
+
+                    if html_head:
+                        soup = BeautifulSoup(html_head, 'html.parser')
+                        if soup.title and soup.title.string:
+                            return html.unescape(soup.title.string)
+            except Exception as e:
+                self.log_module_event("WARNING", f"Error parsing title for {url}: {e}")
+                return None
         return None
 
     def _cmd_google(self, connection, event, msg, username, match):

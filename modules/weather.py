@@ -1,10 +1,22 @@
 # modules/weather.py
 # Weather module for local weather lookups
 import re
-import requests
 import json
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
+
+# Import shared utilities
+try:
+    from .http_utils import get_http_client
+    from .config_manager import create_config_manager
+    from .state_manager import create_state_manager
+    HTTP_CLIENT = get_http_client()
+except ImportError:
+    # Fallback for when shared utilities are not available
+    import requests
+    HTTP_CLIENT = None
+    create_config_manager = None
+    create_state_manager = None
 
 def setup(bot):
     return Weather(bot)
@@ -16,10 +28,21 @@ class Weather(SimpleCommandModule):
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.set_state("user_locations", self.get_state("user_locations", {}))
-        self.save_state()
         
-        self.http_session = self.requests_retry_session()
+        # Use shared state manager if available
+        if create_state_manager:
+            self.state_manager = create_state_manager()
+            user_locations = self.state_manager.load_state("user_locations", {})
+            self.state_manager.save_state("user_locations", user_locations)
+        else:
+            self.set_state("user_locations", self.get_state("user_locations", {}))
+            self.save_state()
+        
+        # Use shared HTTP client if available
+        if HTTP_CLIENT:
+            self.http_session = HTTP_CLIENT.session
+        else:
+            self.http_session = self.requests_retry_session()
 
         name_pat = self.bot.JEEVES_NAME_RE
         self.RE_NL_WEATHER = re.compile(

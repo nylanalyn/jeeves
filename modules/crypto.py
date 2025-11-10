@@ -4,8 +4,20 @@ Cryptocurrency price checking module using CoinGecko API.
 
 from typing import Any
 
-import requests
 from .base import SimpleCommandModule
+
+# Import shared utilities
+try:
+    from .http_utils import get_http_client
+    from .exception_utils import safe_api_call, ExternalAPIException
+    HTTP_CLIENT = get_http_client()
+except ImportError:
+    # Fallback for when shared utilities are not available
+    import requests
+    HTTP_CLIENT = None
+    def safe_api_call(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    class ExternalAPIException(Exception): pass
 
 
 def setup(bot: Any) -> "CryptoModule":
@@ -87,32 +99,47 @@ class CryptoModule(SimpleCommandModule):
         Returns:
             Dict with price data or None on error
         """
-        try:
-            url = f"{self.API_BASE}/simple/price"
-            params = {
-                'ids': coin_id,
-                'vs_currencies': currency.lower(),
-                'include_24hr_change': 'true',
-                'include_market_cap': 'true',
-            }
+        url = f"{self.API_BASE}/simple/price"
+        params = {
+            'ids': coin_id,
+            'vs_currencies': currency.lower(),
+            'include_24hr_change': 'true',
+            'include_market_cap': 'true',
+        }
 
-            session = self.requests_retry_session()
-            response = session.get(url, params=params, timeout=10)
-            response.raise_for_status()
-
-            data = response.json()
-
-            if coin_id not in data:
+        # Use shared HTTP client if available
+        if HTTP_CLIENT:
+            try:
+                data = HTTP_CLIENT.get_json(url, params=params)
+                
+                if coin_id not in data:
+                    return None
+                
+                return data[coin_id]
+            except ExternalAPIException as e:
+                self.log_debug(f"CoinGecko API error: {e}")
                 return None
+        else:
+            # Fallback to original implementation
+            import requests
+            try:
+                session = self.requests_retry_session()
+                response = session.get(url, params=params, timeout=10)
+                response.raise_for_status()
 
-            return data[coin_id]
+                data = response.json()
 
-        except requests.exceptions.RequestException as e:
-            self.log_debug(f"CoinGecko API error: {e}")
-            return None
-        except (KeyError, ValueError) as e:
-            self.log_debug(f"Error parsing CoinGecko response: {e}")
-            return None
+                if coin_id not in data:
+                    return None
+
+                return data[coin_id]
+
+            except requests.exceptions.RequestException as e:
+                self.log_debug(f"CoinGecko API error: {e}")
+                return None
+            except (KeyError, ValueError) as e:
+                self.log_debug(f"Error parsing CoinGecko response: {e}")
+                return None
 
     def _format_price(self, price, currency):
         """

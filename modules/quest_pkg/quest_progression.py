@@ -1019,6 +1019,16 @@ def _auto_prepare_dungeon_loadout(quest_module, channel: str, user_id: str, user
     return loadout
 
 
+def _broadcast_dungeon_outcome(quest_module, connection, event, active_run: Optional[Dict[str, Any]], message: str) -> None:
+    """Notify both the invoking context and, if needed, the dungeon channel about the result."""
+    quest_module.safe_reply(connection, event, message)
+
+    origin = getattr(event, "target", "") or ""
+    channel = (active_run or {}).get("channel")
+    if channel and channel.startswith('#') and not origin.startswith('#'):
+        quest_module.safe_say(message, channel)
+
+
 def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
     """Run the ten-room dungeon, DMing each step to the player."""
     # Import here to avoid circular dependency
@@ -1254,8 +1264,8 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             else:
                 penalty_msg = f"and loses {xp_loss} XP"
 
-            quest_module.safe_reply(connection, event,
-                            f"{username} was defeated in room {index} ({room['name']}) {penalty_msg}.")
+            defeat_msg = f"{username} was defeated in room {index} ({room['name']}) {penalty_msg}."
+            _broadcast_dungeon_outcome(quest_module, connection, event, active_run, defeat_msg)
             return True
 
     # Victory! Cleared all 10 rooms
@@ -1283,8 +1293,11 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
     quest_module.set_state("players", players)
     quest_module.save_state()
 
-    quest_module.safe_reply(connection, event,
-                        f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed a {DUNGEON_REWARD_NAME}! {DUNGEON_REWARD_EFFECT_TEXT}")
+    victory_msg = (
+        f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed a {DUNGEON_REWARD_NAME}! "
+        f"{DUNGEON_REWARD_EFFECT_TEXT}"
+    )
+    _broadcast_dungeon_outcome(quest_module, connection, event, dungeon_state.get("last_run"), victory_msg)
     return True
 
 
@@ -1381,6 +1394,7 @@ def cmd_dungeon_quit(quest_module, connection, event, msg, username, match):
 
     quest_module.safe_privmsg(username, f"You retreat from the dungeon after clearing {rooms_cleared} rooms.")
     quest_module.safe_privmsg(username, reward_msg)
-    quest_module.safe_reply(connection, event, f"{username} retreats from the dungeon. {reward_msg}")
+    quit_msg = f"{username} retreats from the dungeon. {reward_msg}"
+    _broadcast_dungeon_outcome(quest_module, connection, event, active_run, quit_msg)
 
     return True

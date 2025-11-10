@@ -594,8 +594,18 @@ def handle_search(quest_module, connection, event, username, args):
 
 def handle_use_item(quest_module, connection, event, username, args):
     """Handle using items from inventory."""
+    target = getattr(event, "target", "") or ""
+    is_private = not target.startswith('#')
+
+    def send_response(message: str) -> None:
+        if is_private:
+            if not quest_module.safe_privmsg(username, message):
+                quest_module.safe_reply(connection, event, message)
+        else:
+            quest_module.safe_reply(connection, event, message)
+
     if not args:
-        quest_module.safe_reply(connection, event, "Usage: !quest use <item> - Available items: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
+        send_response("Usage: !quest use <item> - Available items: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
         return True
 
     item_name = args[0].lower()
@@ -619,12 +629,12 @@ def handle_use_item(quest_module, connection, event, username, args):
     }
 
     if item_name not in item_map:
-        quest_module.safe_reply(connection, event, f"Unknown item: {item_name}. Available: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
+        send_response(f"Unknown item: {item_name}. Available: medkit, energy_potion, lucky_charm, armor_shard, xp_scroll, dungeon_relic")
         return True
 
     inventory_key = item_map[item_name]
     if inventory.get(inventory_key, 0) < 1:
-        quest_module.safe_reply(connection, event, f"You don't have any {item_name.replace('_', ' ')}s!")
+        send_response(f"You don't have any {item_name.replace('_', ' ')}s!")
         return True
 
     # Ensure active effects list exists for legacy players
@@ -638,21 +648,19 @@ def handle_use_item(quest_module, connection, event, username, args):
 
         injuries = player.get("active_injuries", [])
         if not injuries:
-            quest_module.safe_reply(connection, event, "You are not injured! Save your medkit for when you need it.")
+            send_response("You are not injured! Save your medkit for when you need it.")
             return True
 
         player["inventory"]["medkits"] -= 1
         injury_healed = injuries.pop(0)
-        quest_module.safe_reply(
-            connection,
-            event,
+        send_response(
             f"You use a medkit to heal your {injury_healed['name']}. You feel much better! ({player['inventory']['medkits']} medkits remaining)"
         )
 
     elif inventory_key == "energy_potions":
         max_energy = quest_progression.get_player_max_energy(quest_module, player, event.target)
         if player.get("energy", 0) >= max_energy:
-            quest_module.safe_reply(connection, event, "Your energy is already full! Save the potion for later.")
+            send_response("Your energy is already full! Save the potion for later.")
             return True
 
         energy_restore = random.randint(2, 4)
@@ -660,16 +668,14 @@ def handle_use_item(quest_module, connection, event, username, args):
         old_energy = player.get("energy", 0)
         player["energy"] = min(max_energy, old_energy + energy_restore)
         actual_restore = player["energy"] - old_energy
-        quest_module.safe_reply(
-            connection,
-            event,
+        send_response(
             f"You drink the energy potion and feel refreshed! +{actual_restore} energy ({player['energy']}/{max_energy}). ({player['inventory']['energy_potions']} potions remaining)"
         )
 
     elif inventory_key == "lucky_charms":
         # Lucky charm boosts next fight win chance
         if any(effect.get("type") == "lucky_charm" for effect in player["active_effects"]):
-            quest_module.safe_reply(connection, event, "You already have a lucky charm active! The effects don't stack.")
+            send_response("You already have a lucky charm active! The effects don't stack.")
             return True
 
         player["inventory"]["lucky_charms"] -= 1
@@ -679,16 +685,14 @@ def handle_use_item(quest_module, connection, event, username, args):
             "win_bonus": win_bonus,
             "expires": "next_fight"
         })
-        quest_module.safe_reply(
-            connection,
-            event,
+        send_response(
             f"You activate the lucky charm! Your next fight will have +{win_bonus}% win chance. ({player['inventory']['lucky_charms']} charms remaining)"
         )
 
     elif inventory_key == "armor_shards":
         # Armor shard reduces injury chance for the next three fights
         if any(effect.get("type") == "armor_shard" for effect in player["active_effects"]):
-            quest_module.safe_reply(connection, event, "You already have armor protection active! The effects don't stack.")
+            send_response("You already have armor protection active! The effects don't stack.")
             return True
 
         player["inventory"]["armor_shards"] -= 1
@@ -697,16 +701,14 @@ def handle_use_item(quest_module, connection, event, username, args):
             "injury_reduction": 0.30,
             "remaining_fights": 3
         })
-        quest_module.safe_reply(
-            connection,
-            event,
+        send_response(
             f"You equip the armor shard! Injury chance reduced by 30% for the next 3 fights. ({player['inventory']['armor_shards']} shards remaining)"
         )
 
     elif inventory_key == "xp_scrolls":
         # XP scroll boosts XP on next victory
         if any(effect.get("type") == "xp_scroll" for effect in player["active_effects"]):
-            quest_module.safe_reply(connection, event, "You already have an XP scroll active! The effects don't stack.")
+            send_response("You already have an XP scroll active! The effects don't stack.")
             return True
 
         player["inventory"]["xp_scrolls"] -= 1
@@ -715,9 +717,7 @@ def handle_use_item(quest_module, connection, event, username, args):
             "xp_multiplier": 1.5,
             "expires": "next_win"
         })
-        quest_module.safe_reply(
-            connection,
-            event,
+        send_response(
             f"You read the XP scroll! Your next victory will grant 1.5x XP. ({player['inventory']['xp_scrolls']} scrolls remaining)"
         )
 
@@ -729,9 +729,7 @@ def handle_use_item(quest_module, connection, event, username, args):
             existing["remaining_auto_wins"] = existing.get("remaining_auto_wins", 0) + DUNGEON_REWARD_CHARGES
             existing.pop("triggered_this_fight", None)
             total_charges = existing["remaining_auto_wins"]
-            quest_module.safe_reply(
-                connection,
-                event,
+            send_response(
                 f"The {DUNGEON_REWARD_NAME} flares brighter! You now have {total_charges} guaranteed solo quest victories banked."
             )
         else:
@@ -739,9 +737,7 @@ def handle_use_item(quest_module, connection, event, username, args):
                 "type": "dungeon_relic",
                 "remaining_auto_wins": DUNGEON_REWARD_CHARGES
             })
-            quest_module.safe_reply(
-                connection,
-                event,
+            send_response(
                 f"The {DUNGEON_REWARD_NAME} hums with power. Your next {DUNGEON_REWARD_CHARGES} solo quests (including !dungeon rooms) are automatic victories."
             )
 

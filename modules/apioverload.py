@@ -306,7 +306,7 @@ class ApiOverload(SimpleCommandModule):
             data = response.json()
 
             # Build the full URL
-            cat_url = f"https://cataas.com{data.get('url', '/cat')}"
+            cat_url = f"{data.get('url', '/cat')}"
 
             tags = data.get("tags", [])
             tags_str = f" (tags: {', '.join(tags)})" if tags else ""

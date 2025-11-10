@@ -120,7 +120,7 @@ def handle_profile(quest_module, connection, event, username, args):
         items.append(f"{DUNGEON_REWARD_NAME}s: {inventory[DUNGEON_REWARD_KEY]}")
 
     if not items:
-        items_msg = "No items (try !quest search)"
+        items_msg = "No combat consumables on hand"
     else:
         items_msg = ", ".join(items)
 
@@ -151,6 +151,12 @@ def handle_profile(quest_module, connection, event, username, args):
 
     # Output inventory and status
     quest_module.safe_reply(connection, event, f"Inventory: {items_msg}")
+
+    dungeon_cache = quest_utils.describe_dungeon_cache(quest_utils.get_dungeon_item_cache(player))
+    if dungeon_cache:
+        quest_module.safe_reply(connection, event, f"Dungeon Cache: {', '.join(dungeon_cache)}")
+    else:
+        quest_module.safe_reply(connection, event, "Dungeon Cache: empty (spend energy on !quest search before !dungeon)")
     if effects:
         quest_module.safe_reply(connection, event, f"Active Effects: {', '.join(effects)}")
     if injuries:
@@ -261,7 +267,7 @@ def cmd_inventory(quest_module, connection, event, msg, username, match):
         items.append(f"{DUNGEON_REWARD_NAME}s: {inventory[DUNGEON_REWARD_KEY]}")
 
     if not items:
-        items_msg = "No items (try !quest search)"
+        items_msg = "No combat consumables on hand"
     else:
         items_msg = ", ".join(items)
 
@@ -281,6 +287,12 @@ def cmd_inventory(quest_module, connection, event, msg, username, match):
 
     # Build final message
     quest_module.safe_reply(connection, event, f"{title}'s Inventory: {items_msg}")
+
+    dungeon_cache = quest_utils.describe_dungeon_cache(quest_utils.get_dungeon_item_cache(player))
+    if dungeon_cache:
+        quest_module.safe_reply(connection, event, f"Dungeon Cache: {', '.join(dungeon_cache)}")
+    else:
+        quest_module.safe_reply(connection, event, f"Dungeon Cache: empty (run !quest search before !dungeon)")
     if effects:
         quest_module.safe_reply(connection, event, f"Active Effects: {', '.join(effects)}")
 

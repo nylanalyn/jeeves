@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
 from .constants import (
-    UTC, DUNGEON_REWARD_KEY, DUNGEON_REWARD_NAME, DUNGEON_REWARD_CHARGES
+    UTC,
+    DUNGEON_ITEMS,
+    DUNGEON_REWARD_KEY,
+    DUNGEON_REWARD_NAME,
+    DUNGEON_REWARD_CHARGES,
 )
 from . import quest_utils
 from . import quest_progression
@@ -395,81 +399,71 @@ def try_drop_item_from_combat(quest_module, player: Dict[str, Any], event, is_wi
         return f"You found multiple items: {', '.join(dropped_items)}!"
 
 
-def perform_single_search(quest_module, player: Dict[str, Any], event) -> Dict[str, Any]:
-    """
-    Perform a single search and return the result.
-    Returns: {"type": str, "item": str, "message": str, "xp_change": int}
-    """
-    roll = random.random()
-    result = {"type": "nothing", "item": None, "message": "", "xp_change": 0}
 
-    # Get search probabilities from config
-    medkit_chance = quest_module.get_config_value("search_system.medkit_chance", event.target, default=0.25)
-    energy_potion_chance = quest_module.get_config_value("search_system.energy_potion_chance", event.target, default=0.15)
-    lucky_charm_chance = quest_module.get_config_value("search_system.lucky_charm_chance", event.target, default=0.15)
-    armor_shard_chance = quest_module.get_config_value("search_system.armor_shard_chance", event.target, default=0.10)
-    xp_scroll_chance = quest_module.get_config_value("search_system.xp_scroll_chance", event.target, default=0.10)
+def _get_dungeon_item_find_chance(quest_module, event) -> float:
+    """Determine the effective find chance for dungeon counter-items."""
+    configured = quest_module.get_config_value("search_system.dungeon_item_chance", event.target, default=None)
+    if configured is not None:
+        return max(0.05, min(0.95, float(configured)))
+
+    legacy_keys = [
+        "medkit_chance",
+        "energy_potion_chance",
+        "lucky_charm_chance",
+        "armor_shard_chance",
+        "xp_scroll_chance",
+    ]
+    total = 0.0
+    for key in legacy_keys:
+        total += quest_module.get_config_value(f"search_system.{key}", event.target, default=0.0)
+    if total <= 0:
+        total = 0.65  # Fallback so search still works even if config omits legacy knobs
+    return max(0.05, min(0.95, total))
+
+
+def perform_dungeon_search(quest_module, player: Dict[str, Any], event) -> Dict[str, Any]:
+    """Perform a dungeon search roll and update the player's cache if successful."""
+    find_chance = _get_dungeon_item_find_chance(quest_module, event)
     injury_chance = quest_module.get_config_value("search_system.injury_chance", event.target, default=0.05)
+    injury_xp_min = quest_module.get_config_value("search_system.injury_xp_min", event.target, default=5)
+    injury_xp_max = quest_module.get_config_value("search_system.injury_xp_max", event.target, default=15)
 
-    cumulative = 0.0
-
-    # Medkit
-    cumulative += medkit_chance
-    if roll < cumulative:
-        player["inventory"]["medkits"] += 1
-        result = {"type": "item", "item": "medkit", "message": "a MEDKIT", "xp_change": 0}
-        return result
-
-    # Energy Potion
-    cumulative += energy_potion_chance
-    if roll < cumulative:
-        player["inventory"]["energy_potions"] += 1
-        result = {"type": "item", "item": "energy_potion", "message": "an ENERGY POTION", "xp_change": 0}
-        return result
-
-    # Lucky Charm
-    cumulative += lucky_charm_chance
-    if roll < cumulative:
-        player["inventory"]["lucky_charms"] += 1
-        result = {"type": "item", "item": "lucky_charm", "message": "a LUCKY CHARM", "xp_change": 0}
-        return result
-
-    # Armor Shard
-    cumulative += armor_shard_chance
-    if roll < cumulative:
-        player["inventory"]["armor_shards"] += 1
-        result = {"type": "item", "item": "armor_shard", "message": "an ARMOR SHARD", "xp_change": 0}
-        return result
-
-    # XP Scroll
-    cumulative += xp_scroll_chance
-    if roll < cumulative:
-        player["inventory"]["xp_scrolls"] += 1
-        result = {"type": "item", "item": "xp_scroll", "message": "an XP SCROLL", "xp_change": 0}
-        return result
-
-    # Minor Injury
-    cumulative += injury_chance
-    if roll < cumulative:
-        # Lose 1 energy and small XP
-        player["energy"] = max(0, player["energy"] - 1)
-        xp_loss = random.randint(5, 15)
-        result = {"type": "injury", "item": None, "message": "INJURED! Lost 1 energy", "xp_change": -xp_loss}
-        return result
-
-    # Nothing found
+    roll = random.random()
     result = {"type": "nothing", "item": None, "message": "nothing", "xp_change": 0}
+
+    if roll < find_chance:
+        item_key = quest_utils.pick_dungeon_item_key_for_player(player)
+        if not item_key:
+            return result
+        new_total = quest_utils.add_dungeon_item_to_cache(player, item_key)
+        result = {
+            "type": "item",
+            "item": item_key,
+            "message": quest_utils.get_dungeon_item_name(item_key),
+            "xp_change": 0,
+            "new_total": new_total,
+        }
+        return result
+
+    if roll < find_chance + injury_chance:
+        xp_loss = random.randint(int(injury_xp_min), int(max(injury_xp_min, injury_xp_max)))
+        player["energy"] = max(0, player.get("energy", 0) - 1)
+        result = {"type": "injury", "item": None, "message": "A lurking trap lashes out!", "xp_change": -xp_loss}
+        return result
+
+    # Nothing found, but narrate the miss
+    miss_messages = [
+        "nothing but dust",
+        "old warding sigils",
+        "spent torches",
+        "footprints leading nowhere",
+    ]
+    result["message"] = random.choice(miss_messages)
     return result
 
 
 def handle_search(quest_module, connection, event, username, args):
-    """Handle search command - search for items using energy."""
-    # Search has been retired in favor of combat drops
-    quest_module.safe_reply(connection, event, "Search has been retired! Items now drop from combat. Win fights for supplies, lose fights for medkits. Critical hits increase drop chances!")
-    return True
-
-def handle_search_old(quest_module, connection, event, username, args):
-    """OLD: Handle search command - search for items using energy."""
+    """Handle search command - spend energy to bank dungeon counter-items."""
     user_id = quest_module.bot.get_user_id(username)
     player = quest_progression.get_player(quest_module, user_id, username)
 
@@ -531,9 +525,9 @@ def handle_search_old(quest_module, connection, event, username, args):
     results = []
     total_xp_change = 0
     for _ in range(num_searches):
-        search_result = perform_single_search(quest_module, player, event)
+        search_result = perform_dungeon_search(quest_module, player, event)
         results.append(search_result)
-        total_xp_change += search_result["xp_change"]
+        total_xp_change += search_result.get("xp_change", 0)
 
     # Apply XP change if any
     if total_xp_change < 0:
@@ -546,57 +540,54 @@ def handle_search_old(quest_module, connection, event, username, args):
     quest_module.save_state()
 
     # Build result message
+    cache = quest_utils.get_dungeon_item_cache(player)
+
     if num_searches == 1:
         result = results[0]
-        msg = f"You search the area and find {result['message']}!"
-        if result["xp_change"] < 0:
-            msg += f" (Lost {abs(result['xp_change'])} XP)"
+        if result["type"] == "item":
+            msg = (
+                f"You scout the ruins and recover {result['message']}! "
+                f"Cache now holds {result.get('new_total', 1)}."
+            )
+        elif result["type"] == "injury":
+            msg = f"You trip a ward and get rattled! (Lost {abs(result['xp_change'])} XP)"
+        else:
+            msg = "You search the area but find nothing useful."
         quest_module.safe_reply(connection, event, msg)
     else:
-        # Summarize multiple searches
-        item_counts = {
-            "medkit": 0,
-            "energy_potion": 0,
-            "lucky_charm": 0,
-            "armor_shard": 0,
-            "xp_scroll": 0,
-            "nothing": 0,
-            "injury": 0
-        }
-
+        item_counts: Dict[str, int] = {}
+        empty = 0
+        injuries = 0
         for result in results:
-            if result["type"] == "item":
-                item_counts[result["item"]] += 1
-            elif result["type"] == "nothing":
-                item_counts["nothing"] += 1
+            if result["type"] == "item" and result["item"]:
+                item_counts[result["item"]] = item_counts.get(result["item"], 0) + 1
             elif result["type"] == "injury":
-                item_counts["injury"] += 1
+                injuries += 1
+            else:
+                empty += 1
 
-        # Build summary
-        found_items = []
-        if item_counts["medkit"] > 0:
-            found_items.append(f"{item_counts['medkit']} medkit(s)")
-        if item_counts["energy_potion"] > 0:
-            found_items.append(f"{item_counts['energy_potion']} energy potion(s)")
-        if item_counts["lucky_charm"] > 0:
-            found_items.append(f"{item_counts['lucky_charm']} lucky charm(s)")
-        if item_counts["armor_shard"] > 0:
-            found_items.append(f"{item_counts['armor_shard']} armor shard(s)")
-        if item_counts["xp_scroll"] > 0:
-            found_items.append(f"{item_counts['xp_scroll']} XP scroll(s)")
-
-        msg = f"After {num_searches} searches, you found: "
-        if found_items:
-            msg += ", ".join(found_items)
+        if item_counts:
+            found_segments = []
+            for item in DUNGEON_ITEMS:
+                count = item_counts.get(item["key"])
+                if count:
+                    found_segments.append(f"{count}× {item['name']}")
+            summary = ", ".join(found_segments)
         else:
-            msg += "nothing of value"
+            summary = "no counter-items"
 
-        if item_counts["nothing"] > 0:
-            msg += f" ({item_counts['nothing']} empty search(es))"
-        if item_counts["injury"] > 0:
-            msg += f" (Injured {item_counts['injury']} time(s), lost {abs(total_xp_change)} XP)"
-
+        msg = f"After {num_searches} searches you secure {summary}."
+        if empty:
+            msg += f" ({empty} empty search{'es' if empty != 1 else ''})"
+        if injuries:
+            msg += f" ({injuries} trap{'s' if injuries != 1 else ''} sprung, lost {abs(total_xp_change)} XP)"
         quest_module.safe_reply(connection, event, msg)
+
+    cache_summary = quest_utils.describe_dungeon_cache(cache)
+    if cache_summary:
+        quest_module.safe_reply(connection, event, f"Dungeon cache: {', '.join(cache_summary)}")
+    else:
+        quest_module.safe_reply(connection, event, "Dungeon cache is empty. Use !quest search before charging into !dungeon.")
 
     return True
 
@@ -885,7 +876,7 @@ def handle_medkit(quest_module, connection, event, username, target_arg):
     # Check if player has medkits
     medkit_count = player.get("inventory", {}).get("medkits", 0)
     if medkit_count < 1:
-        quest_module.safe_reply(connection, event, f"You don't have any medkits, {quest_module.bot.title_for(username)}. Try !quest search to find one!")
+        quest_module.safe_reply(connection, event, f"You don't have any medkits, {quest_module.bot.title_for(username)}. Win some encounters or ask a medic!")
         return True
 
     # Determine target

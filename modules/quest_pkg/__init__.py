@@ -264,8 +264,6 @@ class Quest(SimpleCommandModule):
 
         self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_quest_transcend, name="quest_transcend",
                               description="Transcend beyond prestige to become a legend.")
-        self.register_command(r"^\s*!equip\s*$", self._cmd_dungeon_equip, name="dungeon_equip",
-                              description="Equip random dungeon gear that can counter threats inside !dungeon runs.")
         self.register_command(r"^\s*!dungeon\s*$", self._cmd_dungeon_run, name="dungeon_run",
                               description="Run a ten-room dungeon via private messages.")
         self.register_command(r"^\s*!dungeon\s+continue\s*$", self._cmd_dungeon_continue, name="dungeon_continue",
@@ -485,9 +483,6 @@ class Quest(SimpleCommandModule):
         args_str = (match.group(1) or "").strip() if match and match.lastindex else ""
         args = args_str.split() if args_str else []
         return quest_progression.handle_class(self, connection, event, username, args)
-
-    def _cmd_dungeon_equip(self, connection, event, msg, username, match):
-        return quest_progression.cmd_dungeon_equip(self, connection, event, msg, username, match)
 
     def _cmd_dungeon_run(self, connection, event, msg, username, match):
         return quest_progression.cmd_dungeon_run(self, connection, event, msg, username, match)

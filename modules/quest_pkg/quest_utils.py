@@ -7,7 +7,14 @@ import operator
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 
-from .constants import UTC, DUNGEON_ITEMS, DUNGEON_EQUIPPED_ITEMS, DUNGEON_PARTIAL_REWARDS, DUNGEON_SAFE_HAVENS, DUNGEON_MOMENTUM_BONUS
+from .constants import (
+    UTC,
+    DUNGEON_ITEMS,
+    DUNGEON_ITEMS_BY_KEY,
+    DUNGEON_PARTIAL_REWARDS,
+    DUNGEON_SAFE_HAVENS,
+    DUNGEON_MOMENTUM_BONUS,
+)
 
 
 def format_timedelta(future_datetime: datetime) -> str:
@@ -283,23 +290,67 @@ def safe_calculate(expr: str) -> float:
     return result
 
 
-def select_dungeon_loadout(count: int = None) -> List[Dict[str, Any]]:
-    """Select a random set of dungeon items."""
-    if count is None:
-        count = DUNGEON_EQUIPPED_ITEMS
-    if not DUNGEON_ITEMS:
-        return []
-    count = max(1, min(count, len(DUNGEON_ITEMS)))
-    return random.sample(DUNGEON_ITEMS, k=count)
-
-
 def get_dungeon_state(player: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure the player has a dungeon state block."""
     state = player.setdefault("dungeon_state", {})
     state.setdefault("equipped_items", [])
     state.setdefault("last_equipped", None)
     state.setdefault("last_run", None)
+    state.setdefault("stored_items", {})  # Items recovered via !quest search
     return state
+
+
+def get_dungeon_item_cache(player: Dict[str, Any]) -> Dict[str, int]:
+    """Return the mutable dungeon item cache for a player."""
+    state = get_dungeon_state(player)
+    cache = state.setdefault("stored_items", {})
+    # Ensure no legacy None sneaks in
+    for key, qty in list(cache.items()):
+        if qty is None:
+            cache[key] = 0
+    return cache
+
+
+def add_dungeon_item_to_cache(player: Dict[str, Any], item_key: str, amount: int = 1) -> int:
+    """Add dungeon counter-items to the player's cache. Returns new total for the item."""
+    cache = get_dungeon_item_cache(player)
+    cache[item_key] = max(0, cache.get(item_key, 0)) + max(0, amount)
+    return cache[item_key]
+
+
+def consume_dungeon_item_from_cache(player: Dict[str, Any], item_key: str, amount: int = 1) -> int:
+    """Consume dungeon counter-items from the cache. Returns remaining quantity after consumption."""
+    cache = get_dungeon_item_cache(player)
+    if amount <= 0:
+        return cache.get(item_key, 0)
+    cache[item_key] = max(0, cache.get(item_key, 0) - amount)
+    return cache[item_key]
+
+
+def pick_dungeon_item_key_for_player(player: Dict[str, Any]) -> Optional[str]:
+    """Pick which dungeon item should drop next, preferring items the player currently lacks."""
+    cache = get_dungeon_item_cache(player)
+    missing = [item["key"] for item in DUNGEON_ITEMS if cache.get(item["key"], 0) <= 0]
+    pool = missing or [item["key"] for item in DUNGEON_ITEMS]
+    if not pool:
+        return None
+    return random.choice(pool)
+
+
+def describe_dungeon_cache(cache: Dict[str, int]) -> List[str]:
+    """Return human readable descriptions for any cached dungeon items."""
+    descriptions: List[str] = []
+    for item in DUNGEON_ITEMS:
+        qty = cache.get(item["key"], 0)
+        if qty > 0:
+            descriptions.append(f"{item['name']}: {qty}")
+    return descriptions
+
+
+def get_dungeon_item_name(item_key: str) -> str:
+    """Return the user-facing name for a dungeon item key."""
+    item = DUNGEON_ITEMS_BY_KEY.get(item_key)
+    return item.get("name", item_key.replace('_', ' ').title()) if item else item_key
 
 
 def apply_dungeon_failure_penalty(quest_module, player: Dict[str, Any], user_id: str, username: str, room_reached: int = 1) -> int:
@@ -342,7 +393,7 @@ def calculate_dungeon_partial_reward(room_reached: int) -> Tuple[int, int]:
     return (0, 0)
 
 
-def grant_dungeon_quit_reward(quest_module, user_id: str, username: str, room_reached: int) -> str:
+def grant_dungeon_quit_reward(quest_module, user_id: str, username: str, room_reached: int, allow_xp: bool = True) -> str:
     """Grant XP rewards for safely quitting a dungeon.
 
     Returns a message describing what was rewarded.
@@ -350,9 +401,14 @@ def grant_dungeon_quit_reward(quest_module, user_id: str, username: str, room_re
     from . import quest_progression
 
     xp_reward, relic_charges = calculate_dungeon_partial_reward(room_reached)
+    if not allow_xp:
+        xp_reward = 0
 
+    rooms_text = f"{room_reached} room{'s' if room_reached != 1 else ''}"
     if xp_reward == 0:
-        return "You retreated safely after 1 room, but gained nothing."
+        if not allow_xp and room_reached > 1:
+            return f"You retreated safely after {rooms_text}, but counter-item shortcuts yield no XP."
+        return f"You retreated safely after {rooms_text}, but gained nothing."
 
     messages = []
     players = quest_module.get_state("players", {})

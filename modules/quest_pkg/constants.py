@@ -197,7 +197,8 @@ TOTAL_DUNGEON_ROOMS = len(DUNGEON_ROOMS)
 DUNGEON_ROOMS_BY_ID = {room["id"]: room for room in DUNGEON_ROOMS}
 
 # Dungeon Configuration
-DUNGEON_EQUIPPED_ITEMS = 4  # Number of items player can equip
+# Legacy knob retained for compatibility; equip limits now come from config.
+DUNGEON_EQUIPPED_ITEMS = 4
 DUNGEON_SAFE_HAVENS = [3, 6, 9]  # Room numbers where safe havens appear
 DUNGEON_MOMENTUM_BONUS = 0.02  # Win chance bonus per consecutive victory
 

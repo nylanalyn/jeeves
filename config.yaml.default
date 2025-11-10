@@ -338,14 +338,15 @@ quest:
     search_system:
         enabled: true
         energy_cost: 1  # Energy cost per search
-        # Drop probabilities (remaining % is "nothing found")
-        medkit_chance: 0.25           # 25%
-        energy_potion_chance: 0.15    # 15%
-        lucky_charm_chance: 0.15      # 15%
-        armor_shard_chance: 0.10      # 10%
-        xp_scroll_chance: 0.10        # 10%
-        injury_chance: 0.05           # 5% (bad outcome)
-        # 20% chance to find nothing
+        dungeon_item_chance: 0.75     # Chance to find a dungeon counter-item per search
+        injury_chance: 0.05           # Trap chance; still removes extra energy
+        injury_xp_min: 5              # Minimum XP lost when a trap triggers
+        injury_xp_max: 15             # Maximum XP lost when a trap triggers
+        # Legacy supply drop knobs (medkit_chance, etc.) are still read if you prefer the old loot table.
+
+    dungeon:
+        max_equipped_items: 7         # Counter-items you can equip per crawl (defaults to number of unique items)
+        dm_loadout_summary: true      # DM the auto-equipped counters + cache remainder when !dungeon starts
 
     # --- Group Content Settings ---
     group_content:

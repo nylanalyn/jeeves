@@ -1068,10 +1068,6 @@ class TemplateEngine:
                 "desc": "Abandon your dungeon run and claim partial rewards"
             },
             {
-                "cmd": "!equip",
-                "desc": "Equip random dungeon gear that can counter threats in dungeon runs"
-            },
-            {
                 "cmd": "!weblink",
                 "desc": "Generate a short-lived code to link your IRC account to the quest website for browser play"
             }

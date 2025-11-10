@@ -6,9 +6,17 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from .constants import (
-    UTC, DUNGEON_ROOMS, DUNGEON_ROOMS_BY_ID, TOTAL_DUNGEON_ROOMS,
-    DUNGEON_REWARD_KEY, DUNGEON_REWARD_NAME, DUNGEON_REWARD_EFFECT_TEXT,
-    DUNGEON_SAFE_HAVENS, DUNGEON_MOMENTUM_BONUS, DUNGEON_REWARD_CHARGES
+    UTC,
+    DUNGEON_ITEMS,
+    DUNGEON_ROOMS,
+    DUNGEON_ROOMS_BY_ID,
+    TOTAL_DUNGEON_ROOMS,
+    DUNGEON_REWARD_KEY,
+    DUNGEON_REWARD_NAME,
+    DUNGEON_REWARD_EFFECT_TEXT,
+    DUNGEON_SAFE_HAVENS,
+    DUNGEON_MOMENTUM_BONUS,
+    DUNGEON_REWARD_CHARGES,
 )
 from . import quest_utils
 
@@ -130,11 +138,12 @@ def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
         player["completed_challenge_paths"] = []
 
     # Dungeon run metadata
-    player.setdefault("dungeon_state", {
-        "equipped_items": [],
-        "last_equipped": None,
-        "last_run": None
-    })
+    dungeon_state = player.setdefault("dungeon_state", {})
+    dungeon_state.setdefault("equipped_items", [])
+    dungeon_state.setdefault("last_equipped", None)
+    dungeon_state.setdefault("last_run", None)
+    dungeon_state.setdefault("stored_items", {})
+    player["dungeon_state"] = dungeon_state
 
     # Hardcore mode state
     player.setdefault("hardcore_mode", False)
@@ -977,13 +986,28 @@ def handle_challenge_prestige(quest_module, connection, event, username, user_id
     return True
 
 
-def cmd_dungeon_equip(quest_module, connection, event, msg, username, match):
-    """Equip a random set of dungeon items for the next run."""
-    user_id = quest_module.bot.get_user_id(username)
-    player = get_player(quest_module, user_id, username)
+def _auto_prepare_dungeon_loadout(quest_module, channel: str, user_id: str, username: str, player: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Pull cached dungeon items into the equipped loadout before a new run."""
     dungeon_state = quest_utils.get_dungeon_state(player)
+    cache = quest_utils.get_dungeon_item_cache(player)
 
-    loadout = quest_utils.select_dungeon_loadout()
+    max_equipped_default = len(DUNGEON_ITEMS)
+    max_equipped = quest_module.get_config_value(
+        "dungeon.max_equipped_items", channel, default=max_equipped_default
+    )
+    max_equipped = int(max(0, min(max_equipped, max_equipped_default)))
+
+    loadout: List[Dict[str, Any]] = []
+    if max_equipped > 0:
+        for item in DUNGEON_ITEMS:
+            available = cache.get(item["key"], 0)
+            if available <= 0:
+                continue
+            quest_utils.consume_dungeon_item_from_cache(player, item["key"], 1)
+            loadout.append(item)
+            if len(loadout) >= max_equipped:
+                break
+
     dungeon_state["equipped_items"] = [item["key"] for item in loadout]
     dungeon_state["last_equipped"] = datetime.now(UTC).isoformat()
 
@@ -992,29 +1016,7 @@ def cmd_dungeon_equip(quest_module, connection, event, msg, username, match):
     quest_module.set_state("players", players)
     quest_module.save_state()
 
-    item_names = ", ".join(item["name"] for item in loadout)
-    quest_module.safe_reply(
-        connection,
-        event,
-        f"{username} draws {item_names}. Use !dungeon when you want the DM blow-by-blow; it will be spammy!"
-    )
-
-    if quest_module.get_config_value("dungeon.dm_loadout_summary", event.target, default=True):
-        summary_lines = ["Dungeon Loadout:"]
-        for item in loadout:
-            counter_rooms = [
-                DUNGEON_ROOMS_BY_ID[room_id]["name"]
-                for room_id in item.get("counters", [])
-                if room_id in DUNGEON_ROOMS_BY_ID
-            ]
-            if counter_rooms:
-                summary_lines.append(f"- {item['name']}: counters {', '.join(counter_rooms)}")
-            else:
-                summary_lines.append(f"- {item['name']}: {item['description']}")
-        summary_lines.append("Use !dungeon to begin. Final results still land in-channel.")
-        quest_module.safe_privmsg(username, "\n".join(summary_lines))
-
-    return True
+    return loadout
 
 
 def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
@@ -1025,25 +1027,65 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
     user_id = quest_module.bot.get_user_id(username)
     player = get_player(quest_module, user_id, username)
     dungeon_state = quest_utils.get_dungeon_state(player)
-    equipped_keys = dungeon_state.get("equipped_items", [])
-
-    if not equipped_keys:
-        quest_module.safe_reply(connection, event,
-                            f"{quest_module.bot.title_for(username)}, you need to !equip before taking on the dungeon.")
-        return True
-
     channel = event.target
     start_time = datetime.now(UTC).isoformat()
+    starting_new_run = not dungeon_state.get("active_run")
+
+    loadout_for_run: List[Dict[str, Any]] = []
+    if starting_new_run:
+        loadout_for_run = _auto_prepare_dungeon_loadout(quest_module, channel, user_id, username, player)
+        equipped_keys = dungeon_state.get("equipped_items", [])
+
+        if loadout_for_run:
+            item_names = ", ".join(item["name"] for item in loadout_for_run)
+            quest_module.safe_reply(
+                connection,
+                event,
+                f"{username} draws on cached gear: {item_names}."
+            )
+        else:
+            quest_module.safe_reply(
+                connection,
+                event,
+                f"{username} has no cached counter-items. Every room will challenge you—spend energy on !quest search to stock up."
+            )
+
+        if quest_module.get_config_value("dungeon.dm_loadout_summary", channel, default=True):
+            summary_lines = ["Dungeon Loadout:"]
+            if loadout_for_run:
+                for item in loadout_for_run:
+                    counter_rooms = [
+                        DUNGEON_ROOMS_BY_ID[room_id]["name"]
+                        for room_id in item.get("counters", [])
+                        if room_id in DUNGEON_ROOMS_BY_ID
+                    ]
+                    if counter_rooms:
+                        summary_lines.append(f"- {item['name']}: counters {', '.join(counter_rooms)}")
+                    else:
+                        summary_lines.append(f"- {item['name']}: {item['description']}")
+            else:
+                summary_lines.append("- No counter-items equipped. Expect every encounter to trigger.")
+
+            cache_summary = quest_utils.describe_dungeon_cache(quest_utils.get_dungeon_item_cache(player))
+            if cache_summary:
+                summary_lines.append("")
+                summary_lines.append(f"Cached items remaining: {', '.join(cache_summary)}")
+            summary_lines.append("Loadout auto-equipped for this dungeon run; final results still land in-channel.")
+            quest_module.safe_privmsg(username, "\n".join(summary_lines))
+    else:
+        equipped_keys = dungeon_state.get("equipped_items", [])
 
     # Initialize or continue run
-    if "active_run" not in dungeon_state or not dungeon_state["active_run"]:
+    if starting_new_run:
         # Starting new run
         dungeon_state["active_run"] = {
             "started": start_time,
             "channel": channel,
             "current_room": 1,
             "momentum": 0,  # Consecutive victories
-            "rooms_cleared": 0
+            "rooms_cleared": 0,
+            "bypass_used": False,
+            "xp_notice_sent": False
         }
         dungeon_state["last_run"] = {
             "started": start_time,
@@ -1076,6 +1118,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             # Bypassed rooms still count for momentum
             momentum += 1
             active_run["momentum"] = momentum
+            active_run["bypass_used"] = True
 
             # Check for safe haven after bypass
             if index in DUNGEON_SAFE_HAVENS:
@@ -1129,6 +1172,11 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
         win = random.random() < win_chance
 
         if win:
+            bypass_active = active_run.get("bypass_used", False)
+            if bypass_active and not active_run.get("xp_notice_sent"):
+                quest_module.safe_privmsg(username, "Dungeon spirits refuse to grant XP when you rely on counter-item shortcuts.")
+                active_run["xp_notice_sent"] = True
+
             _, xp_award, xp_effect_msgs = apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=True)
             quest_module.safe_privmsg(username, f"You defeat the {monster['name']}! (Win chance: {win_chance:.0%})")
             for msg_text in xp_effect_msgs:
@@ -1141,7 +1189,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
                 "win": True
             }
 
-            if xp_award > 0:
+            if xp_award > 0 and not bypass_active:
                 xp_messages = grant_xp(quest_module, user_id, username, xp_award, is_win=True)
                 for xp_msg in xp_messages:
                     quest_module.safe_privmsg(username, xp_msg)
@@ -1275,7 +1323,7 @@ def cmd_dungeon_continue(quest_module, connection, event, msg, username, match):
     dungeon_state = quest_utils.get_dungeon_state(player)
 
     if "active_run" not in dungeon_state or not dungeon_state["active_run"]:
-        quest_module.safe_reply(connection, event, "You don't have an active dungeon run. Use !equip then !dungeon to start.")
+        quest_module.safe_reply(connection, event, "You don't have an active dungeon run. Use !quest search to stock up, then enter with !dungeon.")
         return True
 
     active_run = dungeon_state["active_run"]
@@ -1313,7 +1361,8 @@ def cmd_dungeon_quit(quest_module, connection, event, msg, username, match):
         return True
 
     # Grant quit rewards (XP only)
-    reward_msg = quest_utils.grant_dungeon_quit_reward(quest_module, user_id, username, rooms_cleared)
+    allow_xp = not active_run.get("bypass_used", False)
+    reward_msg = quest_utils.grant_dungeon_quit_reward(quest_module, user_id, username, rooms_cleared, allow_xp=allow_xp)
 
     # Clean up dungeon state
     dungeon_state["last_run"].update({

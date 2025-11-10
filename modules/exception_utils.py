@@ -44,6 +44,11 @@ class StateException(JeevesException):
     pass
 
 
+class PermissionException(JeevesException):
+    """Exception raised for permission/authorization errors."""
+    pass
+
+
 def safe_execute(
     func: Callable,
     *args,

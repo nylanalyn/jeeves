@@ -76,7 +76,7 @@ class Quest(SimpleCommandModule):
         super().update_state(updates)
 
     def _get_content(self, key: str, channel: str = None, default: Any = None) -> Any:
-        """Get content from JSON file, falling back to config if not found."""
+        """Get content from quest JSON, falling back to config."""
         content = self.quest_content
         if isinstance(content, dict):
             if key in content:
@@ -95,8 +95,26 @@ class Quest(SimpleCommandModule):
                         break
                 if current is not missing:
                     return current
-        # Fall back to config
+        # Fall back to config as legacy support
         return self.get_config_value(key, channel, default=default)
+
+    def get_injury_config(self, channel: str = None) -> Dict[str, Any]:
+        """Return injury settings with config-based overrides applied."""
+        injury_config = self._get_content("injury_system", channel, default={}) or {}
+        if not isinstance(injury_config, dict):
+            injury_config = {}
+        else:
+            injury_config = dict(injury_config)
+
+        enabled_override = self.get_config_value("injury_system.enabled", channel, default=None)
+        if enabled_override is not None:
+            injury_config["enabled"] = enabled_override
+
+        chance_override = self.get_config_value("injury_system.injury_chance_on_loss", channel, default=None)
+        if chance_override is not None:
+            injury_config["injury_chance_on_loss"] = chance_override
+
+        return injury_config
 
     def on_load(self):
         super().on_load()
@@ -795,7 +813,7 @@ class Quest(SimpleCommandModule):
             return True
 
         # Get available injuries
-        injury_config = self._get_content("injury_system", event.target, default={})
+        injury_config = self.get_injury_config(event.target)
         possible_injuries = injury_config.get("injuries", [])
 
         if not possible_injuries:

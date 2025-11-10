@@ -193,23 +193,45 @@ class ModuleBase(ABC):
     def get_config_value(self, key: str, channel: Optional[str] = None, default: Any = None) -> Any:
         """
         Gets a configuration value for the module, checking for a channel-specific
-        override before falling back to the global setting.
+        override before falling back to the global setting. Supports dotted keys
+        (e.g. "energy_system.enabled") for nested config blocks.
         """
+
+        def resolve(config_section: Optional[Dict[str, Any]], dotted_key: str) -> Any:
+            """Resolve dotted keys within a config section."""
+            if not isinstance(config_section, dict) or dotted_key is None:
+                return None
+
+            if dotted_key in config_section:
+                return config_section[dotted_key]
+
+            if "." not in dotted_key:
+                return None
+
+            current: Any = config_section
+            for part in dotted_key.split("."):
+                if isinstance(current, dict) and part in current:
+                    current = current[part]
+                else:
+                    return None
+            return current
+
         try:
             full_config = self.bot.config
             module_config = full_config.get(self.name, {})
 
             if channel:
-                channel_override = module_config.get("channels", {}).get(channel, {}).get(key)
+                channel_config = module_config.get("channels", {}).get(channel)
+                channel_override = resolve(channel_config, key)
                 if channel_override is not None:
                     return channel_override
 
-            global_value = module_config.get(key)
+            global_value = resolve(module_config, key)
             if global_value is not None:
                 return global_value
         except Exception as e:
             self.log_debug(f"Error reading config key '{key}': {e}")
-        
+
         return default
 
     def is_enabled(self, channel: str) -> bool:

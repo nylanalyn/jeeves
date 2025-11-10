@@ -48,7 +48,9 @@
       "Bash(pip install:*)",
       "WebFetch(domain:pypi.org)",
       "WebFetch(domain:files.pythonhosted.org)",
-      "Bash(git revert:*)"
+      "Bash(git revert:*)",
+      "Bash(curl:*)",
+      "Bash(env)"
     ],
     "deny": [],
     "ask": []

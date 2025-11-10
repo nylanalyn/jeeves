@@ -1,7 +1,8 @@
 """
-from typing import Any
 Cryptocurrency price checking module using CoinGecko API.
 """
+
+from typing import Any
 
 import requests
 from .base import SimpleCommandModule

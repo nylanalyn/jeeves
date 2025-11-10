@@ -15,6 +15,10 @@ import json
 import urllib.parse
 from datetime import datetime
 from .base import SimpleCommandModule
+from .exception_utils import (
+    handle_exceptions, safe_api_call, ExternalAPIException, 
+    UserInputException, log_module_event, log_security_event
+)
 
 
 def setup(bot):
@@ -107,63 +111,91 @@ class ApiOverload(SimpleCommandModule):
 
         return True
 
+    @handle_exceptions(
+        error_message="TCGdex API call failed",
+        user_message="Unable to fetch card information at the moment. Please try again later.",
+        log_exception=True,
+        reraise=False
+    )
     def _cmd_card(self, connection, event, msg, username, match):
         """Search TCGdex for trading card information"""
         if not self.is_enabled(event.target):
             return False
 
         search_term = match.group(1).strip()
+        
+        # Validate search term
+        if len(search_term) > 100:
+            raise UserInputException("Search term too long", "Search term is too long. Please use a shorter search term.")
 
-        try:
-            # TCGdex API - search for Pokemon cards (most popular TCG)
-            url = f"https://api.tcgdex.net/v2/en/cards?name={urllib.parse.quote(search_term)}"
-            response = self.http_session.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        # TCGdex API - search for Pokemon cards (most popular TCG)
+        url = f"https://api.tcgdex.net/v2/en/cards?name={urllib.parse.quote(search_term)}"
+        response = safe_api_call(
+            self.http_session.get, url, timeout=10,
+            api_name="TCGdex API",
+            user_message="Unable to fetch card information at the moment. Please try again later."
+        )
+        
+        if not response:
+            return False
+            
+        response.raise_for_status()
+        data = response.json()
 
-            if not data or len(data) == 0:
-                self.safe_reply(connection, event, f"No cards found for '{search_term}'")
-                return True
+        if not data or len(data) == 0:
+            self.safe_reply(connection, event, f"No cards found for '{search_term}'")
+            return True
 
-            # Get first card's basic info
-            card = data[0]
-            card_id = card.get("id", "")
+        # Get first card's basic info
+        card = data[0]
+        card_id = card.get("id", "")
 
-            # Fetch full card details to get flavor text
-            detail_url = f"https://api.tcgdex.net/v2/en/cards/{card_id}"
-            detail_response = self.http_session.get(detail_url, timeout=10)
-            detail_response.raise_for_status()
-            full_card = detail_response.json()
+        # Fetch full card details to get flavor text
+        detail_url = f"https://api.tcgdex.net/v2/en/cards/{card_id}"
+        detail_response = safe_api_call(
+            self.http_session.get, detail_url, timeout=10,
+            api_name="TCGdex Detail API",
+            user_message="Unable to fetch card details at the moment."
+        )
+        
+        if not detail_response:
+            return False
+            
+        detail_response.raise_for_status()
+        full_card = detail_response.json()
 
-            card_name = full_card.get("name", "Unknown Card")
-            set_name = full_card.get("set", {}).get("name", "Unknown Set")
-            rarity = full_card.get("rarity", "Unknown")
+        card_name = full_card.get("name", "Unknown Card")
+        set_name = full_card.get("set", {}).get("name", "Unknown Set")
+        rarity = full_card.get("rarity", "Unknown")
 
-            # Get HP and types if available
-            hp = full_card.get("hp", "N/A")
-            types = full_card.get("types", [])
-            types_str = "/".join(types) if types else "N/A"
+        # Get HP and types if available
+        hp = full_card.get("hp", "N/A")
+        types = full_card.get("types", [])
+        types_str = "/".join(types) if types else "N/A"
 
-            # Get flavor text (description)
-            flavor_text = full_card.get("description", "")
+        # Get flavor text (description)
+        flavor_text = full_card.get("description", "")
 
-            # Build response
-            response_text = f"{card_name} ({card_id}) - {set_name} | Type: {types_str} | HP: {hp} | Rarity: {rarity}"
+        # Build response
+        response_text = f"{card_name} ({card_id}) - {set_name} | Type: {types_str} | HP: {hp} | Rarity: {rarity}"
 
-            # Add flavor text if available (trim if too long)
-            if flavor_text:
-                if len(flavor_text) > 150:
-                    flavor_text = flavor_text[:150] + "..."
-                response_text += f" | {flavor_text}"
+        # Add flavor text if available (trim if too long)
+        if flavor_text:
+            if len(flavor_text) > 150:
+                flavor_text = flavor_text[:150] + "..."
+            response_text += f" | {flavor_text}"
 
-            self.safe_reply(connection, event, response_text)
-
-        except Exception as e:
-            self.log_debug(f"Error fetching card data: {e}")
-            self.safe_reply(connection, event, f"Error fetching card data: {str(e)}")
+        self.safe_reply(connection, event, response_text)
+        log_module_event(self.name, "Card information fetched", {"user": username, "search_term": search_term})
 
         return True
 
+    @handle_exceptions(
+        error_message="Bible API call failed",
+        user_message="Unable to fetch Bible verse at the moment. Please try again later.",
+        log_exception=True,
+        reraise=False
+    )
     def _cmd_verse(self, connection, event, msg, username, match):
         """Get a Bible verse from API.Bible"""
         if not self.is_enabled(event.target):
@@ -176,57 +208,78 @@ class ApiOverload(SimpleCommandModule):
                           "Bible API key not configured. Please add 'bible_api_key' to api_keys in config to use this command.")
             return True
 
-        try:
-            # API.Bible requires authentication
-            headers = {"api-key": self.bible_api_key}
+        # Validate verse reference
+        if len(verse_ref) > 100:
+            raise UserInputException("Verse reference too long", "Verse reference is too long. Please use a shorter reference.")
 
-            # Using KJV Bible
-            bible_id = "de4e12af7f28f599-02"
+        # API.Bible requires authentication
+        headers = {"api-key": self.bible_api_key}
 
-            # First, search to find the verse ID
-            search_url = f"https://rest.api.bible/v1/bibles/{bible_id}/search"
-            params = {"query": verse_ref, "limit": 1}
-            response = self.http_session.get(search_url, headers=headers, params=params, timeout=10)
+        # Using KJV Bible
+        bible_id = "de4e12af7f28f599-02"
 
-            # Log the actual response for debugging
-            self.log_debug(f"[apioverload] Bible API status: {response.status_code}")
+        # First, search to find the verse ID
+        search_url = f"https://rest.api.bible/v1/bibles/{bible_id}/search"
+        params = {"query": verse_ref, "limit": 1}
+        response = safe_api_call(
+            self.http_session.get, search_url, headers=headers, params=params, timeout=10,
+            api_name="Bible Search API",
+            user_message="Unable to search for Bible verse at the moment."
+        )
+        
+        if not response:
+            return False
 
-            response.raise_for_status()
-            data = response.json()
+        # Log the actual response for debugging
+        self.log_debug(f"[apioverload] Bible API status: {response.status_code}")
 
-            if not data.get("data", {}).get("verses"):
-                self.safe_reply(connection, event, f"Verse not found: {verse_ref}")
-                return True
+        response.raise_for_status()
+        data = response.json()
 
-            # Get the verse ID
-            verse_data = data["data"]["verses"][0]
-            verse_id = verse_data.get("id")
+        if not data.get("data", {}).get("verses"):
+            self.safe_reply(connection, event, f"Verse not found: {verse_ref}")
+            return True
 
-            # Now fetch the full verse text
-            verse_url = f"https://rest.api.bible/v1/bibles/{bible_id}/verses/{verse_id}"
-            verse_response = self.http_session.get(verse_url, headers=headers, params={"content-type": "text"}, timeout=10)
-            verse_response.raise_for_status()
-            verse_json = verse_response.json()
+        # Get the verse ID
+        verse_data = data["data"]["verses"][0]
+        verse_id = verse_data.get("id")
 
-            verse_content = verse_json.get("data", {}).get("content", "")
-            verse_reference = verse_json.get("data", {}).get("reference", verse_ref)
+        # Now fetch the full verse text
+        verse_url = f"https://rest.api.bible/v1/bibles/{bible_id}/verses/{verse_id}"
+        verse_response = safe_api_call(
+            self.http_session.get, verse_url, headers=headers, params={"content-type": "text"}, timeout=10,
+            api_name="Bible Verse API",
+            user_message="Unable to fetch verse text at the moment."
+        )
+        
+        if not verse_response:
+            return False
+            
+        verse_response.raise_for_status()
+        verse_json = verse_response.json()
 
-            # Clean up HTML tags if present
-            import re
-            verse_text = re.sub(r'<[^>]+>', '', verse_content).strip()
+        verse_content = verse_json.get("data", {}).get("content", "")
+        verse_reference = verse_json.get("data", {}).get("reference", verse_ref)
 
-            # Trim if too long
-            if len(verse_text) > 350:
-                verse_text = verse_text[:350] + "..."
+        # Clean up HTML tags if present
+        import re
+        verse_text = re.sub(r'<[^>]+>', '', verse_content).strip()
 
-            self.safe_reply(connection, event, f"{verse_reference}: {verse_text}")
+        # Trim if too long
+        if len(verse_text) > 350:
+            verse_text = verse_text[:350] + "..."
 
-        except Exception as e:
-            self.log_debug(f"[apioverload] Error fetching Bible verse: {e}")
-            self.safe_reply(connection, event, f"Error fetching verse: {str(e)}")
+        self.safe_reply(connection, event, f"{verse_reference}: {verse_text}")
+        log_module_event(self.name, "Bible verse fetched", {"user": username, "verse": verse_ref})
 
         return True
 
+    @handle_exceptions(
+        error_message="Brewery API call failed",
+        user_message="Unable to fetch brewery information at the moment. Please try again later.",
+        log_exception=True,
+        reraise=False
+    )
     def _cmd_brewery(self, connection, event, msg, username, match):
         """Search Open Brewery DB"""
         if not self.is_enabled(event.target):
@@ -239,43 +292,50 @@ class ApiOverload(SimpleCommandModule):
             url = "https://api.openbrewerydb.org/v1/breweries/random"
         else:
             search_term = search_term.strip()
+            # Validate search term
+            if len(search_term) > 50:
+                raise UserInputException("Search term too long", "Search term is too long. Please use a shorter search term.")
             # Search by city or name
             url = f"https://api.openbrewerydb.org/v1/breweries?by_city={urllib.parse.quote(search_term)}&per_page=1"
 
-        try:
-            response = self.http_session.get(url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        response = safe_api_call(
+            self.http_session.get, url, timeout=10,
+            api_name="Brewery API",
+            user_message="Unable to fetch brewery information at the moment."
+        )
+        
+        if not response:
+            return False
+            
+        response.raise_for_status()
+        data = response.json()
 
-            # Handle both single object and array responses
-            if isinstance(data, list):
-                if len(data) == 0:
-                    self.safe_reply(connection, event, f"No breweries found for '{search_term}'")
-                    return True
-                brewery = data[0]
-            else:
-                brewery = data
+        # Handle both single object and array responses
+        if isinstance(data, list):
+            if len(data) == 0:
+                self.safe_reply(connection, event, f"No breweries found for '{search_term}'")
+                return True
+            brewery = data[0]
+        else:
+            brewery = data
 
-            name = brewery.get("name", "Unknown Brewery")
-            brewery_type = brewery.get("brewery_type", "").replace("_", " ").title()
-            city = brewery.get("city", "")
-            state = brewery.get("state", "")
-            country = brewery.get("country", "")
+        name = brewery.get("name", "Unknown Brewery")
+        brewery_type = brewery.get("brewery_type", "").replace("_", " ").title()
+        city = brewery.get("city", "")
+        state = brewery.get("state", "")
+        country = brewery.get("country", "")
 
-            location_parts = [p for p in [city, state, country] if p]
-            location = ", ".join(location_parts) if location_parts else "Unknown Location"
+        location_parts = [p for p in [city, state, country] if p]
+        location = ", ".join(location_parts) if location_parts else "Unknown Location"
 
-            website = brewery.get("website_url", "")
+        website = brewery.get("website_url", "")
 
-            response_text = f"{name} ({brewery_type}) - {location}"
-            if website:
-                response_text += f" | {website}"
+        response_text = f"{name} ({brewery_type}) - {location}"
+        if website:
+            response_text += f" | {website}"
 
-            self.safe_reply(connection, event, response_text)
-
-        except Exception as e:
-            self.log_debug(f"Error fetching brewery data: {e}")
-            self.safe_reply(connection, event, f"Error fetching brewery data: {str(e)}")
+        self.safe_reply(connection, event, response_text)
+        log_module_event(self.name, "Brewery information fetched", {"user": username, "search_term": search_term or "random"})
 
         return True
 

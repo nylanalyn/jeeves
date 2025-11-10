@@ -9,6 +9,23 @@ import time
 from urllib.parse import quote_plus
 from typing import Optional, Dict, Any
 
+try:
+    from modules.exception_utils import (
+        handle_exceptions, safe_api_call, safe_file_operation,
+        ExternalAPIException, NetworkException, UserInputException
+    )
+except ImportError:
+    # Fallback for when exception_utils is not available
+    def handle_exceptions(func):
+        return func
+    def safe_api_call(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    def safe_file_operation(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    class ExternalAPIException(Exception): pass
+    class NetworkException(Exception): pass
+    class UserInputException(Exception): pass
+
 from .base import ModuleBase 
 
 try:
@@ -47,7 +64,8 @@ class Convenience(ModuleBase):
         if youtube_api_key and build:
             try:
                 self.youtube_service = build('youtube', 'v3', developerKey=youtube_api_key)
-            except Exception as e:
+            except (ImportError, AttributeError, Exception) as e:
+                self.log_module_event("ERROR", f"Failed to build YouTube service: {e}")
                 self._record_error(f"Failed to build YouTube service: {e}")
 
     def _register_commands(self):
@@ -142,7 +160,7 @@ class Convenience(ModuleBase):
                 for part in content_chunk:
                     # Check total elapsed time
                     if time.time() - start_time > max_total_time:
-                        self.log_debug(f"URL title fetch timed out for {url}")
+                        self.log_module_event("WARNING", f"URL title fetch timed out for {url}")
                         break
 
                     html_head += part
@@ -160,8 +178,8 @@ class Convenience(ModuleBase):
                     soup = BeautifulSoup(html_head, 'html.parser')
                     if soup.title and soup.title.string:
                         return html.unescape(soup.title.string)
-        except Exception as e:
-            self.log_debug(f"Error parsing title for {url}: {e}")
+        except (requests.RequestException, ValueError, AttributeError, TimeoutError) as e:
+            self.log_module_event("WARNING", f"Error parsing title for {url}: {e}")
             return None
         return None
 
@@ -328,7 +346,8 @@ class Convenience(ModuleBase):
             top_item = root.find('.//item')
             if top_item is not None and (title := top_item.find('title')) is not None and (link := top_item.find('link')) is not None:
                 return {"title": title.text, "link": link.text}
-        except Exception as e:
+        except (requests.RequestException, ET.ParseError, AttributeError, ValueError) as e:
+            self.log_module_event("ERROR", f"Google News RSS request failed for '{rss_url}': {e}")
             self._record_error(f"Google News RSS request failed for '{rss_url}': {e}")
         return None
 
@@ -433,7 +452,8 @@ class Convenience(ModuleBase):
                 "duration": self._parse_duration(video_data['contentDetails']['duration']),
                 "url": f"https://www.youtube.com/watch?v={video_id}"
             }
-        except Exception as e:
+        except (AttributeError, KeyError, ValueError, Exception) as e:
+            self.log_module_event("ERROR", f"YouTube API video request failed for ID '{video_id}': {e}")
             self._record_error(f"YouTube API video request failed for ID '{video_id}': {e}")
             return None
 
@@ -445,7 +465,8 @@ class Convenience(ModuleBase):
             if not search_response.get('items'): return None
             video_id = search_response['items'][0]['id']['videoId']
             return self._get_youtube_video_info_by_id(video_id)
-        except Exception as e:
+        except (AttributeError, KeyError, ValueError, Exception) as e:
+            self.log_module_event("ERROR", f"YouTube API request failed for query '{query}': {e}")
             self._record_error(f"YouTube API request failed for query '{query}': {e}")
             return None
 

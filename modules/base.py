@@ -14,6 +14,40 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Callable, Union, Tuple
 from datetime import datetime, timezone
 
+# Import standardized exception handling utilities
+try:
+    from .exception_utils import (
+        handle_exceptions, safe_execute, safe_api_call, safe_file_operation,
+        validate_user_input, log_module_event, log_security_event,
+        ModuleException, ExternalAPIException, UserInputException, StateException
+    )
+except ImportError:
+    # Fallback for when exception_utils is not available
+    def handle_exceptions(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    
+    def safe_execute(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    
+    safe_api_call = safe_execute
+    safe_file_operation = safe_execute
+    
+    def validate_user_input(value, validation_func, *args, **kwargs):
+        return validation_func(value)
+    
+    def log_module_event(module_name, event, details=None):
+        print(f"[{module_name}] {event}", file=sys.stderr)
+    
+    def log_security_event(module_name, event, user=None, details=None):
+        print(f"[SECURITY][{module_name}] {event}", file=sys.stderr)
+    
+    class ModuleException(Exception): pass
+    class ExternalAPIException(Exception): pass
+    class UserInputException(Exception): pass
+    class StateException(Exception): pass
+
 def admin_required(func):
     """Decorator to require admin privileges for a command."""
     @functools.wraps(func)
@@ -248,51 +282,57 @@ class ModuleBase(ABC):
             return users_module.has_flavor_enabled(username)
         return True  # Default to flavor enabled if users module not available
 
+    @handle_exceptions(
+        error_message="Failed to send reply message",
+        user_message="Unable to send message",
+        log_exception=True,
+        reraise=False
+    )
     def safe_reply(self, connection, event, text: str) -> bool:
-        try:
-            lines = text.splitlines()
-            if not lines:
-                lines = [text]
-            for line in lines:
-                sanitized = line.replace("\r", "")
-                if not sanitized:
-                    sanitized = " "
-                connection.privmsg(event.target, sanitized)
-            return True
-        except Exception as e:
-            self.log_debug(f"Failed to reply: {e}")
-            return False
+        lines = text.splitlines()
+        if not lines:
+            lines = [text]
+        for line in lines:
+            sanitized = line.replace("\r", "")
+            if not sanitized:
+                sanitized = " "
+            connection.privmsg(event.target, sanitized)
+        return True
             
+    @handle_exceptions(
+        error_message="Failed to send channel message",
+        user_message="Unable to send message",
+        log_exception=True,
+        reraise=False
+    )
     def safe_say(self, text: str, target: Optional[str] = None) -> bool:
-        try:
-            target = target or self.bot.primary_channel
-            lines = text.splitlines()
-            if not lines:
-                lines = [text]
-            for line in lines:
-                sanitized = line.replace("\r", "")
-                if not sanitized:
-                    sanitized = " "
-                self.bot.connection.privmsg(target, sanitized)
-            return True
-        except Exception as e:
-            self.log_debug(f"Failed to send message to {target}: {e}")
-            return False
+        target = target or self.bot.primary_channel
+        lines = text.splitlines()
+        if not lines:
+            lines = [text]
+        for line in lines:
+            sanitized = line.replace("\r", "")
+            if not sanitized:
+                sanitized = " "
+            self.bot.connection.privmsg(target, sanitized)
+        return True
 
+    @handle_exceptions(
+        error_message="Failed to send private message",
+        user_message="Unable to send private message",
+        log_exception=True,
+        reraise=False
+    )
     def safe_privmsg(self, username: str, text: str) -> bool:
-        try:
-            lines = text.splitlines()
-            if not lines:
-                lines = [text]
-            for line in lines:
-                sanitized = line.replace("\r", "")
-                if not sanitized:
-                    sanitized = " "
-                self.bot.connection.privmsg(username, sanitized)
-            return True
-        except Exception as e:
-            self.log_debug(f"Failed to send privmsg to {username}: {e}")
-            return False
+        lines = text.splitlines()
+        if not lines:
+            lines = [text]
+        for line in lines:
+            sanitized = line.replace("\r", "")
+            if not sanitized:
+                sanitized = " "
+            self.bot.connection.privmsg(username, sanitized)
+        return True
 
     def _dispatch_commands(self, connection, event, msg: str, username: str) -> bool:
         # MODIFIED: Check if module is enabled before processing any commands
@@ -319,13 +359,23 @@ class ModuleBase(ABC):
                         if hasattr(self, "_update_stats"):
                             self._update_stats(cmd_info["name"])
                         return True
+                except UserInputException as e:
+                    # User input errors - log but don't expose details
+                    self.log_debug(f"User input error in command {cmd_id}: {e}")
                 except Exception as e:
-                    self.log_debug(f"Error in command {cmd_id}: {e}\n{traceback.format_exc()}")
+                    # Log other errors with full traceback
+                    self.log_debug(f"Unexpected error in command {cmd_id}: {e}\n{traceback.format_exc()}")
+                    log_security_event(self.name, "Command execution error", username, {"command": cmd_id, "error": str(e)})
         return False
         
-    def _record_error(self, error_msg: str) -> None:
-        print(f"[{self.name}] ERROR: {error_msg}", file=sys.stderr)
-        self.log_debug(f"ERROR: {error_msg}")
+    def _record_error(self, error_msg: str, severity: str = "ERROR") -> None:
+        """Record an error with standardized severity levels."""
+        if severity == "SECURITY":
+            log_security_event(self.name, error_msg)
+        elif severity == "WARNING":
+            self.log_debug(f"WARNING: {error_msg}")
+        else:
+            self.log_debug(f"ERROR: {error_msg}")
         
     def log_debug(self, message: str):
         self.bot.log_debug(f"[{self.name}] {message}")

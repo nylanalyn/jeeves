@@ -8,6 +8,21 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
+try:
+    from modules.exception_utils import (
+        handle_exceptions, safe_file_operation, FileOperationException,
+        ConfigurationException, ExternalAPIException
+    )
+except ImportError:
+    # Fallback for when exception_utils is not available
+    def handle_exceptions(func):
+        return func
+    def safe_file_operation(func, *args, **kwargs):
+        return func(*args, **kwargs)
+    class FileOperationException(Exception): pass
+    class ConfigurationException(Exception): pass
+    class ExternalAPIException(Exception): pass
+
 from .constants import (
     UTC,
     DUNGEON_ITEMS,
@@ -27,18 +42,19 @@ def load_content(quest_module) -> Dict[str, Any]:
     quest_module.active_theme_key = None
     quest_module.available_theme_keys = []
     quest_module._theme_catalog = None
+    
     try:
         with open(content_file, "r") as f:
             raw_content = json.load(f)
     except FileNotFoundError:
-        quest_module.log_debug(f"Quest content file not found: {content_file}")
+        quest_module.log_module_event("WARNING", f"Quest content file not found: {content_file}")
         return {}
     except json.JSONDecodeError as e:
-        quest_module.log_debug(f"Error parsing quest content: {e}")
+        quest_module.log_module_event("ERROR", f"Error parsing quest content: {e}")
         return {}
 
     if not isinstance(raw_content, dict):
-        quest_module.log_debug(f"Quest content file has unexpected structure ({type(raw_content).__name__}); using empty content.")
+        quest_module.log_module_event("ERROR", f"Quest content file has unexpected structure ({type(raw_content).__name__}); using empty content.")
         return {}
 
     themes = raw_content.get("themes")
@@ -97,8 +113,9 @@ def save_challenge_paths(quest_module):
     try:
         with open(paths_file, "w") as f:
             json.dump(quest_module.challenge_paths, f, indent=2)
-    except Exception as e:
-        quest_module.log_debug(f"Error saving challenge paths: {e}")
+    except (IOError, OSError, json.JSONEncodeError) as e:
+        quest_module.log_module_event("ERROR", f"Error saving challenge paths: {e}")
+        raise FileOperationException(f"Failed to save challenge paths: {e}")
 
 
 def get_content(quest_module, key: str, channel: str = None, default: Any = None) -> Any:

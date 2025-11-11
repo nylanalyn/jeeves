@@ -218,6 +218,7 @@ class Quest(SimpleCommandModule):
                             try:
                                 if cmd_info["handler"](connection, event, msg, username, match):
                                     self.log_debug(f"DM Command '{cmd_info['name']}' handled successfully.")
+                                    self.record_user_cooldown(username, cmd_id)
                                     return True
                             except Exception as e:
                                 import traceback

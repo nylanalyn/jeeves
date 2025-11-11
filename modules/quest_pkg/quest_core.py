@@ -157,6 +157,7 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         quest_module.safe_reply(connection, event, "The lands are quiet. You gain 10 XP for your diligence.")
         for m in quest_progression.grant_xp(quest_module, user_id, username, 10):
             quest_module.safe_reply(connection, event, m)
+        quest_module.record_user_cooldown(username, "quest_solo")
         return True
 
     # Check for boss encounter (levels 17-20, 10% chance)
@@ -167,7 +168,9 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
 
     is_hardcore = player.get("hardcore_mode", False)
     if not is_hardcore and boss_min_level <= player_level <= boss_max_level and random.random() < boss_encounter_chance:
-        return quest_combat.trigger_boss_encounter(quest_module, connection, event, username, user_id, player, energy_enabled)
+        result = quest_combat.trigger_boss_encounter(quest_module, connection, event, username, user_id, player, energy_enabled)
+        quest_module.record_user_cooldown(username, "quest_solo")
+        return result
 
     if energy_enabled:
         player["energy"] -= 1
@@ -333,12 +336,14 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
             players[user_id] = player
             quest_module.set_state("players", players)
             quest_module.save_state()
+            quest_module.record_user_cooldown(username, "quest_solo")
             return True
 
     players = quest_module.get_state("players")
     players[user_id] = player
     quest_module.set_state("players", players)
     quest_module.save_state()
+    quest_module.record_user_cooldown(username, "quest_solo")
     return True
 
 

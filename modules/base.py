@@ -284,14 +284,17 @@ class ModuleBase(ABC):
         return False
 
     def check_user_cooldown(self, username: str, command: str, cooldown: float) -> bool:
+        """Check if a user is on cooldown for a command. Does NOT record the cooldown."""
         if cooldown <= 0: return True
         key = f"{username.lower()}:{command}"
         now = time.time()
         last_use = self._user_cooldowns.get(key, 0)
-        if now - last_use >= cooldown:
-            self._user_cooldowns[key] = now
-            return True
-        return False
+        return now - last_use >= cooldown
+
+    def record_user_cooldown(self, username: str, command: str) -> None:
+        """Record that a user has used a command (for cooldown tracking)."""
+        key = f"{username.lower()}:{command}"
+        self._user_cooldowns[key] = time.time()
 
     def is_mentioned(self, msg: str) -> bool:
         pattern = re.compile(self.bot.JEEVES_NAME_RE, re.IGNORECASE)

@@ -126,7 +126,7 @@ class Help(SimpleCommandModule):
         """Core logic to generate and send help text to a user via PM."""
         user_id = self.bot.get_user_id(username)
         is_admin = self.bot.is_admin(source)
-        
+
         cooldown = self.get_config_value("cooldown_seconds", default=10.0)
         if not self.check_user_cooldown(username, "help_request", cooldown):
             return
@@ -143,7 +143,10 @@ class Help(SimpleCommandModule):
             self.safe_privmsg(username, f"Available leads: {cmd_list}")
             note = " (commands marked with * have admin-only subcommands)" if is_admin else ""
             self.safe_privmsg(username, f"Ask 'help <command>' for the deep dive.{note}")
-        
+
+        # Record cooldown after successfully sending help
+        self.record_user_cooldown(username, "help_request")
+
         last_times = self.get_state("last_help_time", {})
         last_times[user_id] = time.time()
         self.set_state("last_help_time", last_times)

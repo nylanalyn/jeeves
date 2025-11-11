@@ -46,6 +46,8 @@ class Fortune(SimpleCommandModule):
 
         category = match.group(1).lower() if match.group(1) else None
         self._give_fortune(connection, event, username, category)
+        # Record cooldown only after fortune is successfully given
+        self.record_user_cooldown(username, "fortune")
         return True
 
     @admin_required
@@ -64,6 +66,8 @@ class Fortune(SimpleCommandModule):
         if self.check_user_cooldown(username, "fortune", cooldown) and self.is_mentioned(msg) and re.search(r"\bfortune\b", msg, re.IGNORECASE):
             category = self._extract_category_from_message(msg)
             self._give_fortune(connection, event, username, category)
+            # Record cooldown only after fortune is successfully given
+            self.record_user_cooldown(username, "fortune")
             return True
         return False
 
@@ -117,7 +121,7 @@ class Fortune(SimpleCommandModule):
             "sexy": f"{title}, a sultry fortune awaits:"
         }
         intro = intros.get(category, f"{title}, your fortune:")
-        return f"{username}, {intro} {fortune}"
+        return f"{intro} {fortune}"
 
     def _extract_category_from_message(self, msg: str) -> Optional[str]:
         msg_lower = msg.lower()

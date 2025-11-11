@@ -172,8 +172,7 @@ class Translate(SimpleCommandModule):
         text_to_translate = args_str
 
         # Check if the first argument is a language code (e.g., DE, FR, PT-BR)
-        # Simple check: 2-5 chars, contains only letters and possibly a hyphen.
-        if len(args) > 1 and 2 <= len(args[0]) <= 5 and re.match(r'^[A-Z-]+$', args[0], re.IGNORECASE):
+        if len(args) > 1 and self._looks_like_language_code(args[0]):
             # The DeepL library will validate the language code for us.
             target_lang = self._normalize_target_lang(args[0], event.target)
             text_to_translate = " ".join(args[1:])
@@ -206,3 +205,14 @@ class Translate(SimpleCommandModule):
             return (preferred_portuguese or "PT-BR").upper()
 
         return normalized
+
+    def _looks_like_language_code(self, candidate: str) -> bool:
+        """
+        Heuristically determine whether the provided token is likely a DeepL language code.
+        DeepL uses two-letter codes or their regional variants (e.g., EN-US, PT-BR), so only
+        treat the first argument as a language code if it matches that pattern. This prevents
+        short words at the start of a sentence (e.g., 'Jag') from being mistaken for language codes.
+        """
+        if not candidate:
+            return False
+        return bool(re.fullmatch(r"[A-Z]{2}(?:-[A-Z]{2})?", candidate.strip().upper()))

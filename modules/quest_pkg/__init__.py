@@ -391,7 +391,7 @@ class Quest(SimpleCommandModule):
         remaining_minutes = max(1, remaining_seconds // 60)
 
         details = (
-            f"Your Jeeves quest website link code is: {token}\n"
+            f"Your {self.bot.connection.get_nickname()} quest website link code is: {token}\n"
             f"It expires in about {remaining_minutes} minute{'s' if remaining_minutes != 1 else ''}."
         )
 

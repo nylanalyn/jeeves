@@ -41,7 +41,7 @@ class Intro(SimpleCommandModule):
             return True
 
         intro_lines = [
-            "Name's Jeeves. I keep the lights on and the secrets filed in locked cabinets.",
+            f"Name's {self.bot.connection.get_nickname()}. I keep the lights on and the secrets filed in locked cabinets.",
             "Tune the experience with `!gender <identity>` and `!location <city, country>` so I can tailor the briefing.",
             "Need intel? Try `!weather`, `!time`, `!fortune`, or shake down the wires with `!yt <query>`.",
             "If you want the full case file, ask `!help` and I'll slide it across the desk."

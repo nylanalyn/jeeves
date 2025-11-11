@@ -41,7 +41,7 @@ class Oracle(SimpleCommandModule):
         """Loads the system prompt and generation parameters from a file or config."""
         prompt_file_name = self.get_config_value("system_prompt_file")
         
-        self.SYSTEM_PROMPT = self.get_config_value("system_prompt", default="You are Jeeves, a helpful and witty robotic butler.")
+        self.SYSTEM_PROMPT = self.get_config_value("system_prompt", default=f"You are {self.bot.connection.get_nickname()}, a helpful and witty robotic butler.")
         self.generation_params = {}
         
         if prompt_file_name:

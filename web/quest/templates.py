@@ -1383,8 +1383,18 @@ class TemplateEngine:
                         content += f'<li style="color: #10b981;">📜 XP Scroll (active for next win)</li>'
                     elif effect_type == "dungeon_relic":
                         charges = effect.get("remaining_auto_wins", 0)
-                        suffix = "win" if charges == 1 else "wins"
-                        content += f'<li style="color: #10b981;">✨ Mythic Relic ({charges} guaranteed {suffix})</li>'
+                        sigils = effect.get("boss_auto_wins", 0)
+                        parts = []
+                        if charges:
+                            suffix = "win" if charges == 1 else "wins"
+                            parts.append(f"{charges} guaranteed solo {suffix}")
+                        if sigils:
+                            sigil_suffix = "sigil" if sigils == 1 else "sigils"
+                            parts.append(f"{sigils} mob/boss {sigil_suffix}")
+                        if not parts:
+                            parts.append("inactive")
+                        detail = " + ".join(parts)
+                        content += f'<li style="color: #10b981;">✨ Mythic Relic ({detail})</li>'
                     else:
                         content += f'<li style="color: #10b981;">{sanitize(str(effect))}</li>'
                 content += '</ul></div>'

@@ -67,11 +67,9 @@ def consume_combat_effects(player: Dict[str, Any], is_win: bool):
         elif effect["type"] == "dungeon_relic":
             if effect.get("triggered_this_fight"):
                 effect["remaining_auto_wins"] = max(0, effect.get("remaining_auto_wins", 0) - 1)
-                effect.pop("triggered_this_fight", None)
-                if effect["remaining_auto_wins"] <= 0:
-                    effects_to_remove.append(i)
-            else:
-                effect.pop("triggered_this_fight", None)
+            effect.pop("triggered_this_fight", None)
+            if effect.get("remaining_auto_wins", 0) <= 0 and effect.get("boss_auto_wins", 0) <= 0:
+                effects_to_remove.append(i)
 
     # Remove in reverse order to avoid index issues
     for i in sorted(effects_to_remove, reverse=True):
@@ -369,7 +367,35 @@ def close_mob_window(quest_module):
             win_chance_map = {1: 0.05, 2: 0.25, 3: 0.75}
             win_chance = win_chance_map.get(party_size, 0.95)  # 4+ people = 95%
 
-        win = random.random() < win_chance
+        # Deduct energy from all participants & detect Mythic Sigils
+        energy_enabled = quest_module.get_config_value("energy_system.enabled", channel, default=True)
+        players_state = quest_module.get_state("players", {})
+        relic_override = None
+        for p in participants:
+            player = quest_progression.get_player(quest_module, p["user_id"], p["username"])
+            if energy_enabled and player["energy"] > 0:
+                player["energy"] -= 1
+            if not relic_override:
+                effect = next(
+                    (
+                        eff for eff in player.get("active_effects", [])
+                        if eff.get("type") == "dungeon_relic" and eff.get("boss_auto_wins", 0) > 0
+                    ),
+                    None
+                )
+                if effect:
+                    relic_override = {"player": player, "participant": p, "effect": effect}
+            players_state[p["user_id"]] = player
+
+        quest_module.set_state("players", players_state)
+
+        relic_override_used = False
+        if relic_override:
+            win = True
+            relic_override_used = True
+            win_chance = 1.0
+        else:
+            win = random.random() < win_chance
 
         # Check if rare spawn
         is_rare = active_mob.get("is_rare", False)
@@ -380,22 +406,27 @@ def close_mob_window(quest_module):
         rare_prefix = "[RARE] " if is_rare and not is_legend else ""
         monster_name = f"{boss_prefix}{legend_prefix}{rare_prefix}Level {monster_level} {monster['name']}"
 
-        # Deduct energy from all participants
-        energy_enabled = quest_module.get_config_value("energy_system.enabled", channel, default=True)
-        players_state = quest_module.get_state("players", {})
-
-        for p in participants:
-            player = quest_progression.get_player(quest_module, p["user_id"], p["username"])
-            if energy_enabled and player["energy"] > 0:
-                player["energy"] -= 1
-            players_state[p["user_id"]] = player
-
-        quest_module.set_state("players", players_state)
-
         # Announce outcome
         party_names = ", ".join([p["username"] for p in participants])
         quest_module.safe_say(f"The party ({party_names}) engages the {monster_name}!", channel)
         time.sleep(1.5)
+
+        if relic_override_used and relic_override:
+            holder = relic_override["participant"]["username"]
+            effect = relic_override["effect"]
+            effect["boss_auto_wins"] = max(0, effect.get("boss_auto_wins", 0) - 1)
+            remaining_sigils = effect.get("boss_auto_wins", 0)
+            if effect.get("remaining_auto_wins", 0) <= 0 and remaining_sigils <= 0:
+                try:
+                    relic_override["player"]["active_effects"].remove(effect)
+                except ValueError:
+                    pass
+            players_state[relic_override["participant"]["user_id"]] = relic_override["player"]
+            sigil_suffix = "sigils" if remaining_sigils != 1 else "sigil"
+            quest_module.safe_say(
+                f"{holder}'s Mythic Sigil detonates, guaranteeing victory! ({remaining_sigils} {sigil_suffix} remaining)",
+                channel
+            )
 
         xp_level_mult = quest_module.get_config_value("xp_level_multiplier", channel, default=2)
         base_xp = random.randint(monster.get('xp_win_min', 10), monster.get('xp_win_max', 20))

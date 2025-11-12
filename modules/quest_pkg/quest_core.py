@@ -29,6 +29,7 @@ from .constants import (
     DUNGEON_REWARD_KEY,
     DUNGEON_REWARD_NAME,
     DUNGEON_REWARD_CHARGES,
+    DUNGEON_RELICS_PER_BOSS_SIGIL,
 )
 from . import quest_utils
 from . import quest_progression
@@ -744,23 +745,95 @@ def handle_use_item(quest_module, connection, event, username, args):
         )
 
     elif inventory_key == DUNGEON_REWARD_KEY:
-        # Mythic relic guarantees upcoming victories
-        player["inventory"][DUNGEON_REWARD_KEY] -= 1
-        existing = next((eff for eff in player["active_effects"] if eff.get("type") == "dungeon_relic"), None)
-        if existing:
-            existing["remaining_auto_wins"] = existing.get("remaining_auto_wins", 0) + DUNGEON_REWARD_CHARGES
-            existing.pop("triggered_this_fight", None)
-            total_charges = existing["remaining_auto_wins"]
+        # Mythic relic handling: allow stacking for solo wins or mob/boss sigils
+        mode_map = {
+            "solo": "solo",
+            "default": "solo",
+            "boss": "boss",
+            "mob": "boss",
+            "party": "boss"
+        }
+        quantity = 1
+        explicit_quantity = False
+        desired_mode = "solo"
+
+        extra_args = [arg.lower() for arg in args[1:]]
+        for extra in extra_args:
+            if extra in mode_map:
+                if desired_mode != "solo":
+                    send_response("Specify relic mode only once (solo or boss).")
+                    return True
+                desired_mode = mode_map[extra]
+            else:
+                try:
+                    value = int(extra)
+                except ValueError:
+                    send_response(f"Unrecognized relic option: {extra}. Use a count and optional mode (solo|boss).")
+                    return True
+                if value <= 0:
+                    send_response("You must spend at least one relic.")
+                    return True
+                if explicit_quantity:
+                    send_response("Only one quantity value is supported when using relics.")
+                    return True
+                quantity = value
+                explicit_quantity = True
+
+        if desired_mode == "boss" and not explicit_quantity:
+            quantity = DUNGEON_RELICS_PER_BOSS_SIGIL
+
+        available_relics = inventory.get(DUNGEON_REWARD_KEY, 0)
+        if quantity > available_relics:
+            send_response(f"You only have {available_relics} {DUNGEON_REWARD_NAME}{'s' if available_relics != 1 else ''} to spend.")
+            return True
+
+        def get_or_create_relic_effect() -> Dict[str, Any]:
+            existing = next((eff for eff in player["active_effects"] if eff.get("type") == "dungeon_relic"), None)
+            if existing:
+                existing.setdefault("remaining_auto_wins", 0)
+                existing.setdefault("boss_auto_wins", 0)
+                existing.pop("triggered_this_fight", None)
+                return existing
+            effect = {
+                "type": "dungeon_relic",
+                "remaining_auto_wins": 0,
+                "boss_auto_wins": 0
+            }
+            player["active_effects"].append(effect)
+            return effect
+
+        if desired_mode == "solo":
+            charges_added = quantity * DUNGEON_REWARD_CHARGES
+            player["inventory"][DUNGEON_REWARD_KEY] -= quantity
+            relic_effect = get_or_create_relic_effect()
+            relic_effect["remaining_auto_wins"] += charges_added
+            total_charges = relic_effect["remaining_auto_wins"]
+            relic_phrase = f"{quantity} {DUNGEON_REWARD_NAME}{'s' if quantity != 1 else ''}"
+            remaining_relics = player["inventory"][DUNGEON_REWARD_KEY]
+            plural_relic = "relics" if remaining_relics != 1 else "relic"
             send_response(
-                f"The {DUNGEON_REWARD_NAME} flares brighter! You now have {total_charges} guaranteed solo quest victories banked."
+                f"{relic_phrase} {'resonate' if quantity > 1 else 'hums'} with power. "
+                f"{charges_added} guaranteed solo victories banked ({total_charges} total). "
+                f"({remaining_relics} {plural_relic} remaining)"
             )
         else:
-            player["active_effects"].append({
-                "type": "dungeon_relic",
-                "remaining_auto_wins": DUNGEON_REWARD_CHARGES
-            })
+            if quantity % DUNGEON_RELICS_PER_BOSS_SIGIL != 0:
+                send_response(
+                    f"Boss sigils require relics in bundles of {DUNGEON_RELICS_PER_BOSS_SIGIL}."
+                )
+                return True
+
+            sigils_created = quantity // DUNGEON_RELICS_PER_BOSS_SIGIL
+            player["inventory"][DUNGEON_REWARD_KEY] -= quantity
+            relic_effect = get_or_create_relic_effect()
+            relic_effect["boss_auto_wins"] += sigils_created
+            plural_sigils = "sigils" if sigils_created != 1 else "sigil"
+            remaining_relics = player["inventory"][DUNGEON_REWARD_KEY]
+            plural_relic = "relics" if remaining_relics != 1 else "relic"
             send_response(
-                f"The {DUNGEON_REWARD_NAME} hums with power. Your next {DUNGEON_REWARD_CHARGES} solo quests (including !dungeon rooms) are automatic victories."
+                f"You weave {quantity} relics into {sigils_created} Mythic {plural_sigils}. "
+                f"Each guarantees the next mob/random boss victory and shatters after use. "
+                f"({remaining_relics} {plural_relic} remaining)"
             )
 
     # Persist player changes

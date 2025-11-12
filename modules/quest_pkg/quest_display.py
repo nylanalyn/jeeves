@@ -10,6 +10,22 @@ from . import quest_utils
 from . import quest_progression
 
 
+def _describe_relic_effect(effect: Dict[str, Any]) -> str:
+    """Render Mythic Relic effect details for chat displays."""
+    charges = effect.get("remaining_auto_wins", 0)
+    sigils = effect.get("boss_auto_wins", 0)
+    parts = []
+    if charges > 0:
+        suffix = "win" if charges == 1 else "wins"
+        parts.append(f"{charges} guaranteed solo {suffix}")
+    if sigils > 0:
+        sigil_suffix = "sigil" if sigils == 1 else "sigils"
+        parts.append(f"{sigils} mob/boss {sigil_suffix}")
+    if not parts:
+        parts.append("inactive")
+    return f"{DUNGEON_REWARD_NAME} ({', '.join(parts)})"
+
+
 def handle_profile(quest_module, connection, event, username, args):
     """Display player profile with stats, inventory, and active effects."""
     target_user_nick = args[0] if args else username
@@ -134,9 +150,7 @@ def handle_profile(quest_module, connection, event, username, args):
         elif effect["type"] == "xp_scroll":
             effects.append("XP Scroll (next win)")
         elif effect["type"] == "dungeon_relic":
-            charges = effect.get("remaining_auto_wins", 0)
-            suffix = "win" if charges == 1 else "wins"
-            effects.append(f"{DUNGEON_REWARD_NAME} ({charges} guaranteed {suffix})")
+            effects.append(_describe_relic_effect(effect))
 
     # Active injuries
     injuries = []
@@ -281,9 +295,7 @@ def cmd_inventory(quest_module, connection, event, msg, username, match):
         elif effect["type"] == "xp_scroll":
             effects.append("XP Scroll (next win)")
         elif effect["type"] == "dungeon_relic":
-            charges = effect.get("remaining_auto_wins", 0)
-            suffix = "win" if charges == 1 else "wins"
-            effects.append(f"{DUNGEON_REWARD_NAME} ({charges} guaranteed {suffix})")
+            effects.append(_describe_relic_effect(effect))
 
     # Build final message
     quest_module.safe_reply(connection, event, f"{title}'s Inventory: {items_msg}")

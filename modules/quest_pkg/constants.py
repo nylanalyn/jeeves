@@ -56,8 +56,12 @@ DUNGEON_ITEMS_BY_KEY = {item["key"]: item for item in DUNGEON_ITEMS}
 # Dungeon Reward
 DUNGEON_REWARD_KEY = "dungeon_relics"
 DUNGEON_REWARD_NAME = "Mythic Relic"
-DUNGEON_REWARD_EFFECT_TEXT = "Use with !quest use dungeon_relic to guarantee victory in your next five solo fights."
+DUNGEON_REWARD_EFFECT_TEXT = (
+    "Use with !quest use dungeon_relic <count> [solo|boss]. "
+    "Each relic grants five guaranteed solo victories; channel four at once to forge a sigil that auto-wins the next mob/boss fight."
+)
 DUNGEON_REWARD_CHARGES = 5
+DUNGEON_RELICS_PER_BOSS_SIGIL = 4
 
 # Dungeon Rooms (ordered easiest to hardest)
 DUNGEON_ROOMS = [

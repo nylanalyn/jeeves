@@ -756,6 +756,7 @@ def handle_use_item(quest_module, connection, event, username, args):
         quantity = 1
         explicit_quantity = False
         desired_mode = "solo"
+        mode_explicit = False
 
         extra_args = [arg.lower() for arg in args[1:]]
         for extra in extra_args:
@@ -764,6 +765,7 @@ def handle_use_item(quest_module, connection, event, username, args):
                     send_response("Specify relic mode only once (solo or boss).")
                     return True
                 desired_mode = mode_map[extra]
+                mode_explicit = True
             else:
                 try:
                     value = int(extra)
@@ -787,6 +789,12 @@ def handle_use_item(quest_module, connection, event, username, args):
             send_response(f"You only have {available_relics} {DUNGEON_REWARD_NAME}{'s' if available_relics != 1 else ''} to spend.")
             return True
 
+        auto_split_to_boss = (
+            desired_mode == "solo"
+            and not mode_explicit
+            and quantity >= DUNGEON_RELICS_PER_BOSS_SIGIL
+        )
+
         def get_or_create_relic_effect() -> Dict[str, Any]:
             existing = next((eff for eff in player["active_effects"] if eff.get("type") == "dungeon_relic"), None)
             if existing:
@@ -802,7 +810,32 @@ def handle_use_item(quest_module, connection, event, username, args):
             player["active_effects"].append(effect)
             return effect
 
-        if desired_mode == "solo":
+        if auto_split_to_boss:
+            player["inventory"][DUNGEON_REWARD_KEY] -= quantity
+            sigils_created = quantity // DUNGEON_RELICS_PER_BOSS_SIGIL
+            solo_relics = quantity % DUNGEON_RELICS_PER_BOSS_SIGIL
+            relic_effect = get_or_create_relic_effect()
+
+            action_parts = []
+            if sigils_created:
+                relic_effect["boss_auto_wins"] += sigils_created
+                plural_sigils = "sigils" if sigils_created != 1 else "sigil"
+                action_parts.append(f"forging {sigils_created} Mythic {plural_sigils} (auto-win vs mobs/bosses)")
+
+            if solo_relics:
+                charges_added = solo_relics * DUNGEON_REWARD_CHARGES
+                relic_effect["remaining_auto_wins"] += charges_added
+                action_parts.append(f"banking {charges_added} guaranteed solo victories")
+
+            remaining_relics = player["inventory"][DUNGEON_REWARD_KEY]
+            plural_relic = "relics" if remaining_relics != 1 else "relic"
+            relic_phrase = f"{quantity} {DUNGEON_REWARD_NAME}{'s' if quantity != 1 else ''}"
+            guidance_note = " Add 'solo' to bank relics purely for solo runs."
+            send_response(
+                f"{relic_phrase} resonate as you {', '.join(action_parts)}. "
+                f"({remaining_relics} {plural_relic} remaining){guidance_note}"
+            )
+        elif desired_mode == "solo":
             charges_added = quantity * DUNGEON_REWARD_CHARGES
             player["inventory"][DUNGEON_REWARD_KEY] -= quantity
             relic_effect = get_or_create_relic_effect()

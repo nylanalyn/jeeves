@@ -57,7 +57,7 @@ def setup(bot):
 
 class Convenience(ModuleBase):
     name = "convenience"
-    version = "1.8.0" # Added flavor text preference support
+    version = "1.9.1" # DuckDuckGo search integration for !g
     description = "Provides convenient, common search commands and URL title fetching."
 
     YOUTUBE_URL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w\-]{11})')
@@ -214,7 +214,7 @@ class Convenience(ModuleBase):
         query = match.group(1).strip()
         encoded_query = quote_plus(query)
         sassy_chance = self.get_config_value("sassy_google_chance", event.target, default=0.1)
-        search_url = f"https://www.google.com/search?q={encoded_query}"
+        fallback_url = self._get_short_url(f"https://duckduckgo.com/?q={encoded_query}")
 
         if random.random() < sassy_chance:
             if self.has_flavor_enabled(username):
@@ -223,10 +223,30 @@ class Convenience(ModuleBase):
                 self.safe_reply(connection, event, f"https://letmegooglethat.com/?q={encoded_query}")
             return True
 
+        search_result = self._perform_duckduckgo_search(query)
+        if search_result:
+            display_url = self._get_short_url(search_result["url"])
+            snippet = search_result.get("snippet", "")
+            snippet = " ".join(snippet.split())
+            if len(snippet) > 200:
+                snippet = f"{snippet[:197]}..."
+
+            if self.has_flavor_enabled(username):
+                title = self.bot.title_for(username)
+                snippet_part = f" — {snippet}" if snippet else ""
+                self.safe_reply(connection, event, f"{title}, DuckDuckGo offers \"{search_result['title']}\" for '{query}'{snippet_part}")
+                self.safe_reply(connection, event, display_url)
+            else:
+                response = f"{search_result['title']} - {display_url}"
+                if snippet:
+                    response += f" — {snippet}"
+                self.safe_reply(connection, event, response)
+            return True
+
         if self.has_flavor_enabled(username):
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your Google search for '{query}': {self._get_short_url(search_url)}")
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, DuckDuckGo is speechless—here's a direct link instead: {fallback_url}")
         else:
-            self.safe_reply(connection, event, self._get_short_url(search_url))
+            self.safe_reply(connection, event, fallback_url)
         return True
 
     def _cmd_dict(self, connection, event, msg, username, match):
@@ -450,6 +470,55 @@ class Convenience(ModuleBase):
         return True
     
     # --- Helper Methods ---
+
+    def _perform_duckduckgo_search(self, query: str) -> Optional[Dict[str, str]]:
+        """Use DuckDuckGo's Instant Answer API to grab a quick hit."""
+        endpoint = "https://api.duckduckgo.com/"
+        params = {
+            "q": query,
+            "format": "json",
+            "no_redirect": "1",
+            "no_html": "1",
+            "skip_disambig": "1"
+        }
+
+        try:
+            response = self.http_session.get(endpoint, params=params, timeout=6)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as exc:
+            self._record_error(f"DuckDuckGo search failed: {exc}")
+            return None
+        except ValueError as exc:
+            self._record_error(f"DuckDuckGo returned invalid JSON: {exc}")
+            return None
+
+        if data.get("AbstractText") and data.get("AbstractURL"):
+            return {
+                "title": data.get("Heading") or "Result",
+                "url": data.get("AbstractURL"),
+                "snippet": data.get("AbstractText")
+            }
+
+        related_topics = data.get("RelatedTopics", [])
+        for topic in related_topics:
+            if isinstance(topic, dict) and topic.get("FirstURL") and topic.get("Text"):
+                return {
+                    "title": topic.get("Text"),
+                    "url": topic.get("FirstURL"),
+                    "snippet": ""
+                }
+            if isinstance(topic, dict) and topic.get("Topics"):
+                subtopics = topic.get("Topics", [])
+                for sub in subtopics:
+                    if sub.get("FirstURL") and sub.get("Text"):
+                        return {
+                            "title": sub.get("Text"),
+                            "url": sub.get("FirstURL"),
+                            "snippet": ""
+                        }
+
+        return None
 
     def _get_short_url(self, url: str) -> str:
         shorten_module = self.bot.pm.plugins.get("shorten")

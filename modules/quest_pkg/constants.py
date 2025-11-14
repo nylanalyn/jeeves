@@ -58,7 +58,8 @@ DUNGEON_REWARD_KEY = "dungeon_relics"
 DUNGEON_REWARD_NAME = "Mythic Relic"
 DUNGEON_REWARD_EFFECT_TEXT = (
     "Use with !quest use dungeon_relic <count> [solo|boss]. "
-    "Each relic grants five guaranteed solo victories; channel four at once to forge a sigil that auto-wins the next mob/boss fight."
+    "Each relic grants five guaranteed solo victories; channel four at once to forge a sigil that auto-wins the next mob/boss fight. "
+    "Without a mode, relics automatically form sigils in bundles of four—add 'solo' to bank only solo victories."
 )
 DUNGEON_REWARD_CHARGES = 5
 DUNGEON_RELICS_PER_BOSS_SIGIL = 4

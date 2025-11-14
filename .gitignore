@@ -108,3 +108,4 @@ docs/*_audit.md
 # --- Backup Files ---
 *.backup
 config/*.backup
+.aider*

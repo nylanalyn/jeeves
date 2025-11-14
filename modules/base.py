@@ -402,6 +402,14 @@ class ModuleBase(ABC):
         else:
             self.log_debug(f"ERROR: {error_msg}")
         
+    def log_module_event(self, severity: str, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Bridge helper so subclasses can log standardized events without importing
+        exception_utils directly.
+        """
+        event_message = f"{severity}: {message}"
+        log_module_event(self.name, event_message, details)
+
     def log_debug(self, message: str):
         self.bot.log_debug(f"[{self.name}] {message}")
 

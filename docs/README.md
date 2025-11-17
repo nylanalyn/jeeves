@@ -37,3 +37,9 @@ Jeeves is a modular IRC butler written in Python 3.11. It connects to IRC networ
 
 ## Automation Notes
 Automated assistants should avoid destructive actions (no force pushes, no git resets) and respect the config validator before deploying. When updating modules, document user-visible command changes and clean up temporary files. Use this documentation set as the canonical reference and prefer enriching existing sections over creating new standalone guides.
+
+## Topic Rotation Module
+- Configure the `topic` block in `config/config.yaml` with the list of channels to manage, an optional daily window (`start_hour`/`end_hour`), and any overrides for the model, temperature, or prompt used to guide the oracle response.
+- The module schedules one rotation per day at a random minute within the configured window and sets the IRC topic via `TOPIC` once a new mood line is generated.
+- AI generations reuse the same OpenAI/ArliAI credentials as `oracle`. If the API is unavailable, Jeeves falls back to curated static topics so the channel never ends up blank.
+- Anyone in channel can issue `!topic` to request an immediate refresh (rate-limited via `trigger_cooldown_seconds`), while admins retain `!topic refresh`/`!topic status` for forced multi-channel updates and auditing.

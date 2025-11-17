@@ -23,7 +23,7 @@ def setup(bot):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "4.1.0" # Added flavor text preference support
+    version = "4.2.0" # Added storage of user-supplied location names
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot):
@@ -50,6 +50,7 @@ class Weather(SimpleCommandModule):
             re.IGNORECASE)
 
     def _register_commands(self):
+        self.register_command(r"^\s*!location\s*$", self._cmd_show_location, name="location show")
         self.register_command(r"^\s*!location\s+(.+)$", self._cmd_set_location, name="location")
         self.register_command(r"^\s*!weather\s*$", self._cmd_weather_self, name="weather")
         self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other, name="weather other")
@@ -152,7 +153,12 @@ class Weather(SimpleCommandModule):
                 return "Could not format weather report."
 
     def _reply_with_weather(self, connection, event, location_obj, requester, target_user=None):
-        location_name = location_obj.get('short_name') or location_obj.get('display_name') or 'their location'
+        location_name = (
+            location_obj.get('user_input')
+            or location_obj.get('short_name')
+            or location_obj.get('display_name')
+            or 'their location'
+        )
         country_code = location_obj.get('country_code', 'US').upper()
 
         weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"], country_code)
@@ -181,8 +187,15 @@ class Weather(SimpleCommandModule):
         country_code = geo_data.get("address", {}).get("country_code", "us").upper()
         user_id = self.bot.get_user_id(username)
 
-        locations = self.get_state("user_locations")
-        locations[user_id] = {"lat": lat, "lon": lon, "short_name": short_name, "display_name": geo_data.get("display_name"), "country_code": country_code}
+        locations = self.get_state("user_locations") or {}
+        locations[user_id] = {
+            "lat": lat,
+            "lon": lon,
+            "short_name": short_name,
+            "display_name": geo_data.get("display_name"),
+            "country_code": country_code,
+            "user_input": location_input,
+        }
         self.set_state("user_locations", locations)
         self.save_state()
 
@@ -190,6 +203,29 @@ class Weather(SimpleCommandModule):
             self.safe_reply(connection, event, f"Noted, {self.bot.title_for(username)}. Your location is set to '{short_name}'.")
         else:
             self.safe_reply(connection, event, f"Location set to '{short_name}'.")
+        return True
+
+    def _cmd_show_location(self, connection, event, msg, username, match):
+        user_id = self.bot.get_user_id(username)
+        location_obj = self.get_state("user_locations", {}).get(user_id)
+        if not location_obj:
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location.")
+            else:
+                self.safe_reply(connection, event, "No location set.")
+            return True
+
+        stored_name = (
+            location_obj.get("user_input")
+            or location_obj.get("short_name")
+            or location_obj.get("display_name")
+            or "your location"
+        )
+
+        if self.has_flavor_enabled(username):
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your location is set to '{stored_name}'.")
+        else:
+            self.safe_reply(connection, event, f"Your location is set to '{stored_name}'.")
         return True
 
     def _cmd_weather_self(self, connection, event, msg, username, match):

@@ -81,6 +81,31 @@ class Hunt(SimpleCommandModule):
                     totals[species] += value
         return totals
 
+    def _resolve_user_id(self, nick: str, create_if_missing: bool = True) -> Optional[str]:
+        """
+        Resolve a user ID by nick, searching cached user maps first to avoid
+        creating duplicate IDs when an admin targets someone who already has scores.
+        """
+        lower_nick = str(nick or "").lower()
+        users_state = self.bot.get_module_state("users") or {}
+        user_map = users_state.get("user_map", {})
+        nick_map = users_state.get("nick_map", {})
+
+        if lower_nick in nick_map:
+            return nick_map[lower_nick]
+
+        for uid, profile in user_map.items():
+            canonical = str(profile.get("canonical_nick", "")).lower()
+            if canonical == lower_nick:
+                return uid
+            for seen in profile.get("seen_nicks") or []:
+                if str(seen).lower() == lower_nick:
+                    return uid
+
+        if create_if_missing:
+            return self.bot.get_user_id(nick)
+        return None
+
     def on_config_reload(self, config: Dict[str, Any]) -> None:
         # Allow for runtime changes via !admin set
         pass
@@ -706,7 +731,11 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, "An event is already in progress. Please wait for it to finish or restart the bot state.")
             return True
 
-        user_id = self.bot.get_user_id(target_user)
+        user_id = self._resolve_user_id(target_user, create_if_missing=False)
+        if not user_id:
+            self.safe_reply(connection, event, f"No animals recorded for {self.bot.title_for(target_user)}.")
+            return True
+
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
         if not user_scores:

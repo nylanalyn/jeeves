@@ -21,6 +21,8 @@ class Hunt(SimpleCommandModule):
     version = "2.0.0" # Added catch timer and reverted score complexity.
     description = "A game of hunting or hugging randomly appearing animals."
 
+    PENDING_HUG_EXPIRY_SECONDS = 600
+
     SPAWN_ANNOUNCEMENTS: List[str] = [
         "Good heavens, it appears a creature has wandered into the premises!",
         "I do apologize for the intrusion, but an animal has made its way inside.",
@@ -47,6 +49,7 @@ class Hunt(SimpleCommandModule):
         self._is_loaded: bool = False
         self._spawn_lock: threading.Lock = threading.Lock()
         self._spawn_job_token: Optional[str] = None
+        self._pending_hug_requests: Dict[str, Dict[str, Any]] = {}
         self.set_state("scores", self.get_state("scores", {}))
         self.set_state("active_animal", self.get_state("active_animal", None))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
@@ -80,6 +83,12 @@ class Hunt(SimpleCommandModule):
                 if key.startswith(f"{species}_"):
                     totals[species] += value
         return totals
+
+    def _cleanup_pending_hugs(self) -> None:
+        now = time.time()
+        expired = [uid for uid, meta in self._pending_hug_requests.items() if now - meta.get("requested_at", 0) > self.PENDING_HUG_EXPIRY_SECONDS]
+        for uid in expired:
+            del self._pending_hug_requests[uid]
 
     def _resolve_user_id(self, nick: str, create_if_missing: bool = True) -> Optional[str]:
         """
@@ -333,6 +342,7 @@ class Hunt(SimpleCommandModule):
         self.register_command(r"^\s*!hug(?:\s+(.+))?\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
         self.register_command(r"^\s*!release\s+(hug|hunt)\s*$", self._cmd_release, name="release", description="Release a previously caught or befriended animal.")
         self.register_command(r"^\s*!hunt(?:\s+(.*))?$", self._cmd_hunt_master, name="hunt", description="The main command for the hunt game. Use '!hunt help' for subcommands.")
+        self.register_command(r"^\s*!consent\s*$", self._cmd_consent, name="consent", description="Approve the last hug request aimed at you.")
 
     def _format_timedelta(self, td: timedelta) -> str:
         seconds = int(td.total_seconds())
@@ -454,7 +464,7 @@ class Hunt(SimpleCommandModule):
         return self._cmd_admin_spawn(connection, event, "", username, None)
 
     def _handle_help(self, connection: Any, event: Any, username: str) -> bool:
-        help_lines = [ "!hunt - Hunt the currently active animal.", "!hug - Befriend the currently active animal.", "!release <hunt|hug> - Release a captured animal.", "!hunt score [user] - Check your score.", "!hunt top - Show the leaderboard.", "!hunt help - Show this message." ]
+        help_lines = [ "!hunt - Hunt the currently active animal.", "!hug - Befriend the currently active animal.", "!consent - Approve the last hug request aimed at you.", "!release <hunt|hug> - Release a captured animal.", "!hunt score [user] - Check your score.", "!hunt top - Show the leaderboard.", "!hunt help - Show this message." ]
         if self.bot.is_admin(event.source):
             help_lines.extend(["Admin:", "!hunt spawn - Force an animal to appear.", "!hunt admin add <user> <animal> <hunted|hugged> <amount> - Add to a score.", "!hunt admin event <user> [cats|ducks|puppies|all] - Release a user's animals back into the channel over time."])
 
@@ -645,6 +655,18 @@ class Hunt(SimpleCommandModule):
         if not self.is_enabled(event.target): return False
 
         if match.group(1):
+            target = match.group(1).strip()
+            if target:
+                self._cleanup_pending_hugs()
+                target_id = self.bot.get_user_id(target)
+                requester_id = self.bot.get_user_id(username)
+                self._pending_hug_requests[target_id] = {
+                    "requester_id": requester_id,
+                    "requester_nick": username,
+                    "target_nick": target,
+                    "channel": event.target,
+                    "requested_at": time.time(),
+                }
             self.safe_reply(connection, event, f"While the sentiment is appreciated, {self.bot.title_for(username)}, one must always seek consent before embracing another.")
             return True
 
@@ -652,6 +674,26 @@ class Hunt(SimpleCommandModule):
             return self._end_hunt(connection, event, username, "hugged")
 
         self.safe_reply(connection, event, f"There is nothing to hug at the moment, {self.bot.title_for(username)}.")
+        return True
+
+    def _cmd_consent(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target): return False
+
+        self._cleanup_pending_hugs()
+        target_id = self.bot.get_user_id(username)
+        pending = self._pending_hug_requests.get(target_id)
+        if not pending:
+            self.safe_reply(connection, event, f"There is no pending hug request for you, {self.bot.title_for(username)}.")
+            return True
+
+        pending_channel = pending.get("channel")
+        if pending_channel and pending_channel != event.target:
+            self.safe_reply(connection, event, f"Consent must be given in {pending_channel}, where the request was made.")
+            return True
+
+        requester = pending.get("requester_nick", "someone")
+        del self._pending_hug_requests[target_id]
+        self.safe_reply(connection, event, f"{self.bot.title_for(requester)} hugs {self.bot.title_for(username)} with their consent.")
         return True
 
     def _cmd_release(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

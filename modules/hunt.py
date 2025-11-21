@@ -91,20 +91,58 @@ class Hunt(SimpleCommandModule):
         user_map = users_state.get("user_map", {})
         nick_map = users_state.get("nick_map", {})
 
+        candidates: List[str] = []
         if lower_nick in nick_map:
-            return nick_map[lower_nick]
+            candidates.append(nick_map[lower_nick])
 
         for uid, profile in user_map.items():
             canonical = str(profile.get("canonical_nick", "")).lower()
             if canonical == lower_nick:
-                return uid
+                candidates.append(uid)
+                continue
             for seen in profile.get("seen_nicks") or []:
                 if str(seen).lower() == lower_nick:
+                    candidates.append(uid)
+
+        if candidates:
+            scores = self.get_state("scores", {})
+            for uid in candidates:
+                if scores.get(uid):
                     return uid
+            return candidates[0]
 
         if create_if_missing:
             return self.bot.get_user_id(nick)
         return None
+
+    def _lookup_scores_by_nick(self, nick: str) -> Optional[str]:
+        """
+        Fallback lookup: search the users state for any profile whose canonical or seen
+        nick matches, and return a user_id that actually has hunt scores.
+        """
+        lower_nick = str(nick or "").lower()
+        users_state = self.bot.get_module_state("users") or {}
+        user_map = users_state.get("user_map", {})
+        scores = self.get_state("scores", {})
+
+        # First, map nick -> list of matching ids
+        matching_ids: List[str] = []
+        for uid, profile in user_map.items():
+            canonical = str(profile.get("canonical_nick", "")).lower()
+            if canonical == lower_nick:
+                matching_ids.append(uid)
+                continue
+            for seen in profile.get("seen_nicks") or []:
+                if str(seen).lower() == lower_nick:
+                    matching_ids.append(uid)
+                    break
+
+        # Prefer an ID that actually has scores
+        for uid in matching_ids:
+            if scores.get(uid):
+                return uid
+
+        return matching_ids[0] if matching_ids else None
 
     def on_config_reload(self, config: Dict[str, Any]) -> None:
         # Allow for runtime changes via !admin set
@@ -731,9 +769,19 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, "An event is already in progress. Please wait for it to finish or restart the bot state.")
             return True
 
-        user_id = self.bot.get_user_id(target_user)
+        user_id = self._resolve_user_id(target_user, create_if_missing=False)
+        if not user_id:
+            user_id = self._lookup_scores_by_nick(target_user)
+
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
+        if not user_scores:
+            # One last fallback: scan profiles for this nick and pick the one with scores
+            fallback_id = self._lookup_scores_by_nick(target_user)
+            if fallback_id:
+                user_id = fallback_id
+                user_scores = scores.get(user_id, {})
+
         if not user_scores:
             self.safe_reply(connection, event, f"No animals recorded for {self.bot.title_for(target_user)}.")
             return True

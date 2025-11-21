@@ -731,11 +731,7 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, "An event is already in progress. Please wait for it to finish or restart the bot state.")
             return True
 
-        user_id = self._resolve_user_id(target_user, create_if_missing=False)
-        if not user_id:
-            self.safe_reply(connection, event, f"No animals recorded for {self.bot.title_for(target_user)}.")
-            return True
-
+        user_id = self.bot.get_user_id(target_user)
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
         if not user_scores:

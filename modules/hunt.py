@@ -51,7 +51,13 @@ class Hunt(SimpleCommandModule):
         self._spawn_job_token: Optional[str] = None
         self._pending_hug_requests: Dict[str, Dict[str, Any]] = {}
         self.set_state("scores", self.get_state("scores", {}))
-        self.set_state("active_animal", self.get_state("active_animal", None))
+        # Migration: convert old active_animal to active_animals list
+        old_active = self.get_state("active_animal", None)
+        if old_active:
+            self.set_state("active_animals", [old_active])
+            self.set_state("active_animal", None)
+        else:
+            self.set_state("active_animals", self.get_state("active_animals", []))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
         self.set_state("event", self.get_state("event", None))
         # The on_config_reload will be called by the bot core on load
@@ -174,7 +180,7 @@ class Hunt(SimpleCommandModule):
         if next_spawn_str:
             # Logic to resume a normal spawn timer
             self._resume_normal_spawn_scheduler(next_spawn_str)
-        elif not self.get_state("active_animal"):
+        elif not self.get_state("active_animals"):
             self._schedule_next_spawn()
 
     def _clear_scheduled_jobs(self, *tags: str) -> int:
@@ -271,7 +277,7 @@ class Hunt(SimpleCommandModule):
         self._clear_scheduled_jobs(f"{self.name}-event_spawn")
         self.set_state("event", None)
         self.save_state()
-        if not self.get_state("active_animal"):
+        if not self.get_state("active_animals"):
             self._schedule_next_spawn()
 
     def _start_event_spawn(self) -> Optional[str]:
@@ -287,8 +293,8 @@ class Hunt(SimpleCommandModule):
             self._finish_event()
             return schedule.CancelJob
 
-        if self.get_state("active_animal"):
-            self.log_debug("_start_event_spawn: active_animal already present, delaying release")
+        if self.get_state("active_animals"):
+            self.log_debug("_start_event_spawn: active_animals already present, delaying release")
             self._schedule_next_event_spawn(delay_seconds=self._get_event_delay_seconds(initial=False))
             return schedule.CancelJob
 
@@ -304,32 +310,41 @@ class Hunt(SimpleCommandModule):
 
         settings = self._get_event_settings()
         escape_chance = float(settings.get("escape_chance", 0.0) or 0.0)
-        if escape_chance > 0 and random.random() < escape_chance:
-            self.log_debug(f"_start_event_spawn: {species} escaped during release")
-            event_state["remaining"][species] = max(0, remaining_map.get(species, 0) - 1)
-            event_state["current_group_remaining"] = max(0, group_remaining - 1)
-            self.set_state("event", event_state)
-            self.save_state()
-            if sum(event_state.get("remaining", {}).values()) > 0:
+
+        # Spawn the entire flock at once
+        animals_to_spawn = group_remaining
+        escaped_count = 0
+
+        # Process escapes first
+        if escape_chance > 0:
+            for _ in range(animals_to_spawn):
+                if random.random() < escape_chance:
+                    escaped_count += 1
+            animals_to_spawn -= escaped_count
+
+        if escaped_count > 0:
+            self.log_debug(f"_start_event_spawn: {escaped_count} {species} escaped during release")
+
+        # Spawn all non-escaped animals
+        if animals_to_spawn > 0:
+            spawned = self._spawn_animal_flock(forced_animal_key=species, count=animals_to_spawn)
+            if not spawned:
+                self.log_debug("_start_event_spawn: spawn failed, rescheduling")
                 self._schedule_next_event_spawn()
-            else:
-                self._finish_event()
-            return schedule.CancelJob
+                return schedule.CancelJob
 
-        spawned = self._spawn_animal(forced_animal_key=species)
-        if not spawned:
-            self.log_debug("_start_event_spawn: spawn failed, rescheduling")
-            self._schedule_next_event_spawn()
-            return schedule.CancelJob
-
-        event_state["remaining"][species] = max(0, remaining_map.get(species, 0) - 1)
-        event_state["current_group_remaining"] = max(0, group_remaining - 1)
+        # Update event state
+        total_processed = group_remaining
+        event_state["remaining"][species] = max(0, remaining_map.get(species, 0) - total_processed)
+        event_state["current_group_remaining"] = 0
         event_state["next_spawn_time"] = None
         self.set_state("event", event_state)
         self.save_state()
 
+        # Schedule next flock spawn only after this entire flock is cleared
         if sum(event_state.get("remaining", {}).values()) > 0:
-            self._schedule_next_event_spawn()
+            # Don't schedule next spawn yet - wait for flock to be cleared
+            pass
         else:
             self._finish_event()
         return schedule.CancelJob
@@ -383,7 +398,7 @@ class Hunt(SimpleCommandModule):
             return self._handle_hunt_guest(connection, event, username, args_str)
 
     def _handle_hunt_animal(self, connection: Any, event: Any, username: str) -> bool:
-        if self.get_state("active_animal"):
+        if self.get_state("active_animals"):
             return self._end_hunt(connection, event, username, "hunted")
         self.safe_reply(connection, event, f"There is nothing to hunt at the moment, {self.bot.title_for(username)}.")
         return True
@@ -554,10 +569,10 @@ class Hunt(SimpleCommandModule):
                 self._schedule_next_spawn()
                 return False
 
-            # Check if there's already an active animal
-            existing_animal = self.get_state("active_animal")
-            if existing_animal:
-                self.log_debug(f"WARNING: active_animal already exists: {existing_animal}")
+            # Check if there are already active animals
+            existing_animals = self.get_state("active_animals", [])
+            if existing_animals:
+                self.log_debug(f"WARNING: active_animals already exist: {len(existing_animals)} animals")
                 self.log_debug("Skipping spawn, scheduling next attempt")
                 self._schedule_next_spawn()
                 return False
@@ -579,10 +594,10 @@ class Hunt(SimpleCommandModule):
             animal['spawned_at'] = datetime.now(UTC).isoformat()
             self.log_debug(f"Selected animal: {animal.get('display_name', animal.get('name', 'unknown'))} (forced={forced_animal_key})")
 
-            self.set_state("active_animal", animal)
+            self.set_state("active_animals", [animal])
             self.set_state("next_spawn_time", None)
             self.save_state()
-            self.log_debug(f"Saved active_animal to state")
+            self.log_debug(f"Saved active_animal to state (now using active_animals list)")
 
             self.log_debug(f"Announcing to {len(spawn_locations)} rooms: {spawn_locations}")
             for room in spawn_locations:
@@ -592,27 +607,99 @@ class Hunt(SimpleCommandModule):
 
             return True
 
-    def _end_hunt(self, connection: Any, event: Any, username: str, action: str) -> bool:
-        self.log_debug(f"_end_hunt called by {username}, action={action}")
-        active_animal = self.get_state("active_animal")
-        if not active_animal:
-            self.log_debug("_end_hunt: no active_animal found")
+    def _spawn_animal_flock(self, forced_animal_key: Optional[str] = None, count: int = 1, target_channel: Optional[str] = None) -> bool:
+        """Spawn multiple animals at once as a flock."""
+        with self._spawn_lock:
+            # Clear spawn jobs immediately to prevent race conditions
+            pending_jobs = len(schedule.get_jobs(f"{self.name}-spawn"))
+            schedule.clear(f"{self.name}-spawn")
+            self._spawn_job_token = None
+            self.log_debug(f"_spawn_animal_flock called (count={count}, target_channel={target_channel}, cleared {pending_jobs} pending job(s))")
+
+            animals_config = self._get_animals_config()
+            if not animals_config:
+                self.log_debug("No animals configured")
+                return False
+
+            allowed_channels = self.get_config_value("allowed_channels", default=[])
+            spawn_locations = list(set([room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]))
+
+            if target_channel and target_channel in spawn_locations:
+                spawn_locations = [target_channel]
+
+            if not spawn_locations:
+                self.log_debug("No valid spawn locations")
+                return False
+
+            # Check if there are already active animals
+            existing_animals = self.get_state("active_animals", [])
+            if existing_animals:
+                self.log_debug(f"WARNING: active_animals already exist: {len(existing_animals)} animals")
+                return False
+
+            # Create the flock
+            flock = []
+            spawn_time = datetime.now(UTC).isoformat()
+
+            for _ in range(count):
+                chosen_animal = None
+                if forced_animal_key:
+                    normalized_key = str(forced_animal_key).lower()
+                    forced_pool = [a for a in animals_config if self._get_animal_score_name(a) == normalized_key]
+                    if forced_pool:
+                        chosen_animal = random.choice(forced_pool).copy()
+
+                if not chosen_animal:
+                    chosen_animal = random.choice(animals_config).copy()
+
+                animal = chosen_animal
+                animal["score_name"] = self._get_animal_score_name(animal)
+                animal["display_name"] = self._get_animal_display_name(animal)
+                animal['spawned_at'] = spawn_time
+                flock.append(animal)
+
+            self.set_state("active_animals", flock)
+            self.set_state("next_spawn_time", None)
+            self.save_state()
+            self.log_debug(f"Spawned flock of {len(flock)} {forced_animal_key or 'animals'}")
+
+            # Announce the flock
+            display_name = flock[0]["display_name"] if flock else "animals"
+            for room in spawn_locations:
+                self.log_debug(f"Announcing flock to {room}")
+                self.safe_say(random.choice(self.SPAWN_ANNOUNCEMENTS), target=room)
+                self.safe_say(f"A flock of {len(flock)} {display_name}{'s' if len(flock) > 1 else ''} appears!", target=room)
+                # Show the ascii art once for the flock
+                if flock:
+                    self.safe_say(flock[0].get("ascii_art", "Animals appear."), target=room)
+
             return True
 
-        self.log_debug(f"_end_hunt: processing animal '{active_animal.get('display_name', active_animal.get('name', 'unknown'))}'")
-        # Calculate time to catch
-        time_to_catch_str = "" # Default to empty string
-        if 'spawned_at' in active_animal:
+    def _end_hunt(self, connection: Any, event: Any, username: str, action: str) -> bool:
+        self.log_debug(f"_end_hunt called by {username}, action={action}")
+        active_animals = self.get_state("active_animals", [])
+        if not active_animals:
+            self.log_debug("_end_hunt: no active_animals found")
+            return True
+
+        # Catch the entire flock at once
+        flock_size = len(active_animals)
+        first_animal = active_animals[0]
+
+        self.log_debug(f"_end_hunt: catching entire flock of {flock_size} animals")
+
+        # Calculate time to catch (using first animal's spawn time)
+        time_to_catch_str = ""
+        if 'spawned_at' in first_animal:
             try:
-                spawn_time = datetime.fromisoformat(active_animal['spawned_at'])
+                spawn_time = datetime.fromisoformat(first_animal['spawned_at'])
                 catch_time = datetime.now(UTC)
                 duration = self._format_timedelta(catch_time - spawn_time)
-                time_to_catch_str = f" in {duration}" # Note the leading space
+                time_to_catch_str = f" in {duration}"
             except (ValueError, TypeError):
                 self.log_debug("Could not parse spawn time for active animal.")
 
-        display_name = self._get_animal_display_name(active_animal)
-        animal_score_name = self._get_animal_score_name(active_animal)
+        display_name = self._get_animal_display_name(first_animal)
         user_id = self.bot.get_user_id(username)
 
         # Special handling for user "dead" - they MURDER animals
@@ -620,35 +707,54 @@ class Hunt(SimpleCommandModule):
         if is_dead and action == "hunted":
             action = "murdered"
 
+        # Count animals by type and add them all to scores
         scores = self.get_state("scores", {})
         user_scores = scores.get(user_id, {})
-        score_key = f"{animal_score_name}_{action}"
-        user_scores[score_key] = user_scores.get(score_key, 0) + 1
+
+        animal_counts = {}
+        for animal in active_animals:
+            animal_score_name = self._get_animal_score_name(animal)
+            score_key = f"{animal_score_name}_{action}"
+            animal_counts[score_key] = animal_counts.get(score_key, 0) + 1
+
+        for score_key, count in animal_counts.items():
+            user_scores[score_key] = user_scores.get(score_key, 0) + count
+
         scores[user_id] = user_scores
 
+        # Clear all animals from active_animals
         self.set_state("scores", scores)
-        self.set_state("active_animal", None)
-        self.log_debug(f"_end_hunt: cleared active_animal, saved scores")
+        self.set_state("active_animals", [])
+        self.log_debug(f"_end_hunt: caught entire flock of {flock_size} animals, cleared active_animals, saved scores")
         self.save_state()
+
+        # Build response message
+        flock_msg = f"the entire flock of {flock_size} {display_name}{'s' if flock_size > 1 else ''}" if flock_size > 1 else f"the {display_name}"
 
         # Special murder messages for user "dead"
         if is_dead and action == "murdered":
-            murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=display_name.lower())
+            if flock_size > 1:
+                murder_msg = f"MASSACRE! All {flock_size} {display_name}s obliterated!"
+            else:
+                murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=display_name.lower())
             self.safe_reply(connection, event, f"{murder_msg}{time_to_catch_str}.")
         else:
             msg_key = "hug_message" if action == "hugged" else "hunt_message"
-            custom_msg = active_animal.get(msg_key)
+            custom_msg = first_animal.get(msg_key)
 
-            if custom_msg:
+            if custom_msg and flock_size == 1:
                 self.safe_reply(connection, event, f"{custom_msg.format(username=self.bot.title_for(username), animal=display_name)}{time_to_catch_str}.")
             else:
-                self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} the {display_name}{time_to_catch_str}.")
+                self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. You have {action} {flock_msg}{time_to_catch_str}.")
 
+        # Schedule next flock or next spawn since flock is now cleared
         if self._event_is_active():
-            self.log_debug("_end_hunt: event active, next release will be scheduled by event queue")
+            self.log_debug("_end_hunt: flock cleared, event active, scheduling next flock")
+            self._schedule_next_event_spawn()
         else:
-            self.log_debug(f"_end_hunt: complete, scheduling next spawn")
+            self.log_debug(f"_end_hunt: flock cleared, scheduling next spawn")
             self._schedule_next_spawn()
+
         return True
 
     def _cmd_hug(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
@@ -670,7 +776,7 @@ class Hunt(SimpleCommandModule):
             self.safe_reply(connection, event, f"While the sentiment is appreciated, {self.bot.title_for(username)}, one must always seek consent before embracing another.")
             return True
 
-        if self.get_state("active_animal"):
+        if self.get_state("active_animals"):
             return self._end_hunt(connection, event, username, "hugged")
 
         self.safe_reply(connection, event, f"There is nothing to hug at the moment, {self.bot.title_for(username)}.")
@@ -699,7 +805,7 @@ class Hunt(SimpleCommandModule):
     def _cmd_release(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target): return False
 
-        if self.get_state("active_animal"):
+        if self.get_state("active_animals"):
             self.safe_reply(connection, event, f"I must insist we deal with the current creature first, {self.bot.title_for(username)}.")
             return True
 
@@ -773,8 +879,8 @@ class Hunt(SimpleCommandModule):
         return True
 
     def _cmd_admin_spawn(self, connection: Any, event: Any, msg: str, username: str, match: Any) -> bool:
-        if self.get_state("active_animal"):
-            self.safe_reply(connection, event, "An animal is already active.")
+        if self.get_state("active_animals"):
+            self.safe_reply(connection, event, "Animals are already active.")
             return True
         if self._spawn_animal(target_channel=event.target):
             self.safe_reply(connection, event, "As you wish. I have released an animal.")

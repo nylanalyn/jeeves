@@ -21,6 +21,10 @@ class Hunt(SimpleCommandModule):
     version = "2.0.0" # Added catch timer and reverted score complexity.
     description = "A game of hunting or hugging randomly appearing animals."
 
+    ESCAPE_MISHAP_CHANCE = 0.05
+    DEFAULT_ANIMAL_HAPPINESS = 3
+    MIN_FOLLOWER_ESCAPE = 2
+    MAX_FOLLOWER_ESCAPE = 3
     PENDING_HUG_EXPIRY_SECONDS = 600
 
     SPAWN_ANNOUNCEMENTS: List[str] = [
@@ -51,6 +55,7 @@ class Hunt(SimpleCommandModule):
         self._spawn_job_token: Optional[str] = None
         self._pending_hug_requests: Dict[str, Dict[str, Any]] = {}
         self.set_state("scores", self.get_state("scores", {}))
+        self.set_state("animal_happiness", self.get_state("animal_happiness", {}))
         # Migration: convert old active_animal to active_animals list
         old_active = self.get_state("active_animal", None)
         if old_active:
@@ -89,6 +94,81 @@ class Hunt(SimpleCommandModule):
                 if key.startswith(f"{species}_"):
                     totals[species] += value
         return totals
+
+    def _get_animal_happiness(self, user_id: str) -> int:
+        happiness = self.get_state("animal_happiness", {})
+        return int(happiness.get(user_id, self.DEFAULT_ANIMAL_HAPPINESS))
+
+    def _set_animal_happiness(self, user_id: str, value: int) -> None:
+        happiness = self.get_state("animal_happiness", {})
+        happiness[user_id] = value
+        self.set_state("animal_happiness", happiness)
+
+    def _remove_random_animals_from_scores(self, user_id: str, count: int) -> Dict[str, int]:
+        """
+        Remove a number of hunted/hugged animals from a user's scores, weighted by their counts.
+        Returns a mapping of display name -> removed count for messaging.
+        """
+        if count <= 0:
+            return {}
+
+        scores = self.get_state("scores", {})
+        user_scores = scores.get(user_id, {})
+        candidates = [(k, v) for k, v in user_scores.items() if v > 0 and (k.endswith("_hunted") or k.endswith("_hugged"))]
+        if not candidates:
+            return {}
+
+        removed: Dict[str, int] = {}
+
+        for _ in range(count):
+            total_owned = sum(v for _, v in candidates)
+            if total_owned <= 0:
+                break
+
+            pick = random.randint(1, total_owned)
+            running = 0
+            chosen_index = 0
+            for idx, (key, value) in enumerate(candidates):
+                running += value
+                if pick <= running:
+                    chosen_index = idx
+                    break
+
+            chosen_key, chosen_value = candidates[chosen_index]
+            user_scores[chosen_key] = chosen_value - 1
+            if user_scores[chosen_key] <= 0:
+                del user_scores[chosen_key]
+                candidates.pop(chosen_index)
+            else:
+                candidates[chosen_index] = (chosen_key, user_scores[chosen_key])
+
+            animal_name = chosen_key.rsplit("_", 1)[0]
+            display_name = self._lookup_display_name(animal_name)
+            removed[display_name] = removed.get(display_name, 0) + 1
+
+        if user_scores:
+            scores[user_id] = user_scores
+        elif user_id in scores:
+            del scores[user_id]
+
+        self.set_state("scores", scores)
+        return removed
+
+    def _format_follower_loss(self, losses: Dict[str, int]) -> str:
+        if not losses:
+            return ""
+        total_lost = sum(losses.values())
+        parts = []
+        for name, qty in losses.items():
+            suffix = "s" if qty != 1 else ""
+            parts.append(f"{qty} {name}{suffix}")
+        if not parts:
+            return ""
+        if len(parts) == 1:
+            verb = "slips" if total_lost == 1 else "slip"
+            return f"In the chaos, {parts[0]} {verb} out after it!"
+        joined = ", ".join(parts[:-1]) + f" and {parts[-1]}"
+        return f"In the chaos, {joined} slip out after it!"
 
     def _cleanup_pending_hugs(self) -> None:
         now = time.time()
@@ -703,6 +783,9 @@ class Hunt(SimpleCommandModule):
         display_name = self._get_animal_display_name(first_animal)
         user_id = self.bot.get_user_id(username)
 
+        if self._handle_unlucky_escape(connection, event, username, user_id, active_animals):
+            return True
+
         # Special handling for user "dead" - they MURDER animals
         is_dead = username.lower() == "dead"
         if is_dead and action == "hunted":
@@ -837,6 +920,48 @@ class Hunt(SimpleCommandModule):
         requester = pending.get("requester_nick", "someone")
         del self._pending_hug_requests[target_id]
         self.safe_reply(connection, event, f"{self.bot.title_for(requester)} hugs {self.bot.title_for(username)} with their consent.")
+        return True
+
+    def _handle_unlucky_escape(self, connection: Any, event: Any, username: str, user_id: str, active_animals: List[Dict[str, Any]]) -> bool:
+        if not active_animals or random.random() >= self.ESCAPE_MISHAP_CHANCE:
+            return False
+
+        first_animal = active_animals[0]
+        species = self._get_animal_score_name(first_animal)
+        display_name = self._get_animal_display_name(first_animal)
+        mishap_messages = {
+            "duck": "The ducks peck at you and flap straight out the window!",
+            "cat": "The cats scratch your hands and sprint for the door!",
+            "puppy": "The puppies nip at your heels and tumble out the door!",
+        }
+        mishap_msg = mishap_messages.get(species, f"The {display_name.lower()} wriggles free and bolts for the exit!")
+
+        happiness_before = self._get_animal_happiness(user_id)
+        new_happiness = max(0, happiness_before - 1)
+        self._set_animal_happiness(user_id, new_happiness)
+
+        follower_losses: Dict[str, int] = {}
+        if new_happiness <= 0:
+            followers_to_escape = random.randint(self.MIN_FOLLOWER_ESCAPE, self.MAX_FOLLOWER_ESCAPE)
+            follower_losses = self._remove_random_animals_from_scores(user_id, followers_to_escape)
+            self._set_animal_happiness(user_id, self.DEFAULT_ANIMAL_HAPPINESS)
+
+        self.set_state("active_animals", [])
+        self.save_state()
+
+        reply_parts = [f"Oh no, {self.bot.title_for(username)}! {mishap_msg}"]
+        loss_msg = self._format_follower_loss(follower_losses)
+        if loss_msg:
+            reply_parts.append(loss_msg)
+        else:
+            reply_parts.append("Perhaps a calmer approach will keep the rest of your menagerie content.")
+
+        self.safe_reply(connection, event, " ".join(reply_parts))
+
+        if self._event_is_active():
+            self._schedule_next_event_spawn()
+        else:
+            self._schedule_next_spawn()
         return True
 
     def _cmd_release(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

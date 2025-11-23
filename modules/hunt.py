@@ -358,6 +358,7 @@ class Hunt(SimpleCommandModule):
         self.register_command(r"^\s*!release\s+(hug|hunt)\s*$", self._cmd_release, name="release", description="Release a previously caught or befriended animal.")
         self.register_command(r"^\s*!hunt(?:\s+(.*))?$", self._cmd_hunt_master, name="hunt", description="The main command for the hunt game. Use '!hunt help' for subcommands.")
         self.register_command(r"^\s*!consent\s*$", self._cmd_consent, name="consent", description="Approve the last hug request aimed at you.")
+        self.register_command(r"^\s*!bang\s*$", self._cmd_bang, name="bang", description="Risky hunting - 50/50 chance to hunt or miss!")
 
     def _format_timedelta(self, td: timedelta) -> str:
         seconds = int(td.total_seconds())
@@ -781,6 +782,42 @@ class Hunt(SimpleCommandModule):
 
         self.safe_reply(connection, event, f"There is nothing to hug at the moment, {self.bot.title_for(username)}.")
         return True
+
+    def _cmd_bang(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target): return False
+
+        active_animals = self.get_state("active_animals", [])
+        if not active_animals:
+            self.safe_reply(connection, event, f"There is nothing to hunt at the moment, {self.bot.title_for(username)}.")
+            return True
+
+        # 50/50 chance to hit or miss
+        if random.random() < 0.5:
+            # Success! Hunt the animal normally
+            return self._end_hunt(connection, event, username, "hunted")
+        else:
+            # Miss! Animal escapes
+            flock_size = len(active_animals)
+            first_animal = active_animals[0]
+            display_name = self._get_animal_display_name(first_animal)
+
+            # Clear the animals without awarding points
+            self.set_state("active_animals", [])
+            self.save_state()
+
+            # Send failure message
+            if flock_size > 1:
+                self.safe_reply(connection, event, f"Good heavens, {self.bot.title_for(username)}! Your reckless shooting has frightened away the entire flock of {flock_size} {display_name}s! Perhaps next time you might consider the !hunt command instead?")
+            else:
+                self.safe_reply(connection, event, f"Oh dear. You missed entirely, {self.bot.title_for(username)}, and the {display_name} has escaped. I did warn you about using firearms indoors.")
+
+            # Schedule next spawn since the animal(s) escaped
+            if self._event_is_active():
+                self._schedule_next_event_spawn()
+            else:
+                self._schedule_next_spawn()
+
+            return True
 
     def _cmd_consent(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target): return False

@@ -12,7 +12,7 @@ def setup(bot):
 
 class Clock(SimpleCommandModule):
     name = "clock"
-    version = "3.1.0" # Added flavor text preference support
+    version = "3.2.0" # Added storage of user-supplied location names
     description = "Provides the local time for users based on their set location."
 
     def __init__(self, bot):
@@ -98,7 +98,12 @@ class Clock(SimpleCommandModule):
         user_loc = user_locations.get(user_id)
 
         if user_loc:
-            location_name = user_loc.get('short_name') or user_loc.get('display_name') or 'your location'
+            location_name = (
+                user_loc.get('user_input')
+                or user_loc.get('short_name')
+                or user_loc.get('display_name')
+                or 'your location'
+            )
             country_code = user_loc.get('country_code')
             time_str = self._get_time_for_coords(user_loc['lat'], user_loc['lon'], country_code, user_id)
 
@@ -142,7 +147,12 @@ class Clock(SimpleCommandModule):
             user_locations = self.bot.get_module_state("weather").get("user_locations", {})
             target_user_loc = user_locations.get(target_user_id)
             if target_user_loc:
-                location_name = target_user_loc.get('short_name') or target_user_loc.get('display_name') or 'their location'
+                location_name = (
+                    target_user_loc.get('user_input')
+                    or target_user_loc.get('short_name')
+                    or target_user_loc.get('display_name')
+                    or 'their location'
+                )
                 country_code = target_user_loc.get('country_code')
                 time_str = self._get_time_for_coords(target_user_loc['lat'], target_user_loc['lon'], country_code, target_user_id)
                 if time_str:

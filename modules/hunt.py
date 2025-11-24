@@ -26,6 +26,23 @@ class Hunt(SimpleCommandModule):
     MIN_FOLLOWER_ESCAPE = 2
     MAX_FOLLOWER_ESCAPE = 3
     PENDING_HUG_EXPIRY_SECONDS = 600
+    COLLECTIVE_NOUNS: List[str] = [
+        "flock",
+        "clowder",
+        "litter",
+        "murder",
+        "team",
+        "cluster",
+        "herd",
+        "pack",
+        "parliament",
+        "gaggle",
+        "pod",
+        "troop",
+        "pride",
+        "colony",
+        "army",
+    ]
 
     SPAWN_ANNOUNCEMENTS: List[str] = [
         "Good heavens, it appears a creature has wandered into the premises!",
@@ -65,6 +82,7 @@ class Hunt(SimpleCommandModule):
             self.set_state("active_animals", self.get_state("active_animals", []))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
         self.set_state("event", self.get_state("event", None))
+        self.set_state("active_collective_noun", self.get_state("active_collective_noun", None))
         # The on_config_reload will be called by the bot core on load
         # so we don't need to call it manually here.
 
@@ -454,6 +472,16 @@ class Hunt(SimpleCommandModule):
         
         return ", ".join(parts)
 
+    def _pick_collective_noun(self) -> str:
+        """Return a random collective noun for a group of animals."""
+        return random.choice(self.COLLECTIVE_NOUNS)
+
+    def _get_active_collective_noun(self) -> str:
+        return self.get_state("active_collective_noun") or "flock"
+
+    def _set_active_collective_noun(self, noun: Optional[str]) -> None:
+        self.set_state("active_collective_noun", noun)
+
     def _cmd_hunt_master(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target): return False
 
@@ -676,6 +704,7 @@ class Hunt(SimpleCommandModule):
             self.log_debug(f"Selected animal: {animal.get('display_name', animal.get('name', 'unknown'))} (forced={forced_animal_key})")
 
             self.set_state("active_animals", [animal])
+            self._set_active_collective_noun(None)
             self.set_state("next_spawn_time", None)
             self.save_state()
             self.log_debug(f"Saved active_animal to state (now using active_animals list)")
@@ -721,6 +750,7 @@ class Hunt(SimpleCommandModule):
             # Create the flock
             flock = []
             spawn_time = datetime.now(UTC).isoformat()
+            collective_noun = self._pick_collective_noun()
 
             for _ in range(count):
                 chosen_animal = None
@@ -740,6 +770,7 @@ class Hunt(SimpleCommandModule):
                 flock.append(animal)
 
             self.set_state("active_animals", flock)
+            self._set_active_collective_noun(collective_noun)
             self.set_state("next_spawn_time", None)
             self.save_state()
             self.log_debug(f"Spawned flock of {len(flock)} {forced_animal_key or 'animals'}")
@@ -749,7 +780,7 @@ class Hunt(SimpleCommandModule):
             for room in spawn_locations:
                 self.log_debug(f"Announcing flock to {room}")
                 self.safe_say(random.choice(self.SPAWN_ANNOUNCEMENTS), target=room)
-                self.safe_say(f"A flock of {len(flock)} {display_name}{'s' if len(flock) > 1 else ''} appears!", target=room)
+                self.safe_say(f"A {collective_noun} of {len(flock)} {display_name}{'s' if len(flock) > 1 else ''} appears!", target=room)
                 # Show the ascii art once for the flock
                 if flock:
                     self.safe_say(flock[0].get("ascii_art", "Animals appear."), target=room)
@@ -762,6 +793,7 @@ class Hunt(SimpleCommandModule):
         if not active_animals:
             self.log_debug("_end_hunt: no active_animals found")
             return True
+        collective_noun = self._get_active_collective_noun()
 
         # Catch the entire flock at once
         flock_size = len(active_animals)
@@ -809,16 +841,17 @@ class Hunt(SimpleCommandModule):
         # Clear all animals from active_animals
         self.set_state("scores", scores)
         self.set_state("active_animals", [])
+        self._set_active_collective_noun(None)
         self.log_debug(f"_end_hunt: caught entire flock of {flock_size} animals, cleared active_animals, saved scores")
         self.save_state()
 
         # Build response message
-        flock_msg = f"the entire flock of {flock_size} {display_name}{'s' if flock_size > 1 else ''}" if flock_size > 1 else f"the {display_name}"
+        flock_msg = f"the entire {collective_noun} of {flock_size} {display_name}{'s' if flock_size > 1 else ''}" if flock_size > 1 else f"the {display_name}"
 
         # Special murder messages for user "dead"
         if is_dead and action == "murdered":
             if flock_size > 1:
-                murder_msg = f"MASSACRE! All {flock_size} {display_name}s obliterated!"
+                murder_msg = f"MASSACRE! All {flock_size} {display_name}s in the {collective_noun} obliterated!"
             else:
                 murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=display_name.lower())
             self.safe_reply(connection, event, f"{murder_msg}{time_to_catch_str}.")
@@ -883,14 +916,16 @@ class Hunt(SimpleCommandModule):
             flock_size = len(active_animals)
             first_animal = active_animals[0]
             display_name = self._get_animal_display_name(first_animal)
+            collective_noun = self._get_active_collective_noun()
 
             # Clear the animals without awarding points
             self.set_state("active_animals", [])
+            self._set_active_collective_noun(None)
             self.save_state()
 
             # Send failure message
             if flock_size > 1:
-                self.safe_reply(connection, event, f"Good heavens, {self.bot.title_for(username)}! Your reckless shooting has frightened away the entire flock of {flock_size} {display_name}s! Perhaps next time you might consider the !hunt command instead?")
+                self.safe_reply(connection, event, f"Good heavens, {self.bot.title_for(username)}! Your reckless shooting has frightened away the entire {collective_noun} of {flock_size} {display_name}s! Perhaps next time you might consider the !hunt command instead?")
             else:
                 self.safe_reply(connection, event, f"Oh dear. You missed entirely, {self.bot.title_for(username)}, and the {display_name} has escaped. I did warn you about using firearms indoors.")
 
@@ -947,6 +982,7 @@ class Hunt(SimpleCommandModule):
             self._set_animal_happiness(user_id, self.DEFAULT_ANIMAL_HAPPINESS)
 
         self.set_state("active_animals", [])
+        self._set_active_collective_noun(None)
         self.save_state()
 
         reply_parts = [f"Oh no, {self.bot.title_for(username)}! {mishap_msg}"]
@@ -1146,5 +1182,5 @@ class Hunt(SimpleCommandModule):
 
         summary = ", ".join(f"{k}: {v}" for k, v in totals.items())
         total_count = sum(totals.values())
-        self.safe_reply(connection, event, f"Understood. Releasing {total_count} animals from {self.bot.title_for(target_user)} ({summary}). They will appear in themed flocks over time.")
+        self.safe_reply(connection, event, f"Understood. Releasing {total_count} animals from {self.bot.title_for(target_user)} ({summary}). They will appear in themed collectives over time.")
         return True

@@ -143,6 +143,7 @@ def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
     dungeon_state.setdefault("last_equipped", None)
     dungeon_state.setdefault("last_run", None)
     dungeon_state.setdefault("stored_items", {})
+    dungeon_state.setdefault("relic_penalty_chain", 0)  # Tracks relic decay across runs
     player["dungeon_state"] = dungeon_state
 
     # Hardcore mode state
@@ -1087,6 +1088,17 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
 
     # Initialize or continue run
     if starting_new_run:
+        # Reset relic decay if it's been 24h since the last finished dungeon
+        last_run = dungeon_state.get("last_run") or {}
+        last_run_ended = last_run.get("ended")
+        if last_run_ended:
+            try:
+                last_end_dt = datetime.fromisoformat(last_run_ended)
+                if (datetime.now(UTC) - last_end_dt) >= timedelta(hours=24):
+                    dungeon_state["relic_penalty_chain"] = 0
+            except (ValueError, TypeError):
+                pass
+
         # Starting new run
         dungeon_state["active_run"] = {
             "started": start_time,
@@ -1095,7 +1107,8 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             "momentum": 0,  # Consecutive victories
             "rooms_cleared": 0,
             "bypass_used": False,
-            "xp_notice_sent": False
+            "xp_notice_sent": False,
+            "relic_auto_wins": 0  # Count relic-fueled victories this run
         }
         dungeon_state["last_run"] = {
             "started": start_time,
@@ -1109,6 +1122,8 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
         quest_module.safe_privmsg(username, f"--- Entering the Tenfold Depths ({TOTAL_DUNGEON_ROOMS} rooms) ---")
 
     active_run = dungeon_state["active_run"]
+    # Backfill new tracking keys for older runs
+    active_run.setdefault("relic_auto_wins", 0)
     start_room = active_run["current_room"]
     momentum = active_run["momentum"]
 
@@ -1177,6 +1192,14 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
         for msg_text in effect_msgs:
             if msg_text:
                 quest_module.safe_privmsg(username, msg_text)
+
+        # Track relic-fueled auto-wins so we can scale rewards down later
+        relic_auto_triggered = any(
+            eff.get("type") == "dungeon_relic" and eff.get("triggered_this_fight")
+            for eff in player.get("active_effects", [])
+        )
+        if relic_auto_triggered:
+            active_run["relic_auto_wins"] = active_run.get("relic_auto_wins", 0) + 1
 
         # Roll combat
         win = random.random() < win_chance
@@ -1278,24 +1301,44 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
     dungeon_state["equipped_items"] = []
     dungeon_state["active_run"] = None
 
-    player["inventory"][DUNGEON_REWARD_KEY] = player["inventory"].get(DUNGEON_REWARD_KEY, 0) + DUNGEON_REWARD_CHARGES
+    base_relic_reward = DUNGEON_REWARD_CHARGES
+    relic_auto_wins = active_run.get("relic_auto_wins", 0)
+    relic_chain = dungeon_state.get("relic_penalty_chain", 0)
+    relic_penalty = min(base_relic_reward, relic_auto_wins + relic_chain)
+    relic_reward = max(0, base_relic_reward - relic_penalty)
+
+    player["inventory"][DUNGEON_REWARD_KEY] = player["inventory"].get(DUNGEON_REWARD_KEY, 0) + relic_reward
     player["last_fight"] = {
         "monster_name": DUNGEON_ROOMS[-1]["monster"]["name"],
         "monster_level": player.get("level", 1) + DUNGEON_ROOMS[-1]["monster"].get("level_offset", 0),
         "win": True
     }
 
-    quest_module.safe_privmsg(username, f"You conquer the Heart of the Abyss! A {DUNGEON_REWARD_NAME} materializes in your hands.")
+    if relic_penalty > 0:
+        quest_module.safe_privmsg(
+            username,
+            f"You conquer the Heart of the Abyss! Reliance on relic power dampens the reward (-{relic_penalty})."
+        )
+    else:
+        quest_module.safe_privmsg(username, f"You conquer the Heart of the Abyss! A {DUNGEON_REWARD_NAME} materializes in your hands.")
+    quest_module.safe_privmsg(username, f"Relics earned: {relic_reward} (base {base_relic_reward}, relic auto-wins: {relic_auto_wins})")
     quest_module.safe_privmsg(username, DUNGEON_REWARD_EFFECT_TEXT)
+
+    # Update decay chain: clean runs reset; relic runs carry forward their penalty
+    if relic_auto_wins <= 0:
+        dungeon_state["relic_penalty_chain"] = 0
+    else:
+        dungeon_state["relic_penalty_chain"] = relic_penalty  # carry forward effective debt
 
     players = quest_module.get_state("players")
     players[user_id] = player
     quest_module.set_state("players", players)
     quest_module.save_state()
 
+    relic_suffix = "s" if relic_reward != 1 else ""
     victory_msg = (
-        f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed a {DUNGEON_REWARD_NAME}! "
-        f"{DUNGEON_REWARD_EFFECT_TEXT}"
+        f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed {relic_reward} {DUNGEON_REWARD_NAME}{relic_suffix}! "
+        f"(Reduced by {relic_penalty} for relying on relic auto-wins) {DUNGEON_REWARD_EFFECT_TEXT}"
     )
     _broadcast_dungeon_outcome(quest_module, connection, event, dungeon_state.get("last_run"), victory_msg)
     return True

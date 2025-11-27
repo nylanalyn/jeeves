@@ -130,15 +130,11 @@ def _check_boss_state(quest_module, boss_hunt: Dict[str, Any]) -> Dict[str, Any]
         if boss_hunt.get("haunting", {}).get("active"):
             return boss_hunt
 
-        # Don't spawn ANY boss during buff period if we defeated the big bad boss
-        # (we want complete radio silence until the haunting period ends)
+        # Don't spawn ANY boss during buff period – we want quiet time between hunts
         buff = boss_hunt.get("buff", {})
         if buff.get("active"):
-            last_boss = boss_hunt.get("last_defeated_boss")
-            big_bad_boss = _get_big_bad_boss_name(quest_module, channel)
-            if last_boss == big_bad_boss:
-                quest_module.log_debug(f"No boss spawns during {big_bad_boss} buff/haunting period")
-                return boss_hunt
+            quest_module.log_debug("No boss spawns while boss hunt buff is active")
+            return boss_hunt
 
         # Spawn a new boss (only if not in Big Tony's buff/haunting period)
         boss_hunt["current_boss"] = _spawn_new_boss(quest_module, channel)

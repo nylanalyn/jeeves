@@ -230,7 +230,9 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         if applied_penalty_msgs:
             quest_module.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(applied_penalty_msgs)}).")
 
-    base_win_chance = quest_utils.calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0))
+    # Get class bonuses
+    class_bonuses = quest_utils.get_class_bonuses(quest_module, user_id, int(player_level))
+    base_win_chance = quest_utils.calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0), class_bonus=class_bonuses["win_chance"])
 
     # Calculate base XP
     xp_level_mult = quest_module.get_config_value("xp_level_multiplier", event.target, default=2)
@@ -300,9 +302,9 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         if item_drop_msg:
             quest_module.safe_reply(connection, event, item_drop_msg)
 
-        # Apply injury with armor reduction
+        # Apply injury with armor reduction and class bonus
         injury_reduction = quest_combat.get_injury_reduction(player)
-        injury_msg = quest_utils.apply_injury(quest_module, user_id, username, event.target, injury_reduction=injury_reduction)
+        injury_msg = quest_utils.apply_injury(quest_module, user_id, username, event.target, injury_reduction=injury_reduction, class_injury_reduction=class_bonuses["injury_reduction"])
         if injury_msg:
             quest_module.safe_reply(connection, event, injury_msg)
             # Try to show haunting message on injury

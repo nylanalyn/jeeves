@@ -494,7 +494,11 @@ def close_mob_window(quest_module):
 
             for p in participants:
                 quest_progression.deduct_xp(quest_module, p["user_id"], p["username"], xp_loss)
-                injury_msg = quest_utils.apply_injury(quest_module, p["user_id"], p["username"], channel)
+                # Get class bonuses for injury reduction
+                player_data = players_state.get(p["user_id"], {})
+                player_level = player_data.get("level", 1)
+                class_bonuses = quest_utils.get_class_bonuses(quest_module, p["user_id"], player_level)
+                injury_msg = quest_utils.apply_injury(quest_module, p["user_id"], p["username"], channel, class_injury_reduction=class_bonuses["injury_reduction"])
                 if injury_msg:
                     quest_module.safe_say(f"{p['username']}: {injury_msg}", channel)
 

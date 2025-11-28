@@ -40,6 +40,7 @@ class Quest(SimpleCommandModule):
         self.set_state("players", self.get_state("players", {}))
         self.set_state("active_mob", self.get_state("active_mob", None))
         self.set_state("player_classes", self.get_state("player_classes", {}))
+        self.set_state("class_change_prestige", self.get_state("class_change_prestige", {}))
         self.set_state("legend_bosses", self.get_state("legend_bosses", {}))
         self.set_state("mob_cooldowns", self.get_state("mob_cooldowns", {}))
         self.set_state("web_link_tokens", self.get_state("web_link_tokens", {}))

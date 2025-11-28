@@ -134,8 +134,56 @@ def calculate_xp_for_level(quest_module, level: int) -> int:
         return level * 100
 
 
+def get_class_bonuses(quest_module, user_id: str, player_level: int) -> Dict[str, float]:
+    """
+    Get class-based bonuses for a player.
+    Returns dict with 'win_chance' and 'injury_reduction' modifiers.
+
+    Class position 0 (first class): +25% win at levels 1-10, -10% win at levels 11-20
+    Class position 1 (second class): -10% win at levels 1-10, +25% win at levels 11-20
+    Class position 2 (third class): 50% injury reduction at all levels
+    """
+    bonuses = {"win_chance": 0.0, "injury_reduction": 0.0}
+
+    player_classes = quest_module.get_state("player_classes", {})
+    player_class = player_classes.get(user_id)
+
+    if not player_class:
+        return bonuses
+
+    # Get all available classes to determine position
+    classes_config = quest_module._get_content("classes", default={})
+    if not classes_config:
+        return bonuses
+
+    class_list = list(classes_config.keys())
+
+    try:
+        class_position = class_list.index(player_class)
+    except ValueError:
+        # Class not found in config
+        return bonuses
+
+    # Apply bonuses based on class position and player level
+    if class_position == 0:  # First class - early game bonus
+        if 1 <= player_level <= 10:
+            bonuses["win_chance"] = 0.25
+        elif 11 <= player_level <= 20:
+            bonuses["win_chance"] = -0.10
+    elif class_position == 1:  # Second class - late game bonus
+        if 1 <= player_level <= 10:
+            bonuses["win_chance"] = -0.10
+        elif 11 <= player_level <= 20:
+            bonuses["win_chance"] = 0.25
+    elif class_position == 2:  # Third class - injury reduction
+        bonuses["injury_reduction"] = 0.50
+
+    return bonuses
+
+
 def calculate_win_chance(player_level: float, monster_level: int, energy_modifier: float = 0.0,
-                        group_modifier: float = 0.0, prestige_level: int = 0) -> float:
+                        group_modifier: float = 0.0, prestige_level: int = 0,
+                        class_bonus: float = 0.0) -> float:
     """Calculate win chance for combat."""
     from .quest_progression import get_prestige_win_bonus
 
@@ -144,6 +192,7 @@ def calculate_win_chance(player_level: float, monster_level: int, energy_modifie
     base_chance += energy_modifier
     base_chance += group_modifier
     base_chance += get_prestige_win_bonus(prestige_level)
+    base_chance += class_bonus
     base_chance = max(0.05, min(0.95, base_chance))
     return base_chance
 
@@ -184,7 +233,7 @@ def check_and_clear_injury(player_data: Dict[str, Any]) -> Tuple[Dict[str, Any],
 
 
 def apply_injury(quest_module, user_id: str, username: str, channel: str,
-                is_medic_quest: bool = False, injury_reduction: float = 0.0) -> Optional[str]:
+                is_medic_quest: bool = False, injury_reduction: float = 0.0, class_injury_reduction: float = 0.0) -> Optional[str]:
     """Applies a random injury to a player upon defeat. Max 2 of each injury type."""
     injury_config = quest_module.get_injury_config(channel)
     if not injury_config.get("enabled"):
@@ -197,6 +246,8 @@ def apply_injury(quest_module, user_id: str, username: str, channel: str,
     injury_chance = injury_config.get("injury_chance_on_loss", 0.75)
     # Apply injury reduction from armor
     injury_chance = max(0.0, injury_chance * (1.0 - injury_reduction))
+    # Apply class-based injury reduction
+    injury_chance = max(0.0, injury_chance * (1.0 - class_injury_reduction))
     if random.random() > injury_chance:
         return None
 

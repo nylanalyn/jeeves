@@ -571,25 +571,72 @@ def deduct_xp(quest_module, user_id: str, username: str, amount: int) -> Dict[st
 
 
 def handle_class(quest_module, connection, event, username, args):
-    """Handle class selection."""
+    """Handle class selection. Players can only change class once per prestige."""
     user_id = quest_module.bot.get_user_id(username)
     chosen_class = args[0].lower() if args else ""
     player_classes = quest_module.get_state("player_classes", {})
+    class_change_prestige = quest_module.get_state("class_change_prestige", {})
     classes_config = quest_module._get_content("classes", default={})
+
+    # Get player data to check prestige level
+    player = get_player(quest_module, user_id)
+    current_prestige = player.get("prestige", 0)
 
     if not chosen_class:
         current_class = player_classes.get(user_id, "no class")
         available_classes = ", ".join(classes_config.keys())
-        quest_module.safe_reply(connection, event, f"{quest_module.bot.title_for(username)}, your current class is: {current_class}. Available: {available_classes}.")
+
+        # Show class bonuses info
+        if current_class != "no class":
+            class_list = list(classes_config.keys())
+            try:
+                class_position = class_list.index(current_class)
+                bonus_info = ""
+                if class_position == 0:
+                    bonus_info = " (+25% win chance levels 1-10, -10% levels 11-20)"
+                elif class_position == 1:
+                    bonus_info = " (-10% win chance levels 1-10, +25% levels 11-20)"
+                elif class_position == 2:
+                    bonus_info = " (50% injury reduction)"
+                quest_module.safe_reply(connection, event, f"{quest_module.bot.title_for(username)}, your current class is: {current_class}{bonus_info}. Available: {available_classes}.")
+            except ValueError:
+                quest_module.safe_reply(connection, event, f"{quest_module.bot.title_for(username)}, your current class is: {current_class}. Available: {available_classes}.")
+        else:
+            quest_module.safe_reply(connection, event, f"{quest_module.bot.title_for(username)}, your current class is: {current_class}. Available: {available_classes}.")
         return True
+
     if chosen_class not in classes_config:
         quest_module.safe_reply(connection, event, f"My apologies, that is not a recognized class.")
         return True
 
+    # Check if player has already changed class at this prestige level
+    last_change_prestige = class_change_prestige.get(user_id, -1)
+    if last_change_prestige == current_prestige and user_id in player_classes:
+        quest_module.safe_reply(connection, event, f"You have already chosen your class for this prestige level. You can change your class again after you prestige.")
+        return True
+
+    # Allow the class change
     player_classes[user_id] = chosen_class
+    class_change_prestige[user_id] = current_prestige
     quest_module.set_state("player_classes", player_classes)
+    quest_module.set_state("class_change_prestige", class_change_prestige)
     quest_module.save_state()
-    quest_module.safe_reply(connection, event, f"Very good, {quest_module.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
+
+    # Show bonus info for the chosen class
+    class_list = list(classes_config.keys())
+    try:
+        class_position = class_list.index(chosen_class)
+        bonus_info = ""
+        if class_position == 0:
+            bonus_info = " This class gains +25% win chance at levels 1-10, but -10% at levels 11-20."
+        elif class_position == 1:
+            bonus_info = " This class has -10% win chance at levels 1-10, but +25% at levels 11-20."
+        elif class_position == 2:
+            bonus_info = " This class has 50% reduced injury chance."
+        quest_module.safe_reply(connection, event, f"Very good, {quest_module.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.{bonus_info}")
+    except ValueError:
+        quest_module.safe_reply(connection, event, f"Very good, {quest_module.bot.title_for(username)}. You are now a {chosen_class.capitalize()}.")
+
     return True
 
 
@@ -1160,11 +1207,15 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
         monster = room["monster"]
         monster_level = max(1, player.get("level", 1) + monster.get("level_offset", 0))
 
-        # Calculate base win chance with prestige bonus
+        # Get class bonuses
+        class_bonuses = quest_utils.get_class_bonuses(quest_module, user_id, player.get("level", 1))
+
+        # Calculate base win chance with prestige bonus and class bonus
         base_win_chance = quest_utils.calculate_win_chance(
             player.get("level", 1),
             monster_level,
-            prestige_level=player.get("prestige", 0)
+            prestige_level=player.get("prestige", 0),
+            class_bonus=class_bonuses["win_chance"]
         )
         base_win_chance += monster.get("win_chance_adjust", 0.0)
 

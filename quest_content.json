@@ -14,6 +14,12 @@
         "table_stripe": "#151619",
         "link": "#d8c3a5",
         "link_hover": "#f1dcc1",
+        "website_title": "Jeeves Quest: Case Files",
+        "website_subtitle": "🎩 Investigate the digital mysteries... sleuth awaits 📜",
+        "website_decoration_left": "🕵️",
+        "website_decoration_right": "🔍",
+        "website_footer": "🕵️ Powered by Jeeves IRC Bot | Quest System v6.0 📜",
+        "website_footer_tagline": "Every mystery has a solution...",
         "prestige_tiers": [
           {
             "max": 3,
@@ -330,6 +336,12 @@
         "table_stripe": "#1f1f1f",
         "link": "#d4d4d4",
         "link_hover": "#e0e0e0",
+        "website_title": "Jeeves Quest: Noir Files",
+        "website_subtitle": "🎩 Step into the shadows and solve the case 🔦",
+        "website_decoration_left": "🕵️",
+        "website_decoration_right": "🔍",
+        "website_footer": "🕵️ Powered by Jeeves IRC Bot | Quest System v6.0 🔍",
+        "website_footer_tagline": "In this city, everyone has secrets...",
         "prestige_tiers": [
           {
             "max": 3,
@@ -604,6 +616,12 @@
         "table_stripe": "#1e2e1c",
         "link": "#5fa777",
         "link_hover": "#7bc99c",
+        "website_title": "Jeeves Quest: Holiday Shopping",
+        "website_subtitle": "🎄 Brave the malls and conquer the queues 🎁",
+        "website_decoration_left": "🛒",
+        "website_decoration_right": "🎅",
+        "website_footer": "🎄 Powered by Jeeves IRC Bot | Quest System v6.0 🎁",
+        "website_footer_tagline": "The perfect gift is out there... somewhere",
         "prestige_tiers": [
           {
             "max": 3,
@@ -1126,6 +1144,12 @@
         "table_stripe": "#111827",
         "link": "#38bdf8",
         "link_hover": "#7dd3fc",
+        "website_title": "Jeeves Quest: Neon Frontier",
+        "website_subtitle": "🛰️ Debug the network and patch the void 💾",
+        "website_decoration_left": "⚡",
+        "website_decoration_right": "🔌",
+        "website_footer": "⚡ Powered by Jeeves IRC Bot | Quest System v6.0 💾",
+        "website_footer_tagline": "The network dreams in binary...",
         "prestige_tiers": [
           {
             "max": 3,

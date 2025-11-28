@@ -22,6 +22,14 @@ class TemplateEngine:
         theme_vars = self.theme.get_css_variables()
         prestige_css = self.theme.get_prestige_css()
 
+        # Get theme display metadata
+        website_title = self.theme.get_website_title()
+        website_subtitle = self.theme.get_website_subtitle()
+        decoration_left = self.theme.get_website_decoration_left()
+        decoration_right = self.theme.get_website_decoration_right()
+        footer_text = self.theme.get_website_footer()
+        footer_tagline = self.theme.get_website_footer_tagline()
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -618,8 +626,8 @@ class TemplateEngine:
 <body>
     <div class="container">
         <div class="header">
-            <h1><span class="noir-decoration">🕵️</span>Jeeves Quest: Case Files<span class="noir-decoration">🔍</span></h1>
-            <p>🎩 Investigate the digital mysteries... sleuth awaits 📜</p>
+            <h1><span class="noir-decoration">{decoration_left}</span>{website_title}<span class="noir-decoration">{decoration_right}</span></h1>
+            <p>{website_subtitle}</p>
         </div>
 
         <nav class="nav">
@@ -630,8 +638,8 @@ class TemplateEngine:
         {content}
 
         <div class="footer">
-            <p>🕵️ Powered by Jeeves IRC Bot | Quest System v6.0 📜</p>
-            <p style="font-size: 0.9em; opacity: 0.6; margin-top: 5px;">Every mystery has a solution...</p>
+            <p>{footer_text}</p>
+            <p style="font-size: 0.9em; opacity: 0.6; margin-top: 5px;">{footer_tagline}</p>
         </div>
     </div>
 </body>

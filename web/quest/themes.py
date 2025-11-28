@@ -233,6 +233,30 @@ class ThemeManager:
 
         return "\n".join(css_rules)
 
+    def get_website_title(self) -> str:
+        """Get website title from theme."""
+        return self.theme.get("website_title", "Jeeves Quest")
+
+    def get_website_subtitle(self) -> str:
+        """Get website subtitle from theme."""
+        return self.theme.get("website_subtitle", "Adventure awaits!")
+
+    def get_website_decoration_left(self) -> str:
+        """Get left decoration emoji/symbol from theme."""
+        return self.theme.get("website_decoration_left", "⚔️")
+
+    def get_website_decoration_right(self) -> str:
+        """Get right decoration emoji/symbol from theme."""
+        return self.theme.get("website_decoration_right", "🛡️")
+
+    def get_website_footer(self) -> str:
+        """Get website footer text from theme."""
+        return self.theme.get("website_footer", "Powered by Jeeves IRC Bot | Quest System v6.0")
+
+    def get_website_footer_tagline(self) -> str:
+        """Get website footer tagline from theme."""
+        return self.theme.get("website_footer_tagline", "Adventure awaits...")
+
 
 def load_theme(content_path: Path) -> Dict[str, Any]:
     """Legacy function for backward compatibility."""

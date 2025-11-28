@@ -2,7 +2,7 @@
 # Progression systems: XP, leveling, prestige, transcendence, abilities, dungeons
 
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 
 from .constants import (

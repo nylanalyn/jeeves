@@ -367,11 +367,11 @@ class Jeeves(SingleServerIRCBot):
         self.logger.setLevel(logging.INFO)
 
         # Use RotatingFileHandler for automatic log rotation
-        # maxBytes=10485760 = 10MB per file, backupCount=5 keeps 5 old log files
+        # maxBytes=102400 = 100KB per file, backupCount=10 keeps 10 old log files
         handler = RotatingFileHandler(
             ROOT / log_file,
-            maxBytes=10485760,  # 10MB
-            backupCount=5,
+            maxBytes=102400,  # 100KB
+            backupCount=10,
             encoding='utf-8'
         )
         formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
@@ -382,7 +382,7 @@ class Jeeves(SingleServerIRCBot):
 
         self.logger.addHandler(handler)
         # Always write initialization message to ensure file is created
-        self.logger.info(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}. Log rotation: 10MB per file, 5 backups.")
+        self.logger.info(f"[core] Logging initialized. Debug mode is {'ON' if self.debug_mode else 'OFF'}. Log rotation: 100KB per file, 10 backups.")
 
     def _redact_sensitive_data(self, message: str) -> str:
         """Redact sensitive information from log messages."""

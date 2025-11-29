@@ -50,13 +50,14 @@
       "WebFetch(domain:files.pythonhosted.org)",
       "Bash(git revert:*)",
       "Bash(curl:*)",
-      "Bash(env)"
+      "Bash(env)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
   },
   "sandbox": {
-    "autoAllowBashIfSandboxed": false,
-    "enabled": true
+    "enabled": true,
+    "autoAllowBashIfSandboxed": false
   }
 }

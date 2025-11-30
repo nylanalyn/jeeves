@@ -18,7 +18,7 @@ def setup(bot: Any) -> 'Absurdia':
 
 class Absurdia(SimpleCommandModule):
     name = "absurdia"
-    version = "1.0.0"
+    version = "1.1.0"
     description = "Creature catching and battling game with absurdist creatures"
 
     def __init__(self, bot: Any) -> None:
@@ -49,6 +49,13 @@ class Absurdia(SimpleCommandModule):
             self._cmd_help,
             name="absurdia help",
             description="Show Absurdia help and commands"
+        )
+
+        self.register_command(
+            r"^\s*!guide(?:\s+(start|next|reset|1|2|3|4))?\s*$",
+            self._cmd_guide,
+            name="guide",
+            description="Show beginner's guide to playing Absurdia (sent via DM)"
         )
 
         self.register_command(
@@ -217,6 +224,164 @@ RARITIES: Common, Uncommon, Rare, Legendary, Feral (hand-caught)
 TYPES: Sturdy Nonsense > Sharp Weird > Flimsy Chaos > Sturdy Nonsense
 """
         self.safe_reply(connection, event, help_text)
+        return True
+
+    def _cmd_guide(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        """Show beginner's guide to playing Absurdia (sent via DM in parts)"""
+        user_id = self.bot.get_user_id(username)
+        action = match.group(1) if match.group(1) else None
+
+        # Get guide parts
+        guide_parts = [
+            # Part 1: Introduction and First Steps
+            """=== ABSURDIA GUIDE - Part 1/4: Getting Started ===
+
+WHAT IS ABSURDIA?
+Absurdia is a creature collecting and battling game featuring bizarre,
+absurdist creatures. Catch them, care for them, and battle in the arena!
+
+YOUR FIRST STEPS:
+
+1. CHECK YOUR STARTING COINS
+   Type: !coins
+   You start with 100 coins to begin your adventure.
+
+2. CATCH YOUR FIRST CREATURE
+   Free option: !catch
+   - Hand-catch attempt (5% success rate)
+   - Creatures have weaker stats (60% of normal)
+   - Good for testing but not recommended long-term
+
+   Better option: Buy a trap
+   - !buy basic (costs 50 coins)
+   - !catch basic (set trap, wait 3 hours)
+   - !check (collect your creature when ready)
+
+Type !guide next to continue to Part 2...""",
+
+            # Part 2: Collection Management
+            """=== ABSURDIA GUIDE - Part 2/4: Managing Your Collection ===
+
+VIEWING YOUR CREATURES:
+- !creatures - See your entire collection
+- !stats <id> - Detailed info on a specific creature
+- !nickname <id> <name> - Give your creature a custom name
+
+IMPORTANT RULES:
+- You can only have ONE of each creature species
+- If you catch a duplicate, you'll be asked to choose:
+  - !keep - Keep the new one (release old one, get partial refund)
+  - Wait 30 seconds - Keep your current one (auto-default)
+- Compare stats carefully before deciding!
+
+CREATURE STATS:
+- HP: Health points for battles
+- Attack: Damage dealt in battles
+- Defense: Reduces incoming damage
+- Speed: Determines who attacks first
+- Happiness: Affects arena performance (0-100)
+
+Type !guide next to continue to Part 3...""",
+
+            # Part 3: Economy and Care
+            """=== ABSURDIA GUIDE - Part 3/4: Earning Coins & Care ===
+
+CARE ACTIONS (Boost stats & earn coins!):
+
+!feed <id> - Feed your creature
+- Costs: 10 coins
+- Earns: 15 coins (net +5)
+- Bonus: +5 happiness, +1 random stat
+- Cooldown: 4 hours
+
+!play <id> - Play with your creature
+- Costs: 5 coins
+- Earns: 8 coins (net +3)
+- Bonus: +3 happiness, +1 ATK or SPD
+- Cooldown: 2 hours
+
+!pet <id> - Pet your creature
+- Costs: FREE
+- Earns: 3 coins
+- Bonus: +2 happiness
+- Cooldown: 1 hour
+
+DAILY LIMIT: Coin rewards capped at 10 care actions per day
+(resets at midnight UTC). After cap, you only pay costs with no earnings.
+
+Type !guide next to continue to Part 4...""",
+
+            # Part 4: Arena and Strategy
+            """=== ABSURDIA GUIDE - Part 4/4: Arena & Strategy ===
+
+ARENA BATTLES (Hourly tournaments!):
+- !submit <id> - Enter your creature in the arena queue
+- !arena - View current queue
+- !withdraw - Remove your creature from queue
+- Battles run automatically at the top of every hour
+- Win: +150 coins | Lose: +30 coins
+
+CREATURE TYPES (Rock-Paper-Scissors):
+- Sturdy Nonsense beats Sharp Weird
+- Sharp Weird beats Flimsy Chaos
+- Flimsy Chaos beats Sturdy Nonsense
+
+TRAP TIERS (Better traps = Better creatures):
+- Basic: 50 coins, 3h wait → Common/Uncommon only
+- Standard: 100 coins, 6h wait → Adds Rare chance
+- Premium: 200 coins, 12h wait → All rarities
+- Deluxe: 400 coins, 24h wait → Best Legendary odds
+
+PRO TIPS:
+- Keep happiness at 100 for +10 HP and +5 ATK/DEF in arena
+- Feed often for permanent stat boosts
+- Hand-catching is free but gives much weaker creatures
+- Care actions build stats over time - invest in your favorites!
+
+Ready to play? Type !coins to start your adventure!
+For full command list: !absurdia help"""
+        ]
+
+        # Get or initialize guide progress
+        guide_progress = self.get_state("guide_progress", {})
+        current_part = guide_progress.get(user_id, 0)
+
+        # Determine which part to show
+        if action in ['start', 'reset', '1']:
+            current_part = 0
+        elif action == 'next':
+            current_part = min(current_part + 1, len(guide_parts) - 1)
+        elif action in ['2', '3', '4']:
+            current_part = int(action) - 1
+
+        # Ensure part is valid
+        current_part = max(0, min(current_part, len(guide_parts) - 1))
+
+        # Send guide part via DM
+        guide_text = guide_parts[current_part]
+        connection.privmsg(username, guide_text)
+
+        # Update progress to next part (for future !guide next calls)
+        next_part = current_part + 1
+        if next_part < len(guide_parts):
+            guide_progress[user_id] = next_part
+        else:
+            # Reset to beginning after completing all parts
+            guide_progress[user_id] = 0
+
+        self.set_state("guide_progress", guide_progress)
+        self.save_state()
+
+        # Confirm in channel
+        part_num = current_part + 1
+        total_parts = len(guide_parts)
+
+        if part_num < total_parts:
+            confirmation = f"{self.bot.title_for(username)}, guide part {part_num}/{total_parts} sent via DM! Type !guide next to continue."
+        else:
+            confirmation = f"{self.bot.title_for(username)}, guide part {part_num}/{total_parts} (final) sent via DM!"
+
+        self.safe_reply(connection, event, confirmation)
         return True
 
     def _cmd_creatures(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

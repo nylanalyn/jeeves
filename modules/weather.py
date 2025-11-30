@@ -23,7 +23,7 @@ def setup(bot):
 
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "4.2.0" # Added storage of user-supplied location names
+    version = "4.3.0" # Added 3-day forecast with !wf command
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot):
@@ -56,6 +56,8 @@ class Weather(SimpleCommandModule):
         self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other, name="weather other")
         self.register_command(r"^\s*!w\s*$", self._cmd_weather_self, name="w")
         self.register_command(r"^\s*!w\s+(.+)$", self._cmd_weather_other, name="w other")
+        self.register_command(r"^\s*!wf\s*$", self._cmd_forecast_self, name="forecast")
+        self.register_command(r"^\s*!wf\s+(.+)$", self._cmd_forecast_other, name="forecast other")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
@@ -172,6 +174,157 @@ class Weather(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, "Could not fetch weather.")
 
+    def _get_forecast_data(self, lat: str, lon: str, country_code: str = None) -> Optional[list]:
+        """Fetch 3-day forecast data."""
+        use_pirate = country_code == "US"
+
+        if use_pirate:
+            return self._get_pirate_forecast(lat, lon)
+        else:
+            return self._get_met_norway_forecast(lat, lon)
+
+    def _get_pirate_forecast(self, lat: str, lon: str) -> Optional[list]:
+        """Extract 3-day forecast from PirateWeather API."""
+        api_key = self.bot.config.get("api_keys", {}).get("pirateweather")
+        if not api_key:
+            return None
+
+        weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
+        try:
+            response = self.http_session.get(weather_url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            daily = data.get('daily', {}).get('data', [])
+            if not daily or len(daily) < 3:
+                return None
+
+            forecast = []
+            # Skip today (index 0), get next 3 days
+            for day in daily[1:4]:
+                forecast.append({
+                    'day': day.get('time'),
+                    'condition': day.get('summary', 'Unknown'),
+                    'temp_high_f': day.get('temperatureHigh'),
+                    'temp_low_f': day.get('temperatureLow'),
+                    'temp_high_c': round((day.get('temperatureHigh', 32) - 32) * 5 / 9, 1) if day.get('temperatureHigh') else None,
+                    'temp_low_c': round((day.get('temperatureLow', 32) - 32) * 5 / 9, 1) if day.get('temperatureLow') else None,
+                })
+            return forecast
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError):
+            return None
+
+    def _get_met_norway_forecast(self, lat: str, lon: str) -> Optional[list]:
+        """Extract 3-day forecast from MET Norway API."""
+        weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
+        headers = {'User-Agent': 'JeevesIRCBot/1.0'}
+        try:
+            response = self.http_session.get(weather_url, headers=headers, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            timeseries = data.get('properties', {}).get('timeseries', [])
+            if not timeseries:
+                return None
+
+            # Group by day and find representative data (around noon)
+            from datetime import datetime, timedelta
+            forecast = []
+            today = datetime.utcnow().date()
+
+            for day_offset in range(1, 4):  # Next 3 days
+                target_date = today + timedelta(days=day_offset)
+
+                # Find entries for this day, preferably around noon
+                day_entries = []
+                for entry in timeseries:
+                    entry_time = datetime.fromisoformat(entry['time'].replace('Z', '+00:00'))
+                    if entry_time.date() == target_date:
+                        day_entries.append(entry)
+
+                if not day_entries:
+                    continue
+
+                # Find entry closest to noon
+                noon_target = datetime.combine(target_date, datetime.min.time().replace(hour=12))
+                closest_entry = min(day_entries,
+                                  key=lambda e: abs((datetime.fromisoformat(e['time'].replace('Z', '+00:00')) - noon_target).total_seconds()))
+
+                details = closest_entry.get('data', {}).get('instant', {}).get('details', {})
+                temp_c = details.get('air_temperature')
+
+                # Get weather symbol
+                next_hours = closest_entry.get('data', {}).get('next_6_hours') or closest_entry.get('data', {}).get('next_1_hours', {})
+                symbol_code = next_hours.get('summary', {}).get('symbol_code', 'unknown')
+                condition = symbol_code.replace('_', ' ').replace('day', '').replace('night', '').strip().capitalize()
+
+                forecast.append({
+                    'day': target_date.strftime('%A'),
+                    'condition': condition,
+                    'temp_high_f': int((temp_c * 9 / 5) + 32) if temp_c else None,
+                    'temp_low_f': None,  # MET Norway doesn't provide high/low easily
+                    'temp_high_c': temp_c,
+                    'temp_low_c': None,
+                })
+
+            return forecast if forecast else None
+        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError):
+            return None
+
+    def _format_forecast_report(self, forecast_data: list, location_name: str, requester: str, is_pirate: bool = False) -> str:
+        """Format 3-day forecast into readable text."""
+        if not forecast_data:
+            return "Forecast data unavailable."
+
+        from datetime import datetime
+
+        lines = []
+        for day_data in forecast_data:
+            if is_pirate and isinstance(day_data['day'], (int, float)):
+                # PirateWeather uses Unix timestamp
+                day_name = datetime.fromtimestamp(day_data['day']).strftime('%A')
+            else:
+                day_name = day_data['day']
+
+            condition = day_data['condition']
+
+            if is_pirate and day_data['temp_high_f'] and day_data['temp_low_f']:
+                temp_str = f"{int(day_data['temp_high_f'])}/{int(day_data['temp_low_f'])}°F ({day_data['temp_high_c']}/{day_data['temp_low_c']}°C)"
+            elif day_data['temp_high_f']:
+                temp_str = f"~{int(day_data['temp_high_f'])}°F ({day_data['temp_high_c']}°C)"
+            else:
+                temp_str = "N/A"
+
+            lines.append(f"{day_name}: {condition}, {temp_str}")
+
+        forecast_text = " | ".join(lines)
+
+        if self.has_flavor_enabled(requester):
+            return f"{self.bot.title_for(requester)}, the forecast for {location_name}: {forecast_text}"
+        else:
+            return f"{location_name} forecast: {forecast_text}"
+
+    def _reply_with_forecast(self, connection, event, location_obj, requester):
+        """Reply with a 3-day forecast for the given location."""
+        location_name = (
+            location_obj.get('user_input')
+            or location_obj.get('short_name')
+            or location_obj.get('display_name')
+            or 'the location'
+        )
+        country_code = location_obj.get('country_code', 'US').upper()
+
+        forecast_data = self._get_forecast_data(location_obj["lat"], location_obj["lon"], country_code)
+        if forecast_data:
+            is_pirate = country_code == "US"
+            report = self._format_forecast_report(forecast_data, location_name, requester, is_pirate)
+            self.safe_reply(connection, event, report)
+        else:
+            if self.has_flavor_enabled(requester):
+                self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(requester)}, I could not fetch the forecast.")
+            else:
+                self.safe_reply(connection, event, "Could not fetch forecast.")
+
     def _cmd_set_location(self, connection, event, msg, username, match):
         location_input = match.group(1).strip()
         geo_data_tuple = self._get_geocode_data(location_input)
@@ -264,4 +417,37 @@ class Weather(SimpleCommandModule):
             "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
         }
         self._reply_with_weather(connection, event, location_obj, username)
+        return True
+
+    def _cmd_forecast_self(self, connection, event, msg, username, match):
+        """Handle !wf command to show forecast for user's saved location."""
+        user_id = self.bot.get_user_id(username)
+        location_obj = self.get_state("user_locations", {}).get(user_id)
+        if not location_obj:
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, you have not set a location.")
+            else:
+                self.safe_reply(connection, event, "No location set.")
+            return True
+        self._reply_with_forecast(connection, event, location_obj, username)
+        return True
+
+    def _cmd_forecast_other(self, connection, event, msg, username, match):
+        """Handle !wf <location> command to show forecast for specified location."""
+        query = match.group(1).strip()
+
+        geo_data_tuple = self._get_geocode_data(query)
+        if not geo_data_tuple:
+            if self.has_flavor_enabled(username):
+                self.safe_reply(connection, event, f"My apologies, I could not find a location named '{query}'.")
+            else:
+                self.safe_reply(connection, event, f"Location '{query}' not found.")
+            return True
+
+        lat, lon, geo_data = geo_data_tuple
+        location_obj = {
+            "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data),
+            "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
+        }
+        self._reply_with_forecast(connection, event, location_obj, username)
         return True

@@ -5,46 +5,18 @@ import json
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
 
-# Always import requests for exception handling
-import requests
-
-# Import shared utilities
-try:
-    from .http_utils import get_http_client
-    from .config_manager import create_config_manager
-    from .state_manager import create_state_manager
-    HTTP_CLIENT = get_http_client()
-except ImportError:
-    # Fallback for when shared utilities are not available
-    HTTP_CLIENT = None
-    create_config_manager = None
-    create_state_manager = None
-
-def setup(bot):
-    return Weather(bot)
-
 class Weather(SimpleCommandModule):
     name = "weather"
-    version = "4.3.0" # Added 3-day forecast with !wf command
+    version = "4.4.0" # Refactored to use ModuleBase http and state
     description = "Provides weather information for saved or specified locations."
 
     def __init__(self, bot):
         super().__init__(bot)
         
-        # Use shared state manager if available
-        if create_state_manager:
-            self.state_manager = create_state_manager()
-            user_locations = self.state_manager.load_state("user_locations", {})
-            self.state_manager.save_state("user_locations", user_locations)
-        else:
-            self.set_state("user_locations", self.get_state("user_locations", {}))
+        # Ensure user_locations state exists
+        if not self.get_state("user_locations"):
+            self.set_state("user_locations", {})
             self.save_state()
-        
-        # Use shared HTTP client if available
-        if HTTP_CLIENT:
-            self.http_session = HTTP_CLIENT.session
-        else:
-            self.http_session = self.requests_retry_session()
 
         name_pat = self.bot.JEEVES_NAME_RE
         self.RE_NL_WEATHER = re.compile(
@@ -99,22 +71,19 @@ class Weather(SimpleCommandModule):
         # PirateWeather uses DarkSky-compatible API
         weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
         try:
-            response = self.http_session.get(weather_url, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            # Use shared HTTP client
+            return self.http.get_json(weather_url)
+        except Exception as e:
             self._record_error(f"PirateWeather API request failed for {lat},{lon}: {e}")
             return None
 
     def _get_met_norway_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
         """Fetch weather from MET Norway API (international locations)."""
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
-        headers = {'User-Agent': 'JeevesIRCBot/1.0'}
         try:
-            response = self.http_session.get(weather_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except (requests.exceptions.RequestException, json.JSONDecodeError) as e:
+            # Use shared HTTP client (User-Agent is handled by http_utils)
+            return self.http.get_json(weather_url)
+        except Exception as e:
             self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
 
@@ -193,9 +162,8 @@ class Weather(SimpleCommandModule):
 
         weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
         try:
-            response = self.http_session.get(weather_url, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            # Use shared HTTP client
+            data = self.http.get_json(weather_url)
 
             daily = data.get('daily', {}).get('data', [])
             if not daily or len(daily) < 3:
@@ -213,17 +181,15 @@ class Weather(SimpleCommandModule):
                     'temp_low_c': round((day.get('temperatureLow', 32) - 32) * 5 / 9, 1) if day.get('temperatureLow') else None,
                 })
             return forecast
-        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError):
+        except Exception:
             return None
 
     def _get_met_norway_forecast(self, lat: str, lon: str) -> Optional[list]:
         """Extract 3-day forecast from MET Norway API."""
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
-        headers = {'User-Agent': 'JeevesIRCBot/1.0'}
         try:
-            response = self.http_session.get(weather_url, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            # Use shared HTTP client
+            data = self.http.get_json(weather_url)
 
             timeseries = data.get('properties', {}).get('timeseries', [])
             if not timeseries:
@@ -270,7 +236,7 @@ class Weather(SimpleCommandModule):
                 })
 
             return forecast if forecast else None
-        except (requests.exceptions.RequestException, json.JSONDecodeError, KeyError, ValueError):
+        except Exception:
             return None
 
     def _format_forecast_report(self, forecast_data: list, location_name: str, requester: str, is_pirate: bool = False) -> str:
@@ -453,3 +419,6 @@ class Weather(SimpleCommandModule):
         }
         self._reply_with_forecast(connection, event, location_obj, username)
         return True
+
+def setup(bot):
+    return Weather(bot)

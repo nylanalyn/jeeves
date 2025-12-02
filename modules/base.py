@@ -8,8 +8,6 @@ import functools
 import requests
 import sys
 import traceback
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Callable, Union, Tuple
 from datetime import datetime, timezone
@@ -47,6 +45,13 @@ except ImportError:
     class ExternalAPIException(Exception): pass
     class UserInputException(Exception): pass
     class StateException(Exception): pass
+
+# Import centralized HTTP client
+try:
+    from .http_utils import get_http_client
+except ImportError:
+    # Should not happen in production, but safe fallback
+    get_http_client = None
 
 def admin_required(func):
     """Decorator to require admin privileges for a command."""
@@ -91,7 +96,7 @@ def debug_log(message_template: str):
 
 class ModuleBase(ABC):
     name = "base"
-    version = "2.0.1" # Fixed SimpleCommandModule constructor
+    version = "2.1.0" # Updated to use http_utils
     description = "Base module class"
     
     def __init__(self, bot):
@@ -103,6 +108,12 @@ class ModuleBase(ABC):
         self._rate_limits = {}
         self._user_cooldowns = {}
         self._load_state()
+        
+        # Initialize shared HTTP client
+        if get_http_client:
+            self.http = get_http_client()
+        else:
+            self.http = None
 
     def on_load(self) -> None:
         """Called when module is loaded. Can be overridden in subclasses."""
@@ -116,28 +127,32 @@ class ModuleBase(ABC):
         """Called when config is reloaded. Override in subclasses to react to changes."""
         pass
 
-    def requests_retry_session(self, retries=3, backoff_factor=0.3, status_forcelist=(500, 502, 504), session=None):
-        session = session or requests.Session()
-        retry = Retry(total=retries, read=retries, connect=retries, backoff_factor=backoff_factor, status_forcelist=status_forcelist)
-        adapter = HTTPAdapter(max_retries=retry)
-        session.mount('http://', adapter)
-        session.mount('https://', adapter)
-        return session
-
     # --- Geolocation Helpers ---
 
     def _get_geocode_data(self, location: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
         """Fetches geographic coordinates and structured address for a location string."""
-        geo_url = f"https://nominatim.openstreetmap.org/search?q={requests.utils.quote(location)}&format=json&limit=1&addressdetails=1"
+        geo_url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            "q": location,
+            "format": "json",
+            "limit": 1,
+            "addressdetails": 1
+        }
+        
         try:
-            http_session = self.requests_retry_session()
-            response = http_session.get(geo_url, headers={'User-Agent': 'JeevesIRCBot/1.0'}, timeout=10)
-            response.raise_for_status()
-            geo_data = response.json()
+            if self.http:
+                # Use centralized HTTP client
+                geo_data = self.http.get_json(geo_url, params=params)
+            else:
+                # Fallback (should rarely be used)
+                response = requests.get(geo_url, params=params, headers={'User-Agent': 'JeevesIRCBot/1.0'}, timeout=10)
+                response.raise_for_status()
+                geo_data = response.json()
+                
             if not geo_data:
                 return None
             return (geo_data[0]["lat"], geo_data[0]["lon"], geo_data[0])
-        except (requests.exceptions.RequestException, IndexError, ValueError, KeyError) as e:
+        except Exception as e:
             self._record_error(f"Geocoding request failed for '{location}': {e}")
             return None
 

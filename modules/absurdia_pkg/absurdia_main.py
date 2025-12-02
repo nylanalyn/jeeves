@@ -357,9 +357,10 @@ For full command list: !absurdia help"""
         # Ensure part is valid
         current_part = max(0, min(current_part, len(guide_parts) - 1))
 
-        # Send guide part via DM
+        # Send guide part via DM (split into lines for IRC)
         guide_text = guide_parts[current_part]
-        connection.privmsg(username, guide_text)
+        for line in guide_text.split('\n'):
+            connection.privmsg(username, line)
 
         # Update progress to next part (for future !guide next calls)
         next_part = current_part + 1

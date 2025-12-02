@@ -579,7 +579,7 @@ def handle_class(quest_module, connection, event, username, args):
     classes_config = quest_module._get_content("classes", default={})
 
     # Get player data to check prestige level
-    player = get_player(quest_module, user_id)
+    player = get_player(quest_module, user_id, username)
     current_prestige = player.get("prestige", 0)
 
     if not chosen_class:

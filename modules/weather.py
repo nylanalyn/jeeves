@@ -5,6 +5,9 @@ import json
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
 
+# Always import requests for exception handling
+import requests
+
 # Import shared utilities
 try:
     from .http_utils import get_http_client
@@ -13,7 +16,6 @@ try:
     HTTP_CLIENT = get_http_client()
 except ImportError:
     # Fallback for when shared utilities are not available
-    import requests
     HTTP_CLIENT = None
     create_config_manager = None
     create_state_manager = None
@@ -228,7 +230,7 @@ class Weather(SimpleCommandModule):
                 return None
 
             # Group by day and find representative data (around noon)
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
             forecast = []
             today = datetime.utcnow().date()
 
@@ -245,8 +247,8 @@ class Weather(SimpleCommandModule):
                 if not day_entries:
                     continue
 
-                # Find entry closest to noon
-                noon_target = datetime.combine(target_date, datetime.min.time().replace(hour=12))
+                # Find entry closest to noon (make noon_target timezone-aware)
+                noon_target = datetime.combine(target_date, datetime.min.time().replace(hour=12)).replace(tzinfo=timezone.utc)
                 closest_entry = min(day_entries,
                                   key=lambda e: abs((datetime.fromisoformat(e['time'].replace('Z', '+00:00')) - noon_target).total_seconds()))
 

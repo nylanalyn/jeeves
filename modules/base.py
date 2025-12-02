@@ -115,6 +115,28 @@ class ModuleBase(ABC):
         else:
             self.http = None
 
+    def requests_retry_session(self, retries: int = 3, backoff_factor: float = 0.3,
+                                status_forcelist: tuple = (500, 502, 504)) -> requests.Session:
+        """
+        Compatibility method for modules still using the old session pattern.
+        Returns a requests session with retry logic.
+        """
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+
+        session = requests.Session()
+        retry = Retry(
+            total=retries,
+            read=retries,
+            connect=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=status_forcelist,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        return session
+
     def on_load(self) -> None:
         """Called when module is loaded. Can be overridden in subclasses."""
         pass

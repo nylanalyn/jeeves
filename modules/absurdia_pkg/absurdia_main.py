@@ -12,6 +12,7 @@ from ..base import SimpleCommandModule
 from .absurdia_db import AbsurdiaDatabase
 from .absurdia_creatures import CreatureGenerator, CreatureCare
 from .absurdia_combat import CombatEngine
+from .absurdia_exploration import ExplorationManager
 
 def setup(bot: Any) -> 'Absurdia':
     return Absurdia(bot)
@@ -32,6 +33,7 @@ class Absurdia(SimpleCommandModule):
         self.generator = CreatureGenerator(self.db.templates)
         self.care = CreatureCare(bot.config.get('absurdia', {}))  # Use bot, not self.bot
         self.combat = CombatEngine()
+        self.exploration = ExplorationManager()
 
         super().__init__(bot)
 
@@ -99,6 +101,13 @@ class Absurdia(SimpleCommandModule):
             self._cmd_inventory,
             name="inventory",
             description="View your inventory"
+        )
+
+        self.register_command(
+            r"^\s*!explore\s*$",
+            self._cmd_explore,
+            name="explore",
+            description="Explore the absurd world (4h cooldown)"
         )
 
         # Catching commands
@@ -244,7 +253,7 @@ YOUR FIRST STEPS:
 
 1. CHECK YOUR STARTING COINS
    Type: !coins
-   You start with 100 coins to begin your adventure.
+   You start with 300 coins to begin your adventure.
 
 2. CATCH YOUR FIRST CREATURE
    Free option: !catch
@@ -589,11 +598,61 @@ For full command list: !absurdia help"""
             by_type[item_type].append(item)
 
         for item_type, items in by_type.items():
-            lines.append(f"\n{item_type.upper()}:")
+            lines.append(f"\\n{item_type.upper()}:")
             for item in items:
                 lines.append(f"  {item['item_name']}: {item['quantity']}")
 
-        self.safe_reply(connection, event, "\n".join(lines))
+        self.safe_reply(connection, event, "\\n".join(lines))
+        return True
+
+    def _cmd_explore(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        """Explore for items and flavor"""
+        user_id = self.bot.get_user_id(username)
+        player = self.db.get_player(user_id, username)
+
+        # Check cooldown (4 hours)
+        last_explored_str = player.get('last_explored')
+        if last_explored_str:
+            try:
+                last_explored = datetime.fromisoformat(last_explored_str.replace('Z', '+00:00'))
+                now = datetime.now(timezone.utc)
+                elapsed = (now - last_explored).total_seconds()
+                cooldown = 4 * 3600 # 4 hours
+
+                if elapsed < cooldown:
+                    remaining = int(cooldown - elapsed)
+                    hours = remaining // 3600
+                    minutes = (remaining % 3600) // 60
+                    
+                    self.safe_reply(
+                        connection, event,
+                        f"{self.bot.title_for(username)}, you are too tired to explore. "
+                        f"Rest for {hours}h {minutes}m."
+                    )
+                    return True
+            except ValueError:
+                pass # Invalid timestamp, allow explore
+
+        # Update timestamp
+        self.db.update_player_exploration(user_id)
+
+        # Roll for reward
+        reward = self.exploration.roll_exploration_reward()
+        flavor = self.exploration.get_exploration_flavor()
+
+        if reward:
+            self.db.add_item(user_id, 'trap', reward, 1)
+            self.safe_reply(
+                connection, event,
+                f"{flavor}\\n"
+                f"Wait! You found a {reward} trap!"
+            )
+        else:
+            self.safe_reply(
+                connection, event,
+                f"{flavor}"
+            )
+        
         return True
 
     def _cmd_catch(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
@@ -1255,6 +1314,22 @@ For full command list: !absurdia help"""
         """Run the hourly arena tournament (called by scheduler)"""
         try:
             self.log_debug("Starting hourly arena tournament")
+
+            # --- HAPPINESS DECAY LOOP ---
+            all_creatures = self.db.get_all_creatures()
+            decay_count = 0
+            for creature in all_creatures:
+                # Calculate new happiness
+                is_in_arena = bool(creature['submitted_to_arena'])
+                new_happiness = self.care.apply_happiness_decay(creature, is_in_arena)
+                
+                if new_happiness != creature['happiness']:
+                    self.db.update_creature_happiness(creature['id'], new_happiness)
+                    decay_count += 1
+            
+            if decay_count > 0:
+                self.log_debug(f"Applied happiness decay to {decay_count} creatures")
+            # ----------------------------
 
             # Get all creatures in arena queue
             queue = self.db.get_arena_queue()

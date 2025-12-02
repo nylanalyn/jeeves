@@ -45,13 +45,20 @@ class AbsurdiaDatabase:
                     best_win_streak INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_daily_reset TIMESTAMP,
-                    daily_care_count INTEGER DEFAULT 0
+                    daily_care_count INTEGER DEFAULT 0,
+                    last_explored TIMESTAMP
                 )
             ''')
 
             # Migration: Add daily_care_count column if it doesn't exist
             try:
                 cursor.execute('ALTER TABLE players ADD COLUMN daily_care_count INTEGER DEFAULT 0')
+            except:
+                pass  # Column already exists
+
+            # Migration: Add last_explored column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE players ADD COLUMN last_explored TIMESTAMP')
             except:
                 pass  # Column already exists
 
@@ -219,7 +226,7 @@ class AbsurdiaDatabase:
             # Create new player
             cursor.execute('''
                 INSERT INTO players (user_id, username, coins)
-                VALUES (?, ?, 1000)
+                VALUES (?, ?, 300)
             ''', (user_id, username))
             conn.commit()
 
@@ -320,6 +327,18 @@ class AbsurdiaDatabase:
             conn.close()
             return new_count
 
+    def update_player_exploration(self, user_id: str):
+        """Update last_explored timestamp to now"""
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            now = datetime.now(timezone.utc).isoformat()
+            cursor.execute('UPDATE players SET last_explored = ? WHERE user_id = ?', (now, user_id))
+            
+            conn.commit()
+            conn.close()
+
     # ============= CREATURE OPERATIONS =============
 
     def get_creature(self, creature_id: int) -> Optional[Dict[str, Any]]:
@@ -341,6 +360,18 @@ class AbsurdiaDatabase:
             cursor = conn.cursor()
 
             cursor.execute('SELECT * FROM creatures WHERE owner_id = ? ORDER BY name', (user_id,))
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [dict(row) for row in rows]
+
+    def get_all_creatures(self) -> List[Dict[str, Any]]:
+        """Get ALL creatures (for maintenance tasks)"""
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute('SELECT * FROM creatures')
             rows = cursor.fetchall()
             conn.close()
 

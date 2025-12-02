@@ -210,6 +210,12 @@ topic:
 pron:
     cooldown_seconds: 30
 
+quotes:
+    save_chance: 0.005  # 1 in 200 messages (0.5% chance)
+    min_message_length: 3  # Minimum characters to be worth remembering
+    allowed_channels:
+        - "#your-channel"
+
 quest:
     # Active quest theme key (see quest_content.json -> themes)
     theme: "noir_november"

@@ -284,6 +284,8 @@ class Quest(SimpleCommandModule):
 
         self.register_command(r"^\s*!quest\s+transcend\s*$", self._cmd_quest_transcend, name="quest_transcend",
                               description="Transcend beyond prestige to become a legend.")
+        self.register_command(r"^\s*!dungeon\s+(nonstop|nostop)\s*$", self._cmd_dungeon_run_nonstop, name="dungeon_run_nonstop",
+                              description="Run a ten-room dungeon without stopping at safe havens.")
         self.register_command(r"^\s*!dungeon\s*$", self._cmd_dungeon_run, name="dungeon_run",
                               description="Run a ten-room dungeon via private messages.")
         self.register_command(r"^\s*!dungeon\s+continue\s*$", self._cmd_dungeon_continue, name="dungeon_continue",
@@ -506,6 +508,9 @@ class Quest(SimpleCommandModule):
 
     def _cmd_dungeon_run(self, connection, event, msg, username, match):
         return quest_progression.cmd_dungeon_run(self, connection, event, msg, username, match)
+
+    def _cmd_dungeon_run_nonstop(self, connection, event, msg, username, match):
+        return quest_progression.cmd_dungeon_run(self, connection, event, msg, username, match, skip_safe_havens=True)
 
     def _cmd_dungeon_continue(self, connection, event, msg, username, match):
         return quest_progression.cmd_dungeon_continue(self, connection, event, msg, username, match)

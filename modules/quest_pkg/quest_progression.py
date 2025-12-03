@@ -1105,7 +1105,7 @@ def _broadcast_dungeon_outcome(quest_module, connection, event, active_run: Opti
         quest_module.safe_say(message, channel)
 
 
-def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
+def cmd_dungeon_run(quest_module, connection, event, msg, username, match, skip_safe_havens=False):
     """Run the ten-room dungeon, DMing each step to the player."""
     # Import here to avoid circular dependency
     from .quest_combat import apply_active_effects_to_combat, consume_combat_effects
@@ -1221,7 +1221,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             active_run["bypass_used"] = True
 
             # Check for safe haven after bypass
-            if index in DUNGEON_SAFE_HAVENS:
+            if not skip_safe_havens and index in DUNGEON_SAFE_HAVENS:
                 active_run["current_room"] = index + 1
                 players = quest_module.get_state("players")
                 players[user_id] = player
@@ -1321,7 +1321,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             consume_combat_effects(player, True)
 
             # Check for safe haven
-            if index in DUNGEON_SAFE_HAVENS:
+            if not skip_safe_havens and index in DUNGEON_SAFE_HAVENS:
                 active_run["current_room"] = index + 1
                 players = quest_module.get_state("players")
                 players[user_id] = player

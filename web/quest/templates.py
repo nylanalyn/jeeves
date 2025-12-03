@@ -1068,6 +1068,10 @@ class TemplateEngine:
                 "desc": "Run a ten-room dungeon via private messages (high difficulty, high reward)"
             },
             {
+                "cmd": "!dungeon nonstop (or nostop)",
+                "desc": "Run dungeon without stopping at safe havens (rooms 3, 6, 9)"
+            },
+            {
                 "cmd": "!dungeon continue",
                 "desc": "Continue your dungeon run from a safe haven"
             },

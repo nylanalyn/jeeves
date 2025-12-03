@@ -37,10 +37,10 @@ class Karma(SimpleCommandModule):
             description="Check karma score for yourself or another user"
         )
 
-    def on_pubmsg(self, connection: Any, event: Any) -> None:
+    def on_ambient_message(self, connection: Any, event: Any, msg: str, username: str) -> bool:
         """Listen for karma modifications in channel messages."""
-        msg = event.arguments[0] if event.arguments else ""
-        username = event.source.nick
+        if not self.is_enabled(event.target):
+            return False
 
         # Look for karma patterns: username++ or username--
         # Pattern: word characters followed by ++ or --
@@ -59,6 +59,9 @@ class Karma(SimpleCommandModule):
                 self._modify_karma(username, target_nick, 1)
             elif operation == "--":
                 self._modify_karma(username, target_nick, -1)
+
+        # Allow other ambient handlers to process the message
+        return False
 
     def _modify_karma(self, giver_nick: str, receiver_nick: str, amount: int) -> bool:
         """

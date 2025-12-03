@@ -15,6 +15,7 @@
 8. [Common Patterns](#common-patterns)
 9. [Common Pitfalls](#common-pitfalls)
 10. [File Locations](#file-locations)
+11. [Development & Testing Tools](#development--testing-tools)
 
 ---
 
@@ -23,7 +24,7 @@
 Jeeves is a **modular IRC bot** built with Python 3.11 using the `irc` library. The architecture follows these principles:
 
 1. **Single bot instance** (`jeeves.py`) manages the IRC connection
-2. **Plugin manager** (`PluginManager` in `jeeves.py`) loads modules dynamically from `modules/`
+2. **Plugin manager** (`PluginManager` in `jeeves.py`) loads modules dynamically from `modules/` (respects `core.module_blacklist`)
 3. **Modules** inherit from `ModuleBase` or `SimpleCommandModule` (in `modules/base.py`)
 4. **Shared state** is managed through `MultiFileStateManager` and persisted to JSON files in `config/`
 5. **User identity** is tracked persistently across nickname changes via `modules/users.py`
@@ -52,7 +53,7 @@ Module sends response via connection.privmsg()
 
 ### 1. `jeeves.py` - The Main Bot
 
-**Location**: `/home/zote/bots/jeeves/jeeves.py`
+**Location**: `jeeves.py`
 
 **Key Responsibilities**:
 - IRC connection management (connect, reconnect, TLS)
@@ -76,8 +77,8 @@ def on_privmsg(connection, event):
 def get_user_id(username: str) -> str:
     # Returns persistent UUID for a user (via users module)
 
-def is_admin(hostmask: str) -> bool:
-    # Checks if user is an admin based on hostmask
+def is_admin(event_source: str) -> bool:
+    # Checks if user nick is in config admins (hostname recorded for reference)
 
 def title_for(username: str) -> str:
     # Returns courtesy title for user (e.g., "Sir Bob", "Madam Alice")
@@ -103,7 +104,7 @@ self.joined_channels    # Set of currently joined channels
 
 ### 2. `modules/base.py` - Module Base Classes
 
-**Location**: `/home/zote/bots/jeeves/modules/base.py`
+**Location**: `modules/base.py`
 
 **Two Base Classes**:
 
@@ -168,34 +169,36 @@ def _cmd_admin_thing(self, connection, event, msg, username, match):
 
 ### 3. `MultiFileStateManager` - State Persistence
 
-**Location**: Inside `jeeves.py` (lines ~200-300)
+**Location**: Inside `jeeves.py` (class `MultiFileStateManager`)
 
-**Managed Files** (in `config/`):
-- `state.json` - General module state (most modules use this)
-- `users.json` - User profiles and UUID mappings
-- `games.json` - Quest/game data
-- `stats.json` - Usage statistics
+**Managed Files** (in `config/`, data lives under a top-level `modules` key):
+- `state.json` - General module state (default bucket)
+- `users.json` - User profiles and UUID mappings (for `users`, `weather`, `memos`, `profiles`)
+- `games.json` - Quest/game data (`quest`, `hunt`, `bell`, `adventure`, `roadtrip`)
+- `stats.json` - Usage statistics (`coffee`, `courtesy`, `leveling`, `duel`)
 - `absurdia.db` - SQLite database for Absurdia game
 
 **How It Works**:
-1. On boot: Loads all JSON files into memory
-2. During runtime: Modules read/write via `bot.get_module_state()` and `bot.update_module_state()`
+1. On boot: Loads all JSON files into memory, creating backups when possible
+2. Runtime: Modules read/write via `bot.get_module_state()` and `bot.update_module_state()`
 3. State is **cached** in memory (fast reads)
-4. Writes are **immediate** (save_state() writes to disk)
-5. Each module gets its own top-level key in `state.json`
+4. Writes are buffered: `save_state()` marks dirty and a 0.5s timer flushes to disk via temp file swap + file lock
+5. Module data is stored at `modules.<module_name>` inside the routed file (routing is automatic via `STATE_FILE_MAPPING`)
 
 **Example** (`state.json` structure):
 ```json
 {
-  "adventure": {
-    "active_users": {}
-  },
-  "hunt": {
-    "animals": {},
-    "spawn_locations": ["#transience", "#absurdia"]
-  },
-  "quest": {
-    "active_quests": {}
+  "modules": {
+    "adventure": {
+      "active_users": {}
+    },
+    "hunt": {
+      "animals": {},
+      "spawn_locations": ["#transience", "#absurdia"]
+    },
+    "quest": {
+      "active_quests": {}
+    }
   }
 }
 ```
@@ -206,26 +209,30 @@ def _cmd_admin_thing(self, connection, event, msg, username, match):
 
 ### 4. `modules/users.py` - User Identity Tracking
 
-**Location**: `/home/zote/bots/jeeves/modules/users.py`
+**Location**: `modules/users.py`
 
 **Purpose**: Maps IRC nicknames to persistent UUIDs so users maintain identity across nick changes.
 
-**Data Structure** (`users.json`):
+**Data Structure** (`users.json`, stored under `modules.users`):
 ```json
 {
-  "user_map": {
-    "uuid-1234-5678": {
-      "id": "uuid-1234-5678",
-      "canonical_nick": "Alice",
-      "seen_nicks": ["alice", "alice_afk", "alice_mobile"],
-      "first_seen": "2024-01-15T10:30:00Z",
-      "flavor_enabled": true
+  "modules": {
+    "users": {
+      "user_map": {
+        "uuid-1234-5678": {
+          "id": "uuid-1234-5678",
+          "canonical_nick": "Alice",
+          "seen_nicks": ["alice", "alice_afk", "alice_mobile"],
+          "first_seen": "2024-01-15T10:30:00Z",
+          "flavor_enabled": true
+        }
+      },
+      "nick_map": {
+        "alice": "uuid-1234-5678",
+        "alice_afk": "uuid-1234-5678",
+        "alice_mobile": "uuid-1234-5678"
+      }
     }
-  },
-  "nick_map": {
-    "alice": "uuid-1234-5678",
-    "alice_afk": "uuid-1234-5678",
-    "alice_mobile": "uuid-1234-5678"
   }
 }
 ```
@@ -252,45 +259,44 @@ self.save_state()
 
 ### 5. `modules/admin.py` - Admin System
 
-**Location**: `/home/zote/bots/jeeves/modules/admin.py`
+**Location**: `modules/admin.py`
 
 **Admin Detection**:
-Admins are defined in `config.yaml`:
-```yaml
-admins:
-  - "alice!~alice@host.example.com"
-  - "bob!~bob@192.168.1.1"
-```
+- Admins are listed by **nickname** in `core.admins` inside `config.yaml` (hostnames are recorded at runtime but not matched).
+- Sensitive operations require **super admin** auth via `core.super_admin_password_hash`; authenticate in /msg with `!pass <password>`.
+- When an admin speaks, their hostname is stored in courtesy state for informational/logging purposes.
 
 **Checking Admin Status**:
 ```python
-# Method 1: In jeeves.py or any module
 if self.bot.is_admin(event.source):
-    # User is admin
+    ...
 
-# Method 2: Use decorator in module
 @admin_required
 def _cmd_secret(self, connection, event, msg, username, match):
-    # Only admins reach this code
+    ...
 ```
 
-**Admin Commands**:
-- `!reload` - Reload all modules
-- `!reload <module>` - Reload specific module
-- `!quit` - Shut down bot
-- `!join <channel>` - Join a channel
-- `!part [channel]` - Leave a channel
+**Admin/Super-Admin Commands** (through `!admin ...`, plus aliases):
+- `!admin reload` / `!reload` – reload all modules (super admin)
+- `!admin load <module>` / `!admin unload <module>` – load/unload module (super admin)
+- `!admin config reload` – reload config without reloading modules (super admin)
+- `!emergency quit [msg]` – emergency shutdown (super admin)
+- `!admin modules` – list loaded modules
+- `!admin join <#channel>` / `!admin part <#channel> [msg]`
+- `!say [#channel] <message>` – speak (alias for `!admin say`)
+- `!admin debug <on|off>` or `!admin debug <module> <on|off>`
+- `!pass <password>` – authenticate as super admin (use in private message)
 
 ---
 
 ### 6. `modules/courtesy.py` - Title System
 
-**Location**: `/home/zote/bots/jeeves/modules/courtesy.py`
+**Location**: `modules/courtesy.py`
 
 **Purpose**: Manages formal titles ("Sir", "Madam", "Lord", etc.) for users.
 
 **How It Works**:
-- Titles stored in `users.json` under each user profile
+- Titles/profiles stored in `config/stats.json` under the courtesy module state (`modules.courtesy.profiles`)
 - Earned via quest system or granted by admins
 - Retrieved via `self.bot.title_for(username)`
 
@@ -307,15 +313,44 @@ response = f"{username}, you have 100 coins."
 
 ---
 
+### 7. `config_validator.py` - Configuration Validation
+
+**Location**: `config_validator.py`
+
+**Purpose**: Pre-flight configuration validation with environment variable substitution.
+
+**Key Features**:
+- Validates YAML structure, required fields, and API key formats
+- Performs environment variable substitution (supports `${VAR_NAME}` syntax)
+- Checks for placeholder values and provides actionable error messages
+- Creates configuration backups when possible
+
+**Usage**:
+```bash
+python3 config_validator.py config/config.yaml
+```
+
+**When to Use**:
+- Before starting the bot for the first time
+- After making configuration changes
+- When troubleshooting startup failures
+- As part of CI/CD pipelines
+
+**Important**: Always run the validator before starting the bot to catch configuration errors early.
+
 ## How Modules Work
 
 ### Module Lifecycle
 
 1. **Load**: `jeeves.py` imports `modules/<name>.py`
 2. **Setup**: Calls `setup(bot)` function which returns module instance
-3. **Init**: Module `__init__()` calls `super().__init__(bot)` and `_register_commands()`
+3. **Init**: Module `__init__()` calls `super().__init__(bot)` (SimpleCommandModule will call `_register_commands()` for you)
 4. **Run**: Bot dispatches IRC events to module methods
 5. **Unload** (if reloaded): Calls `on_unload()`, saves state
+
+**Plugin loading details**:
+- Discovers `modules/*.py` (sorted), skipping `__init__.py` and `base.py`.
+- Filters out any filenames listed in `core.module_blacklist` in `config.yaml`.
 
 ### Required Module Structure
 
@@ -335,7 +370,7 @@ class MyModule(SimpleCommandModule):
     description = "Does cool things"
 
     def __init__(self, bot: Any) -> None:
-        super().__init__(bot)  # MUST call this first!
+        super().__init__(bot)  # MUST call this first; this also triggers _register_commands()
         # Custom initialization here
 
     def _register_commands(self) -> None:
@@ -472,7 +507,7 @@ class MyModule(SimpleCommandModule):
     description = "My cool module"
 
     def __init__(self, bot: Any) -> None:
-        super().__init__(bot)
+        super().__init__(bot)  # This automatically calls _register_commands()
         # Initialize state
         if not self.get_state("initialized"):
             self.set_state("initialized", True)
@@ -700,7 +735,7 @@ def on_ambient_message(self, connection, event, msg):
 ## File Locations
 
 ### Core Files
-- `jeeves.py` - Main bot (lines 1-800+)
+- `jeeves.py` - Main bot
 - `config/config.yaml` - Bot configuration
 - `modules/base.py` - Module base classes
 - `modules/users.py` - User identity system
@@ -708,22 +743,36 @@ def on_ambient_message(self, connection, event, msg):
 - `modules/courtesy.py` - Title system
 
 ### State Files (in `config/`)
-- `state.json` - Module state (most modules)
-- `users.json` - User profiles and UUIDs
-- `games.json` - Quest data
-- `stats.json` - Usage statistics
+- `state.json` - Default module bucket (stored under `modules.<name>`)
+- `users.json` - User profiles and UUIDs (`users`, `weather`, `memos`, `profiles`)
+- `games.json` - Quest data (`quest`, `hunt`, `bell`, `adventure`, `roadtrip`)
+- `stats.json` - Usage statistics (`coffee`, `courtesy`, `leveling`, `duel`)
 - `absurdia.db` - SQLite (Absurdia game)
+
+**Note**: The `config/` directory is created at runtime; JSON files are generated by the bot. Do not commit populated state files to version control.
+
+### Quest Data Files (in repository root)
+- `quest_content.json` - Quest narrative content, themes, and display configuration
+- `challenge_paths.json` - Special prestige options that modify gameplay (hard mode, etc.)
 
 ### Module Examples
 Simple modules to reference:
 - `modules/coffee.py` - Basic command module
 - `modules/seen.py` - User tracking example
 - `modules/karma.py` - User data with increment/decrement
+- `modules/exception_utils.py` - Standardized error handling with custom exception classes
+- `modules/http_utils.py` - Centralized HTTP client with retry logic and error handling
+- `modules/config_manager.py` - Configuration management utilities
+- `modules/admin_validator.py` - Admin permission validation utilities
+- `modules/state_manager.py` - State file operation utilities
 
 Complex modules:
 - `modules/quest_pkg/` - Package-style module
 - `modules/absurdia_pkg/` - Large game with database
 - `modules/hunt.py` - Scheduled tasks + state
+
+### Plugin Loading
+- Modules are loaded from `modules/*.py` on startup (sorted) and filtered by `core.module_blacklist` in config.
 
 ### Documentation
 - `docs/README.md` - General documentation
@@ -731,6 +780,35 @@ Complex modules:
 - `AGENTS.md` - Contributor guidelines
 
 ---
+
+## Development & Testing Tools
+
+### Configuration Validation
+- `config_validator.py` - Pre-flight configuration validation with environment variable substitution
+- Usage: `python3 config_validator.py config/config.yaml`
+- Validates YAML structure, required fields, API key formats, and checks for placeholder values
+- **Always run this before starting the bot** to catch configuration errors early
+
+### Web Quest Dashboard
+- `web/quest_web.py` - Web interface for testing quest narratives and monitoring bot state
+- Usage: `python3 web/quest_web.py --host 127.0.0.1 --port 8080`
+- Provides real-time visualization of quest progress, challenge paths, and user interactions
+- Essential for QA testing narrative changes without needing IRC access
+
+### Testing Utilities
+- `test_prestige_display.py` - Example test suite for prestige display functionality
+- Run with: `python3 test_prestige_display.py`
+- **Testing philosophy**: Add pytest-style tests under `tests/` following naming pattern `test_<feature>.py`
+- For modules with IRC output: script sample events in a temporary channel and capture transcripts
+
+### Utility Modules
+- `modules/exception_utils.py` - Standardized error handling with custom exception classes
+- `modules/http_utils.py` - Centralized HTTP client with retry logic and error handling
+- `modules/config_manager.py` - Configuration management with dot-notation and API key access
+- `modules/admin_validator.py` - Admin permission validation with security logging
+- `modules/state_manager.py` - State file operations for independent JSON file management
+- `file_lock.py` - Cross-process file locking for safe concurrent access to shared files
+- These are imported by other modules for consistent error reporting, external API calls, configuration access, and state management.
 
 ## Quick Reference Card
 
@@ -780,11 +858,15 @@ r'^\s*!quote\s+add\s+(.+)$'
 
 ## When Debugging
 
+0. **Validate configuration**: `python3 config_validator.py config/config.yaml` - catch config errors before startup
 1. **Check debug.log**: `tail -f debug.log` (or `debug.log.1`, etc.)
 2. **Look for module load**: `[plugins] Loaded module: mymodule`
 3. **Check command matches**: `[mymodule] Command 'cmd' matched by user`
 4. **Verify state**: `cat config/state.json | jq '.mymodule'`
 5. **Test in isolation**: `python3 -c "from modules import mymodule"`
+6. **Test web dashboard**: `python3 web/quest_web.py --host 127.0.0.1 --port 8080` - for quest narrative testing
+
+**Tip**: For immediate state persistence (e.g., after critical changes), use `self.save_state(force=True)` instead of `self.save_state()` to bypass the 0.5s timer.
 
 ### Common Errors
 
@@ -812,6 +894,6 @@ r'^\s*!quote\s+add\s+(.+)$'
 - **Log liberally** - debug.log is your friend
 - **Test in #bots first** - don't spam main channels
 
-This guide covers ~80% of what you need to understand Jeeves. For specific module examples, see the modules/ directory. For detailed IRC protocol info, see the `irc` library docs.
+This guide covers ~90% of what you need to understand Jeeves. For specific module examples, see the modules/ directory. For detailed IRC protocol info, see the `irc` library docs.
 
 **When in doubt, grep for examples in existing modules!**

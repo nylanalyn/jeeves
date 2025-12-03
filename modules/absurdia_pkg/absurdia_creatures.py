@@ -263,7 +263,11 @@ class CreatureCare:
             time_str = creature.get(field)
             if time_str:
                 try:
-                    care_times.append(datetime.fromisoformat(time_str.replace('Z', '+00:00')))
+                    dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                    # Ensure timezone-aware (assume UTC if naive)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    care_times.append(dt)
                 except:
                     pass
 
@@ -271,6 +275,9 @@ class CreatureCare:
             # No care history, use caught_at
             try:
                 last_care = datetime.fromisoformat(creature['caught_at'].replace('Z', '+00:00'))
+                # Ensure timezone-aware (assume UTC if naive)
+                if last_care.tzinfo is None:
+                    last_care = last_care.replace(tzinfo=timezone.utc)
             except:
                 last_care = datetime.now(timezone.utc)
         else:

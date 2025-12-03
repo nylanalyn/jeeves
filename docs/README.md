@@ -1,5 +1,19 @@
 # Jeeves Documentation
 
+## 🤖 For AI Coding Assistants
+
+**If you're an LLM helping with Jeeves development, start here:**
+
+📖 **[LLM Architecture Guide](LLM_ARCHITECTURE_GUIDE.md)** - Comprehensive guide covering:
+- How jeeves.py, modules, and state management work together
+- Step-by-step guide to writing new modules
+- Common patterns and pitfalls
+- Quick reference for all major systems
+
+This guide is specifically written for AI assistants to quickly understand Jeeves' architecture without reading the entire codebase.
+
+---
+
 ## Overview
 Jeeves is a modular IRC butler written in Python 3.11. It connects to IRC networks, loads plugins from `modules/`, and persists shared state across JSON files in `config/`. Core responsibilities include utility commands (weather, time, translation), social features (memos, courtesy titles), and the quest game system. A lightweight web dashboard lives under `web/quest/` for viewing quest data.
 

@@ -1,5 +1,19 @@
 # Repository Guidelines
 
+## 🤖 For AI Coding Assistants
+
+**Before making changes to Jeeves, read this first:**
+
+📖 **[docs/LLM_ARCHITECTURE_GUIDE.md](docs/LLM_ARCHITECTURE_GUIDE.md)** - Complete architecture reference covering:
+- How jeeves.py, modules, state management, and user tracking work
+- Step-by-step module creation guide
+- Common patterns and pitfalls
+- Quick reference card
+
+This guide was written specifically for LLMs to quickly understand Jeeves without reading the entire codebase. **Start there before modifying any code.**
+
+---
+
 ## Project Structure & Module Organization
 `jeeves.py` is the entry point; it boots the IRC bot, loads feature modules from `modules/`, and writes shared JSON state under `config/`. Web-facing quest surfaces live in `web/` (`quest_web.py` plus static assets under `web/static/` and templates under `web/quest/`). Runtime data sits in `quest_content.json` and `challenge_paths.json`, while CLI helpers (password hashing, config validation) live in the repo root. Operational notes belong in `docs/`.
 

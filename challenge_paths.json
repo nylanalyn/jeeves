@@ -55,6 +55,29 @@
         "ability_unlock": "doctor",
         "title_suffix": " the Ironman"
       }
+    },
+    "ascetic_path": {
+      "name": "Path of the Ascetic",
+      "description": "Complete prestige 20 with halved energy capacity",
+      "enabled": true,
+      "requirements": {
+        "min_prestige": 0,
+        "max_prestige": 10
+      },
+      "modifiers": {
+        "energy_max_multiplier": 0.5
+      },
+      "special_rules": [
+        "Maximum energy halved throughout the run",
+        "Complete to unlock Rally ability"
+      ],
+      "completion_conditions": {
+        "reach_level_20": true
+      },
+      "rewards": {
+        "ability_unlock": "rally",
+        "title_suffix": " the Ascetic"
+      }
     }
   },
   "abilities": {

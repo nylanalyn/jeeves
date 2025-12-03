@@ -79,10 +79,26 @@ def get_prestige_energy_bonus(prestige: int) -> int:
 
 
 def get_player_max_energy(quest_module, player_data: Dict[str, Any], channel: Optional[str] = None) -> int:
-    """Return the max energy for a player, including prestige bonuses."""
+    """Return the max energy for a player, including prestige bonuses and challenge path modifiers."""
     base_max = quest_module.get_config_value("energy_system.max_energy", channel, default=10)
     prestige_level = player_data.get("prestige", 0) if isinstance(player_data, dict) else 0
-    return base_max + get_prestige_energy_bonus(prestige_level)
+    max_energy = base_max + get_prestige_energy_bonus(prestige_level)
+
+    # Apply challenge path modifiers
+    challenge_path = player_data.get("challenge_path") if isinstance(player_data, dict) else None
+    if challenge_path:
+        path_data = quest_module.challenge_paths.get("paths", {}).get(challenge_path, {})
+        modifiers = path_data.get("modifiers", {})
+
+        # Apply additive energy bonus first
+        energy_bonus = modifiers.get("energy_max_bonus", 0)
+        max_energy += energy_bonus
+
+        # Apply multiplicative modifier (e.g., 0.5 for half energy)
+        energy_multiplier = modifiers.get("energy_max_multiplier", 1.0)
+        max_energy = int(max_energy * energy_multiplier)
+
+    return max_energy
 
 
 def get_player(quest_module, user_id: str, username: str) -> Dict[str, Any]:
@@ -467,6 +483,18 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
             total_xp_gain = int(total_xp_gain * total_xp_mult)
             if total_xp_mult < 1.0:
                 messages.append(f"Your injuries reduce your XP gain...")
+
+    # Apply challenge path XP multiplier
+    challenge_path = player.get("challenge_path")
+    if challenge_path:
+        path_data = quest_module.challenge_paths.get("paths", {}).get(challenge_path, {})
+        modifiers = path_data.get("modifiers", {})
+        xp_multiplier = modifiers.get("xp_gain_multiplier", 1.0)
+        if xp_multiplier != 1.0:
+            old_xp = total_xp_gain
+            total_xp_gain = int(total_xp_gain * xp_multiplier)
+            if xp_multiplier < 1.0:
+                messages.append(f"Challenge path penalty: XP reduced by {int((1 - xp_multiplier) * 100)}%")
 
     player["xp"] += total_xp_gain
     leveled_up = False
@@ -1231,6 +1259,15 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match):
             prestige_bonus = 0.05
             quest_module.safe_privmsg(username, f"Veteran warrior bonus: +{prestige_bonus:.0%} win chance (Prestige {player_prestige})")
             base_win_chance += prestige_bonus
+
+        # Apply challenge path modifiers
+        challenge_path = player.get("challenge_path")
+        if challenge_path:
+            path_data = quest_module.challenge_paths.get("paths", {}).get(challenge_path, {})
+            modifiers = path_data.get("modifiers", {})
+            challenge_win_mod = modifiers.get("win_chance_modifier", 0.0)
+            if challenge_win_mod != 0.0:
+                base_win_chance += challenge_win_mod
 
         # Clamp win chance
         min_win = quest_module.get_config_value("combat.min_win_chance", channel, default=0.05)

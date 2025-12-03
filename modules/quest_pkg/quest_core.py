@@ -230,6 +230,15 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         if applied_penalty_msgs:
             quest_module.safe_reply(connection, event, f"You feel fatigued... ({' and '.join(applied_penalty_msgs)}).")
 
+    # Apply challenge path modifiers
+    challenge_path = player.get("challenge_path")
+    if challenge_path:
+        path_data = quest_module.challenge_paths.get("paths", {}).get(challenge_path, {})
+        modifiers = path_data.get("modifiers", {})
+        challenge_win_mod = modifiers.get("win_chance_modifier", 0.0)
+        if challenge_win_mod != 0.0:
+            energy_win_chance_mod += challenge_win_mod
+
     # Get class bonuses
     class_bonuses = quest_utils.get_class_bonuses(quest_module, user_id, int(player_level))
     base_win_chance = quest_utils.calculate_win_chance(player_level, monster_level, energy_win_chance_mod, prestige_level=player.get("prestige", 0), class_bonus=class_bonuses["win_chance"])

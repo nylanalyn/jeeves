@@ -16,7 +16,7 @@ def setup(bot):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "3.2.1" # Added robust state validation on init
+    version = "3.2.2" # Fixed duplicate report posting on module reload
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
     EVENTS = {
@@ -88,7 +88,12 @@ class Roadtrip(SimpleCommandModule):
 
     def on_load(self):
         super().on_load()
-        schedule.clear(self.name)
+        # Clear all jobs with tags starting with our module name
+        all_jobs = schedule.get_jobs()
+        for job in all_jobs:
+            if any(tag.startswith(self.name) for tag in job.tags):
+                schedule.cancel_job(job)
+
         pending_reports = self.get_state("pending_reports", [])
         for report in pending_reports:
             report_time = datetime.fromisoformat(report["report_at"])
@@ -102,7 +107,11 @@ class Roadtrip(SimpleCommandModule):
 
     def on_unload(self):
         super().on_unload()
-        schedule.clear(self.name)
+        # Clear all jobs with tags starting with our module name
+        all_jobs = schedule.get_jobs()
+        for job in all_jobs:
+            if any(tag.startswith(self.name) for tag in job.tags):
+                schedule.cancel_job(job)
 
     def on_ambient_message(self, connection, event, msg, username):
         if not self.is_enabled(event.target): return False
@@ -190,7 +199,7 @@ class Roadtrip(SimpleCommandModule):
         current_rsvp = self.get_state("current_rsvp")
         if not current_rsvp: return schedule.CancelJob
 
-        schedule.clear("rsvp-close")
+        schedule.clear(f"{self.name}-rsvp-close")
         room, participants, dest = current_rsvp["room"], current_rsvp["participants"], current_rsvp["destination"]
         report_delay = self.get_config_value("report_delay_seconds", room, default=3600)
 

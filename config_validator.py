@@ -288,24 +288,54 @@ class ConfigValidator:
                     "Use shorter nickname"
                 ))
 
-        # Validate channel
-        channel = conn.get("channel")
-        if not channel or not isinstance(channel, str) or not channel.strip():
+        # Validate channel (support both old 'channel' and new 'main_channel' formats)
+        main_channel = conn.get("main_channel") or conn.get("channel")
+        if not main_channel or not isinstance(main_channel, str) or not main_channel.strip():
             self.issues.append(ValidationIssue(
                 ValidationSeverity.ERROR,
-                "connection.channel",
-                "Channel must be a non-empty string",
-                channel,
-                "channel: '#your-channel'"
+                "connection.main_channel",
+                "Main channel must be a non-empty string",
+                main_channel,
+                "main_channel: '#your-channel' (or use legacy 'channel' key)"
             ))
-        elif not channel.startswith('#'):
+        elif not main_channel.startswith('#'):
             self.issues.append(ValidationIssue(
                 ValidationSeverity.WARNING,
-                "connection.channel",
+                "connection.main_channel",
                 "Channel should start with #",
-                channel,
+                main_channel,
                 "Use '#channelname' format"
             ))
+
+        # Validate additional channels (if present)
+        additional_channels = conn.get("additional_channels", [])
+        if additional_channels:
+            if not isinstance(additional_channels, list):
+                self.issues.append(ValidationIssue(
+                    ValidationSeverity.ERROR,
+                    "connection.additional_channels",
+                    "Additional channels must be a list",
+                    type(additional_channels).__name__,
+                    "additional_channels: ['#channel1', '#channel2']"
+                ))
+            else:
+                for i, channel in enumerate(additional_channels):
+                    if not isinstance(channel, str) or not channel.strip():
+                        self.issues.append(ValidationIssue(
+                            ValidationSeverity.ERROR,
+                            f"connection.additional_channels[{i}]",
+                            "Channel must be a non-empty string",
+                            channel,
+                            "Use '#channelname' format"
+                        ))
+                    elif not channel.startswith('#'):
+                        self.issues.append(ValidationIssue(
+                            ValidationSeverity.WARNING,
+                            f"connection.additional_channels[{i}]",
+                            "Channel should start with #",
+                            channel,
+                            "Use '#channelname' format"
+                        ))
 
         # Validate nickserv password (can be empty)
         nickserv_pass = conn.get("nickserv_pass", "")

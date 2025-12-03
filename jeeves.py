@@ -327,9 +327,9 @@ class PluginManager:
 
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
-    def __init__(self, server, port, channel, nickname, username=None, password=None, config=None):
+    def __init__(self, server, port, channel, nickname, username=None, password=None, config=None, additional_channels=None):
         self.config = config or {}
-        self.ROOT = ROOT 
+        self.ROOT = ROOT
         self._setup_logging()
 
         if port == 6697:
@@ -348,12 +348,22 @@ class Jeeves(SingleServerIRCBot):
         self.nickserv_pass = self.config.get("connection", {}).get("nickserv_pass", "")
         self.pm = PluginManager(self)
 
+        # Build initial channel list from config
+        config_channels = set([self.primary_channel])
+        if additional_channels:
+            config_channels.update(additional_channels)
+
+        # Merge with persisted channels from state
         core_state = state_manager.get_module_state("core")
         persisted_channels = set(core_state.get("joined_channels", []))
         print(f"[core] Loaded persisted channels from state: {persisted_channels}", file=sys.stderr)
-        persisted_channels.add(self.primary_channel)
-        print(f"[core] After adding primary channel ({self.primary_channel}): {persisted_channels}", file=sys.stderr)
-        self.joined_channels = persisted_channels
+
+        # Combine config channels with persisted channels
+        all_channels = config_channels | persisted_channels
+        print(f"[core] Config channels: {config_channels}", file=sys.stderr)
+        print(f"[core] Final channel list to join: {all_channels}", file=sys.stderr)
+
+        self.joined_channels = all_channels
         self.state_manager = state_manager
 
     # --- Core Bot Functions ---
@@ -780,7 +790,9 @@ def main():
     irc_config = config.get("connection", {})
     server = irc_config.get("server", "irc.libera.chat")
     port = irc_config.get("port", 6697)
-    channel = irc_config.get("channel", "#bots")
+    # Support both old 'channel' and new 'main_channel' config keys
+    main_channel = irc_config.get("main_channel") or irc_config.get("channel", "#bots")
+    additional_channels = irc_config.get("additional_channels", [])
     nick = irc_config.get("nick", "JeevesBot")
 
     print("\n" + "="*40, file=sys.stderr)
@@ -788,10 +800,12 @@ def main():
     print(f"[boot] Preparing to connect...", file=sys.stderr)
     print(f"       Server:   {server}:{port}", file=sys.stderr)
     print(f"       Nickname: {nick}", file=sys.stderr)
-    print(f"       Channel:  {channel}", file=sys.stderr)
+    print(f"       Main Channel: {main_channel}", file=sys.stderr)
+    if additional_channels:
+        print(f"       Additional Channels: {', '.join(additional_channels)}", file=sys.stderr)
     print("="*40 + "\n", file=sys.stderr)
 
-    bot = Jeeves(server, port, channel, nick, config=config)
+    bot = Jeeves(server, port, main_channel, nick, config=config, additional_channels=additional_channels)
     
     def on_exit(sig, frame):
         bot.log_debug("[core] shutting down...")

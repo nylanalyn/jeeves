@@ -884,6 +884,38 @@ r'^\s*!quote\s+add\s+(.+)$'
 
 ---
 
+## Specialized Module Guides
+
+Some modules are large and complex enough to warrant their own dedicated guides. **Always read these guides before working on these modules:**
+
+### Quest Module
+
+**File**: `docs/LLM_QUEST_GUIDE.md`
+
+The Quest module is Jeeves' largest module - a full RPG system with prestige, transcendence, hardcore mode, dungeons, boss hunts, and more. It's split across multiple submodules (`quest_core`, `quest_combat`, `quest_progression`, etc.) and has its own data files (`quest_content.json`, `challenge_paths.json`).
+
+**Read the Quest Guide when**:
+- Working on any quest commands (`!quest`, `!dungeon`, `!mob`)
+- Modifying prestige, transcendence, or hardcore systems
+- Adding new items, abilities, or challenge paths
+- Creating new themes
+- Debugging quest-related issues
+
+### Absurdia Module
+
+**File**: `docs/LLM_ABSURDIA_GUIDE.md`
+
+The Absurdia module is a creature catching and battling game with SQLite database storage. Unlike Quest (which uses JSON state), Absurdia has persistent database tables for players, creatures, traps, arena matches, and inventory.
+
+**Read the Absurdia Guide when**:
+- Working on any Absurdia commands (`!catch`, `!feed`, `!arena`, `!explore`)
+- Modifying catching, care, or combat systems
+- Adding new creatures or trap tiers
+- Debugging database issues
+- Working with hourly arena tournaments
+
+---
+
 ## Final Notes
 
 - **Modules should be self-contained** - don't depend on other modules unless necessary
@@ -893,6 +925,7 @@ r'^\s*!quote\s+add\s+(.+)$'
 - **Don't block the bot** - use threads for slow operations
 - **Log liberally** - debug.log is your friend
 - **Test in #bots first** - don't spam main channels
+- **Read specialized guides** - Quest and Absurdia have dedicated documentation
 
 This guide covers ~90% of what you need to understand Jeeves. For specific module examples, see the modules/ directory. For detailed IRC protocol info, see the `irc` library docs.
 

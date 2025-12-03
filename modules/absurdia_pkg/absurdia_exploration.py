@@ -47,19 +47,37 @@ class ExplorationManager:
         """Get a random exploration flavor text"""
         return random.choice(self.FLAVOR_TEXTS)
 
-    def roll_exploration_reward(self) -> Optional[str]:
+    def roll_exploration_reward(self) -> Optional[Tuple[str, str]]:
         """
         Roll for exploration reward.
-        Returns: 'basic', 'standard', 'premium', or None
+        Returns: (item_type, item_name) tuple or None
+
+        Probabilities:
+        - Traps: 10.5% total
+          - Premium trap: 0.5%
+          - Standard trap: 2.0%
+          - Basic trap: 8.0%
+        - Training items: 5.0% total (1.25% each)
+        - Nothing: 84.5%
         """
         roll = random.random()
 
-        # 10.5% total chance for a trap
-        if roll < 0.005: # 0.5%
-            return 'premium'
-        elif roll < 0.025: # 2.0%
-            return 'standard'
-        elif roll < 0.105: # 8.0%
-            return 'basic'
-        
+        # Traps: 10.5% total
+        if roll < 0.005:  # 0.5%
+            return ('trap', 'premium')
+        elif roll < 0.025:  # 2.0%
+            return ('trap', 'standard')
+        elif roll < 0.105:  # 8.0%
+            return ('trap', 'basic')
+
+        # Training items: 5.0% total (1.25% each)
+        elif roll < 0.1175:  # 1.25%
+            return ('training', 'hp')
+        elif roll < 0.130:  # 1.25%
+            return ('training', 'power')
+        elif roll < 0.1425:  # 1.25%
+            return ('training', 'shield')
+        elif roll < 0.155:  # 1.25%
+            return ('training', 'speed')
+
         return None

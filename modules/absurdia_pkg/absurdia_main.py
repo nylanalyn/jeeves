@@ -173,6 +173,14 @@ class Absurdia(SimpleCommandModule):
             description="Pet your creature (1h cooldown)"
         )
 
+        # Training commands
+        self.register_command(
+            r"^\s*!train\s+(\d+)\s+(hp|power|shield|speed)\s*$",
+            self._cmd_train,
+            name="train",
+            description="Use training item to boost creature stats"
+        )
+
         # Arena commands
         self.register_command(
             r"^\s*!submit\s+(\d+)\s*$",
@@ -225,6 +233,10 @@ CARE (earn coins & boost stats!):
   !play <id> - Play with creature (2h cooldown, costs 5, +3 happy)
   !pet <id> - Pet creature (1h cooldown, free, +2 happy)
   Note: Care rewards capped at 10 actions/day (resets at midnight UTC)
+
+TRAINING (permanent stat boosts!):
+  !train <id> <item> - Use training item (+5 to chosen stat, max +50 bonus)
+  Items: hp, power, shield, speed (200 coins each, or find via !explore)
 
 ARENA (battle for glory!):
   !submit <id> - Enter creature in hourly arena tournament
@@ -537,7 +549,23 @@ For full command list: !absurdia help"""
             lines.append(f"  {trap_type}: {price} coins - {timer_hours}h wait - {rarity_info}")
 
         lines.append("")
+        lines.append("TRAINING ITEMS (usage: !buy <item_name> or !train <id> <item>):")
+
+        training_prices = config.get('training_prices', {})
+        training_items = {
+            'hp': ('HP Tonic', '+5 HP'),
+            'power': ('Power Crystal', '+5 Attack'),
+            'shield': ('Shield Fragment', '+5 Defense'),
+            'speed': ('Speed Charm', '+5 Speed')
+        }
+
+        for item_key, (item_name, effect) in training_items.items():
+            price = training_prices.get(item_key, 200)
+            lines.append(f"  {item_key}: {price} coins - {item_name} ({effect}, max +50 per stat)")
+
+        lines.append("")
         lines.append("TIP: No traps or coins? Try !catch with no arguments for hand-catching!")
+        lines.append("TIP: Training items can also be found via !explore (4h cooldown)")
 
         self.safe_reply(connection, event, "\n".join(lines))
         return True
@@ -581,6 +609,41 @@ For full command list: !absurdia help"""
             self.safe_reply(
                 connection, event,
                 f"{self.bot.title_for(username)}, you purchased {quantity} {item_name} {trap_word} "
+                f"for {total_cost} coins. New balance: {new_balance} coins."
+            )
+            return True
+
+        # Check if it's a training item
+        training_prices = config.get('training_prices', {})
+        training_names = {
+            'hp': 'HP Tonic',
+            'power': 'Power Crystal',
+            'shield': 'Shield Fragment',
+            'speed': 'Speed Charm'
+        }
+
+        if item_name in training_prices:
+            price = training_prices[item_name]
+            total_cost = price * quantity
+
+            if player['coins'] < total_cost:
+                self.safe_reply(
+                    connection, event,
+                    f"Not enough coins! {training_names[item_name]} costs {price} each. "
+                    f"You need {total_cost} but have {player['coins']}."
+                )
+                return True
+
+            # Purchase training items
+            self.db.update_player_coins(user_id, -total_cost)
+            self.db.add_item(user_id, 'training', item_name, quantity)
+
+            item_word = "item" if quantity == 1 else "items"
+            new_balance = player['coins'] - total_cost
+
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, you purchased {quantity} {training_names[item_name]} {item_word} "
                 f"for {total_cost} coins. New balance: {new_balance} coins."
             )
             return True
@@ -659,18 +722,32 @@ For full command list: !absurdia help"""
         flavor = self.exploration.get_exploration_flavor()
 
         if reward:
-            self.db.add_item(user_id, 'trap', reward, 1)
+            item_type, item_name = reward
+            self.db.add_item(user_id, item_type, item_name, 1)
+
+            # Format display name
+            if item_type == 'trap':
+                display_name = f"{item_name} trap"
+            else:  # training item
+                training_names = {
+                    'hp': 'HP Tonic',
+                    'power': 'Power Crystal',
+                    'shield': 'Shield Fragment',
+                    'speed': 'Speed Charm'
+                }
+                display_name = training_names.get(item_name, item_name)
+
             self.safe_reply(
                 connection, event,
-                f"{flavor}\\n"
-                f"Wait! You found a {reward} trap!"
+                f"{flavor}\n"
+                f"Wait! You found a {display_name}!"
             )
         else:
             self.safe_reply(
                 connection, event,
                 f"{flavor}"
             )
-        
+
         return True
 
     def _cmd_catch(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
@@ -1232,6 +1309,89 @@ For full command list: !absurdia help"""
             f"{flavor}\n"
             f"{display_name}: +{happiness_gain} happiness ({new_happiness}/100) | "
             f"Coins: {coins_earned:+d}{cap_message}"
+        )
+        return True
+
+    def _cmd_train(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        """Use a training item to boost a creature's stats"""
+        user_id = self.bot.get_user_id(username)
+        creature_id = int(match.group(1))
+        item_type = match.group(2).lower()
+
+        # Map item types to stats and names
+        training_items = {
+            'hp': ('bonus_hp', 'HP', 'HP Tonic'),
+            'power': ('bonus_attack', 'Attack', 'Power Crystal'),
+            'shield': ('bonus_defense', 'Defense', 'Shield Fragment'),
+            'speed': ('bonus_speed', 'Speed', 'Speed Charm')
+        }
+
+        if item_type not in training_items:
+            self.safe_reply(connection, event, "Invalid training item. Options: hp, power, shield, speed")
+            return True
+
+        stat_field, stat_name, item_name = training_items[item_type]
+
+        # Get creature
+        creature = self.db.get_creature(creature_id)
+
+        if not creature:
+            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
+            return True
+
+        if creature['owner_id'] != user_id:
+            self.safe_reply(connection, event, "That's not your creature!")
+            return True
+
+        # Check if player has the training item
+        item_count = self.db.get_item_count(user_id, 'training', item_type)
+        if item_count < 1:
+            self.safe_reply(
+                connection, event,
+                f"You don't have any {item_name}! Buy one with: !buy {item_type}"
+            )
+            return True
+
+        # Check if stat is already at cap (+50)
+        current_bonus = creature[stat_field]
+        if current_bonus >= 50:
+            self.safe_reply(
+                connection, event,
+                f"That creature's {stat_name} bonus is already at the maximum (+50)!"
+            )
+            return True
+
+        # Apply training (+5 to stat)
+        new_bonus = min(50, current_bonus + 5)
+        actual_gain = new_bonus - current_bonus
+
+        # Update stat in database
+        with self.db._lock:
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                f'UPDATE creatures SET {stat_field} = ? WHERE id = ?',
+                (new_bonus, creature_id)
+            )
+
+            # Record training session
+            cursor.execute(
+                'INSERT INTO training_sessions (creature_id, stat_trained, improvement) VALUES (?, ?, ?)',
+                (creature_id, stat_name, actual_gain)
+            )
+
+            conn.commit()
+            conn.close()
+
+        # Remove item from inventory
+        self.db.remove_item(user_id, 'training', item_type, 1)
+
+        display_name = creature['nickname'] if creature['nickname'] else creature['name']
+
+        self.safe_reply(
+            connection, event,
+            f"{self.bot.title_for(username)}, you used {item_name} on {display_name}!\n"
+            f"{stat_name}: +{actual_gain} (now {new_bonus}/50 bonus)"
         )
         return True
 

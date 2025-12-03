@@ -139,6 +139,12 @@ class AbsurdiaDatabase:
                 )
             ''')
 
+            # Migration: Add auto_announced column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE active_traps ADD COLUMN auto_announced BOOLEAN DEFAULT 0')
+            except:
+                pass  # Column already exists
+
             # Arena matches table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS arena_matches (
@@ -625,6 +631,38 @@ class AbsurdiaDatabase:
             cursor = conn.cursor()
 
             cursor.execute('UPDATE active_traps SET collected = 1 WHERE id = ?', (trap_id,))
+            conn.commit()
+            conn.close()
+
+    def get_traps_for_auto_collect(self, auto_collect_hours: int) -> List[Dict[str, Any]]:
+        """Get traps that need auto-collection (ready + auto_collect_hours has passed)"""
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            # Calculate the cutoff time
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=auto_collect_hours)
+
+            cursor.execute('''
+                SELECT * FROM active_traps
+                WHERE collected = 0
+                AND auto_announced = 0
+                AND ready_at <= ?
+                ORDER BY ready_at
+            ''', (cutoff_time.isoformat(),))
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [dict(row) for row in rows]
+
+    def mark_trap_auto_announced(self, trap_id: int):
+        """Mark trap as auto-announced"""
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute('UPDATE active_traps SET auto_announced = 1 WHERE id = ?', (trap_id,))
             conn.commit()
             conn.close()
 

@@ -44,7 +44,7 @@ class Karma(SimpleCommandModule):
 
         # Look for karma patterns: username++ or username--
         # Pattern: word characters followed by ++ or --
-        karma_pattern = r'\b(\w+)(\+\+|--)\b'
+        karma_pattern = r'\b(\w+)(\+\+|--)'
 
         for match in re.finditer(karma_pattern, msg):
             target_nick = match.group(1)

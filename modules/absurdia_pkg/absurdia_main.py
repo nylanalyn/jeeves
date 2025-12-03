@@ -40,6 +40,9 @@ class Absurdia(SimpleCommandModule):
         # Schedule hourly arena tournaments
         schedule.every().hour.at(":00").do(self._run_hourly_arena).tag(self.name)
 
+        # Schedule auto-collect checks every 15 minutes
+        schedule.every(15).minutes.do(self._check_auto_collect_traps).tag(self.name)
+
         self.log_debug("Absurdia initialized successfully")
 
     def _register_commands(self) -> None:
@@ -397,6 +400,11 @@ For full command list: !absurdia help"""
     def _cmd_creatures(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """List player's creature collection"""
         user_id = self.bot.get_user_id(username)
+
+        # Check for pending catch first
+        if self._check_and_show_pending_catch(connection, event, username, user_id):
+            return True
+
         player = self.db.get_player(user_id, username)
 
         creatures = self.db.get_player_creatures(user_id)
@@ -476,6 +484,11 @@ For full command list: !absurdia help"""
     def _cmd_coins(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Show player's coin balance"""
         user_id = self.bot.get_user_id(username)
+
+        # Check for pending catch first
+        if self._check_and_show_pending_catch(connection, event, username, user_id):
+            return True
+
         player = self.db.get_player(user_id, username)
 
         owned, total = self.db.get_collection_progress(user_id)
@@ -490,6 +503,11 @@ For full command list: !absurdia help"""
     def _cmd_shop(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Display shop with available items"""
         user_id = self.bot.get_user_id(username)
+
+        # Check for pending catch first
+        if self._check_and_show_pending_catch(connection, event, username, user_id):
+            return True
+
         player = self.db.get_player(user_id, username)
 
         config = self.bot.config.get('absurdia', {})
@@ -789,10 +807,18 @@ For full command list: !absurdia help"""
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
 
+            # Calculate auto-collect time
+            config = self.bot.config.get('absurdia', {})
+            auto_collect_hours = config.get('auto_collect_hours', 24)
+            auto_collect_time = ready_time + timedelta(hours=auto_collect_hours)
+            auto_collect_remaining = (auto_collect_time - now).total_seconds()
+            auto_collect_hours_left = int(auto_collect_remaining // 3600)
+
             self.safe_reply(
                 connection, event,
                 f"Your {trap['trap_quality']} trap is not ready yet. "
-                f"Wait {hours}h {minutes}m more."
+                f"Wait {hours}h {minutes}m more. "
+                f"(Auto-collects in {auto_collect_hours_left}h if not checked)"
             )
             return True
 
@@ -832,6 +858,17 @@ For full command list: !absurdia help"""
             f"Stats: HP:{hp} ATK:{attack} DEF:{defense} SPD:{speed}"
         )
         return True
+
+    def _check_and_show_pending_catch(self, connection: Any, event: Any, username: str, user_id: str) -> bool:
+        """
+        Check if user has a pending catch and show comparison if they do.
+        Returns True if there's a pending catch, False otherwise.
+        """
+        pending = self.db.get_pending_catch(user_id)
+        if pending:
+            creature_name = pending['creature_name']
+            return self._show_duplicate_comparison(connection, event, username, user_id, creature_name)
+        return False
 
     def _show_duplicate_comparison(self, connection: Any, event: Any, username: str, user_id: str, creature_name: str) -> bool:
         """Show comparison UI for duplicate creature"""
@@ -877,7 +914,7 @@ For full command list: !absurdia help"""
             f"├─ Wins: 0, Losses: 0",
             f"└─ Type: {pending['new_creature_type']}",
             "",
-            "Keep new (!keep) or keep current (defaults to current in 30s)?"
+            "Use !keep or !swap to accept the new catch and release your current one."
         ]
 
         self.safe_reply(connection, event, "\n".join(lines))
@@ -1307,6 +1344,88 @@ For full command list: !absurdia help"""
 
         self.safe_reply(connection, event, "\n".join(lines))
         return True
+
+    # ============= TRAP AUTO-COLLECTION =============
+
+    def _check_auto_collect_traps(self) -> None:
+        """Check for traps that need auto-collection (called by scheduler)"""
+        try:
+            config = self.bot.config.get('absurdia', {})
+            auto_collect_hours = config.get('auto_collect_hours', 24)
+
+            # Get traps that need auto-collection
+            traps = self.db.get_traps_for_auto_collect(auto_collect_hours)
+
+            if not traps:
+                return
+
+            self.log_debug(f"Processing {len(traps)} traps for auto-collection")
+
+            # Get announcement channel
+            arena_channel = config.get('arena_channel', '#absurdia')
+
+            for trap in traps:
+                try:
+                    user_id = trap['owner_id']
+
+                    # Get player info
+                    player = self.db.get_player(user_id, "Unknown")
+                    username = player['username']
+
+                    # Generate creature
+                    creature_name, rarity, creature_type, hp, attack, defense, speed, template = \
+                        self.generator.generate_creature(trap['trap_quality'])
+
+                    # Check for duplicate
+                    if self.db.has_creature_type(user_id, creature_name):
+                        # Duplicate - create pending catch for later resolution
+                        # Use longer timeout for auto-collected traps (7 days instead of 30 seconds)
+                        timeout = 7 * 24 * 3600  # 7 days in seconds
+                        self.db.create_pending_catch(
+                            user_id, creature_name, rarity, creature_type,
+                            hp, attack, defense, speed, trap['trap_quality'], timeout
+                        )
+
+                        # Mark as auto-announced (will be handled when user next interacts)
+                        self.db.mark_trap_auto_announced(trap['id'])
+
+                        # Also mark trap as collected since we've processed it
+                        self.db.mark_trap_collected(trap['id'])
+
+                        self.log_debug(f"Auto-collected duplicate {creature_name} for {username}, pending comparison")
+
+                    else:
+                        # Not a duplicate - create creature and announce
+                        creature_id = self.db.create_creature(
+                            user_id, creature_name, rarity, creature_type,
+                            hp, attack, defense, speed
+                        )
+
+                        # Mark trap as collected and auto-announced
+                        self.db.mark_trap_collected(trap['id'])
+                        self.db.mark_trap_auto_announced(trap['id'])
+
+                        # Get flavor text
+                        flavor = self.generator.get_catch_flavor(template)
+
+                        # Announce in channel
+                        announcement = (
+                            f"{username}'s {trap['trap_quality']} trap caught a creature! {flavor}\n"
+                            f"Caught: {creature_name} (#{creature_id}) - {rarity} {creature_type}\n"
+                            f"Stats: HP:{hp} ATK:{attack} DEF:{defense} SPD:{speed}"
+                        )
+                        self.bot.connection.privmsg(arena_channel, announcement)
+                        self.log_debug(f"Auto-collected {creature_name} for {username}, announced in {arena_channel}")
+
+                except Exception as e:
+                    self.log_debug(f"Error auto-collecting trap {trap['id']}: {e}")
+                    import traceback
+                    self.log_debug(traceback.format_exc())
+
+        except Exception as e:
+            self.log_debug(f"Error in auto-collect check: {e}")
+            import traceback
+            self.log_debug(traceback.format_exc())
 
     # ============= ARENA AUTOMATION =============
 

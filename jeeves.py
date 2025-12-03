@@ -76,6 +76,7 @@ class MultiFileStateManager:
         'coffee': 'stats',
         'courtesy': 'stats',
         'leveling': 'stats',
+        'duel': 'stats',
         # Everything else uses 'state' (config storage)
     }
 

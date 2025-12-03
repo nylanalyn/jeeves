@@ -119,6 +119,15 @@ coffee:
 crypto:
     cooldown_seconds: 5
 
+duel:
+    # Maximum time a duel challenge waits for !accept (seconds)
+    challenge_timeout_seconds: 180
+    # If false, users with !flavor off cannot be targeted by !slap
+    include_flavor_off_users: false
+    # Channel controls (empty lists mean the module is active everywhere)
+    allowed_channels: []
+    blocked_channels: []
+
 convenience:
     google_cooldown: 5.0
     ud_cooldown: 10.0

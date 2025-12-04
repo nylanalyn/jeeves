@@ -634,13 +634,13 @@ def handle_class(quest_module, connection, event, username, args):
         return True
 
     if chosen_class not in classes_config:
-        quest_module.safe_reply(connection, event, f"My apologies, that is not a recognized class.")
+        quest_module.safe_reply(connection, event, "My apologies, that is not a recognized class.")
         return True
 
     # Check if player has already changed class at this prestige level
     last_change_prestige = class_change_prestige.get(user_id, -1)
     if last_change_prestige == current_prestige and user_id in player_classes:
-        quest_module.safe_reply(connection, event, f"You have already chosen your class for this prestige level. You can change your class again after you prestige.")
+        quest_module.safe_reply(connection, event, "You have already chosen your class for this prestige level. You can change your class again after you prestige.")
         return True
 
     # Allow the class change

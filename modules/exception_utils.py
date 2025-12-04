@@ -49,6 +49,11 @@ class PermissionException(JeevesException):
     pass
 
 
+class NetworkException(JeevesException):
+    """Exception raised for network-related failures."""
+    pass
+
+
 def safe_execute(
     func: Callable,
     *args,
@@ -58,24 +63,25 @@ def safe_execute(
     reraise: bool = False,
     exception_types: Tuple[Type[Exception], ...] = (Exception,),
     **kwargs
-) -> Any:
+) -> Tuple[Any, Optional[str]]:
     """
     Safely execute a function with standardized exception handling.
     
     Args:
         func: Function to execute
         error_message: Internal error message for logging
-        user_message: User-friendly error message
+        user_message: User-friendly error message to return on failure
         log_exception: Whether to log the exception
         reraise: Whether to re-raise the exception after handling
         exception_types: Tuple of exception types to catch
         *args, **kwargs: Arguments to pass to the function
         
     Returns:
-        Function result or None if exception occurred
+        Tuple of (result, user_message) on success or (None, user_message) on handled failure.
+        On success, user_message is None. On failure, user_message contains the error message.
     """
     try:
-        return func(*args, **kwargs)
+        return func(*args, **kwargs), None
     except exception_types as e:
         if log_exception:
             # Get the calling module name from the stack
@@ -91,7 +97,7 @@ def safe_execute(
         
         if reraise:
             raise
-        return None
+        return None, user_message or error_message
 
 
 def handle_exceptions(
@@ -166,7 +172,7 @@ def safe_api_call(
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs) -> Tuple[Any, Optional[str]]:
             return safe_execute(
                 func,
                 *args,
@@ -192,7 +198,7 @@ def safe_file_operation(
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args, **kwargs) -> Tuple[Any, Optional[str]]:
             return safe_execute(
                 func,
                 *args,

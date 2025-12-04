@@ -27,7 +27,7 @@ except ImportError:
         return decorator
     
     def safe_execute(func, *args, **kwargs):
-        return func(*args, **kwargs)
+        return func(*args, **kwargs), None
     
     safe_api_call = safe_execute
     safe_file_operation = safe_execute

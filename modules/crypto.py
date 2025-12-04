@@ -17,8 +17,8 @@ except ImportError:
     HTTP_CLIENT = None
     def safe_api_call(func, *args, **kwargs):
         return func(*args, **kwargs)
-    class ExternalAPIException(Exception): pass
-
+    class ExternalAPIException(Exception):
+        pass
 
 def setup(bot: Any) -> "CryptoModule":
     """Module setup function."""

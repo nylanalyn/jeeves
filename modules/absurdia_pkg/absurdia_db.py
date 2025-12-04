@@ -53,13 +53,13 @@ class AbsurdiaDatabase:
             # Migration: Add daily_care_count column if it doesn't exist
             try:
                 cursor.execute('ALTER TABLE players ADD COLUMN daily_care_count INTEGER DEFAULT 0')
-            except:
+            except sqlite3.OperationalError:
                 pass  # Column already exists
 
             # Migration: Add last_explored column if it doesn't exist
             try:
                 cursor.execute('ALTER TABLE players ADD COLUMN last_explored TIMESTAMP')
-            except:
+            except sqlite3.OperationalError:
                 pass  # Column already exists
 
             # Creatures table

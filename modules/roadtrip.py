@@ -214,7 +214,8 @@ class Roadtrip(SimpleCommandModule):
         destination = random.choice(self.LOCATIONS)
         
         self.safe_reply(connection, event, random.choice(self.TRIGGER_MESSAGES))
-        self.safe_reply(connection, event, f"Shall we? I've in mind a little excursion to {destination}. Say \"coming {self.bot.connection.get_nickname().lower()}\" or \"!me\" within {join_window} seconds to be shown to the car.")
+        nick = self.bot.connection.get_nickname() or self.bot.config.get("connection", {}).get("nick", "jeeves")
+        self.safe_reply(connection, event, f"Shall we? I've in mind a little excursion to {destination}. Say \"coming {nick.lower()}\" or \"!me\" within {join_window} seconds to be shown to the car.")
         
         close_time = time.time() + join_window
         self.set_state("current_rsvp", {

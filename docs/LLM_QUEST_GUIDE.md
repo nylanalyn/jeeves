@@ -629,6 +629,7 @@ base_chance = max(0.05, min(0.95, base_chance))  # Clamp to 5%-95%
 
 **Medkits**: `!quest medkit` or `!medkit` - clears all injuries
 - Can target another player: `!quest medkit username`
+- Hardcore mode: can also heal 50% max HP even if uninjured; blocked for targets on challenge paths that forbid medkits
 - Increments `challenge_stats.medkits_used_this_prestige`
 
 **Energy Potions**: `!quest use energy_potion` - restores 3 energy (default)
@@ -650,6 +651,13 @@ base_chance = max(0.05, min(0.95, base_chance))  # Clamp to 5%-95%
 - Default mode: auto-convert to sigils in groups of 4, rest to solo
 - `solo` mode: bank only solo victories
 - `boss` mode: forge sigils only
+
+### Dungeon Search System
+
+- `!quest search [n]` spends energy (default 1 each) to bank counter-items for dungeons; up to 20 searches per command.
+- Searches auto-clear expired injuries and migrate old formats; if any active injuries remain the search is blocked and state is saved.
+- Outcomes: find counter-item (added to dungeon cache), spring trap (lose XP per `injury_xp_min/max` and -1 energy), or nothing (flavor).
+- Overall find chance pulled from `search_system.dungeon_item_chance` or legacy drop knobs via `_get_dungeon_item_find_chance`.
 
 ### Item Drops
 
@@ -1073,6 +1081,10 @@ quest_core.save_challenge_paths(quest_module)
 !qc [class]               # Class
 !mob, !join               # Mob shortcuts
 !medkit, !inv             # Legacy shortcuts
+
+# Notes
+- `!quest`/`!qu use` and all `!dungeon` commands are allowed via DM even if the module is disabled in the channel (command dispatch special-case).
+- `!quest medic` is currently a stub that just replies it is being refactored; rely on medkits instead.
 ```
 
 ### Admin Commands

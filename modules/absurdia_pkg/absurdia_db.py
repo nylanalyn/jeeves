@@ -83,6 +83,7 @@ class AbsurdiaDatabase:
                     bonus_speed INTEGER DEFAULT 0,
 
                     happiness INTEGER DEFAULT 50,
+                    owner_local_id INTEGER,
                     last_fed TIMESTAMP,
                     last_played TIMESTAMP,
                     last_petted TIMESTAMP,
@@ -96,6 +97,18 @@ class AbsurdiaDatabase:
                     FOREIGN KEY (owner_id) REFERENCES players(user_id),
                     UNIQUE(owner_id, name)
                 )
+            ''')
+
+            # Migration: Add owner_local_id column if it doesn't exist
+            try:
+                cursor.execute('ALTER TABLE creatures ADD COLUMN owner_local_id INTEGER')
+            except:
+                pass  # Column already exists
+
+            # Ensure unique index for per-owner numbering
+            cursor.execute('''
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_local
+                ON creatures(owner_id, owner_local_id)
             ''')
 
             cursor.execute('''
@@ -195,7 +208,47 @@ class AbsurdiaDatabase:
             ''')
 
             conn.commit()
+            # Backfill owner_local_id if needed
+            self._backfill_owner_local_ids(conn)
+
             conn.close()
+
+    def _backfill_owner_local_ids(self, conn: sqlite3.Connection) -> None:
+        """Assign owner_local_id sequentially per owner if missing."""
+        cursor = conn.cursor()
+
+        # Check if column exists
+        cursor.execute("PRAGMA table_info(creatures)")
+        cols = [row[1] for row in cursor.fetchall()]
+        if "owner_local_id" not in cols:
+            return
+
+        cursor.execute('SELECT COUNT(*) as cnt FROM creatures WHERE owner_local_id IS NULL')
+        missing_count = cursor.fetchone()['cnt']
+        if missing_count == 0:
+            return
+
+        cursor.execute('SELECT owner_id, id FROM creatures WHERE owner_local_id IS NULL ORDER BY owner_id, caught_at, id')
+        rows = cursor.fetchall()
+
+        counters = {}
+        for row in rows:
+            owner_id = row['owner_id']
+            counters.setdefault(owner_id, 0)
+            counters[owner_id] += 1
+            cursor.execute(
+                'UPDATE creatures SET owner_local_id = ? WHERE id = ?',
+                (counters[owner_id], row['id'])
+            )
+
+        conn.commit()
+
+    def _get_next_owner_local_id(self, cursor: sqlite3.Cursor, owner_id: str) -> int:
+        """Return the next available per-owner creature number."""
+        cursor.execute('SELECT MAX(owner_local_id) as max_local FROM creatures WHERE owner_id = ?', (owner_id,))
+        row = cursor.fetchone()
+        max_local = row['max_local'] if row and row['max_local'] is not None else 0
+        return max_local + 1
 
     def _load_templates(self):
         """Load creature templates from JSON file"""
@@ -348,12 +401,27 @@ class AbsurdiaDatabase:
     # ============= CREATURE OPERATIONS =============
 
     def get_creature(self, creature_id: int) -> Optional[Dict[str, Any]]:
-        """Get creature by ID"""
+        """Get creature by global ID"""
         with self._lock:
             conn = self._get_connection()
             cursor = conn.cursor()
 
             cursor.execute('SELECT * FROM creatures WHERE id = ?', (creature_id,))
+            row = cursor.fetchone()
+            conn.close()
+
+            return dict(row) if row else None
+
+    def get_creature_by_local(self, owner_id: str, owner_local_id: int) -> Optional[Dict[str, Any]]:
+        """Get creature by per-owner number"""
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                'SELECT * FROM creatures WHERE owner_id = ? AND owner_local_id = ?',
+                (owner_id, owner_local_id)
+            )
             row = cursor.fetchone()
             conn.close()
 
@@ -365,7 +433,7 @@ class AbsurdiaDatabase:
             conn = self._get_connection()
             cursor = conn.cursor()
 
-            cursor.execute('SELECT * FROM creatures WHERE owner_id = ? ORDER BY name', (user_id,))
+            cursor.execute('SELECT * FROM creatures WHERE owner_id = ? ORDER BY owner_local_id', (user_id,))
             rows = cursor.fetchall()
             conn.close()
 
@@ -399,17 +467,21 @@ class AbsurdiaDatabase:
             return count > 0
 
     def create_creature(self, owner_id: str, creature_name: str, rarity: str,
-                       creature_type: str, hp: int, attack: int, defense: int, speed: int) -> int:
+                       creature_type: str, hp: int, attack: int, defense: int, speed: int,
+                       owner_local_id: Optional[int] = None) -> int:
         """Create a new creature. Returns creature_id."""
         with self._lock:
             conn = self._get_connection()
             cursor = conn.cursor()
 
+            if owner_local_id is None:
+                owner_local_id = self._get_next_owner_local_id(cursor, owner_id)
+
             cursor.execute('''
                 INSERT INTO creatures (owner_id, name, rarity, creature_type,
-                                     base_hp, base_attack, base_defense, base_speed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (owner_id, creature_name, rarity, creature_type, hp, attack, defense, speed))
+                                     base_hp, base_attack, base_defense, base_speed, owner_local_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (owner_id, creature_name, rarity, creature_type, hp, attack, defense, speed, owner_local_id))
 
             creature_id = cursor.lastrowid
             conn.commit()
@@ -545,18 +617,28 @@ class AbsurdiaDatabase:
             new_creature_id = None
 
             if keep_new:
+                cursor.execute(
+                    'SELECT id, owner_local_id FROM creatures WHERE owner_id = ? AND name = ? LIMIT 1',
+                    (owner_id, pending['creature_name'])
+                )
+                current_row = cursor.fetchone()
+                current_local_id = current_row['owner_local_id'] if current_row else None
+
                 # Delete old creature
                 cursor.execute('DELETE FROM creatures WHERE owner_id = ? AND name = ?',
                              (owner_id, pending['creature_name']))
 
+                if current_local_id is None:
+                    current_local_id = self._get_next_owner_local_id(cursor, owner_id)
+
                 # Create new creature
                 cursor.execute('''
                     INSERT INTO creatures (owner_id, name, rarity, creature_type,
-                                         base_hp, base_attack, base_defense, base_speed)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                         base_hp, base_attack, base_defense, base_speed, owner_local_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (owner_id, pending['creature_name'], pending['new_rarity'],
                       pending['new_creature_type'], pending['new_hp'], pending['new_attack'],
-                      pending['new_defense'], pending['new_speed']))
+                      pending['new_defense'], pending['new_speed'], current_local_id))
 
                 new_creature_id = cursor.lastrowid
 
@@ -776,7 +858,7 @@ class AbsurdiaDatabase:
             cursor = conn.cursor()
 
             cursor.execute(
-                'SELECT * FROM creatures WHERE submitted_to_arena = 1 ORDER BY owner_id'
+                'SELECT * FROM creatures WHERE submitted_to_arena = 1 ORDER BY owner_id, owner_local_id'
             )
             rows = cursor.fetchall()
             conn.close()

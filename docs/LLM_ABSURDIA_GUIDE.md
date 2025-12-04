@@ -397,6 +397,8 @@ TYPE_ADVANTAGES = {
 
 **Notifications**: Auto-collected traps announce in channel if player has been active recently
 
+**Auto-collect duplicates**: Auto-collected duplicates create pending catches with a long timeout (7 days) instead of 30 seconds and are marked as auto-announced for later resolution.
+
 ### Duplicate Handling
 
 **One-per-species rule**: Players can only own one of each creature species
@@ -470,6 +472,27 @@ Care actions boost creature stats, grant happiness, and earn coins (with daily c
 
 ---
 
+## Training System
+
+Permanent stat boosts via training items.
+
+**Items & Sources**:
+- Shop items: `hp`, `power`, `shield`, `speed` (prices from `training_prices`); also drop from `!explore` (5% total, 1.25% each).
+- Inventory stored in DB under item_type `training`.
+
+**Command**: `!train <id> <hp|power|shield|speed>`
+- Costs one matching training item; errors if you don’t own it.
+- Grants +5 to the corresponding bonus stat, capped at +50 per stat.
+- Records a row in `training_sessions` (audit trail).
+
+**Display**: Shop shows training items; `!stats` and arena queue include bonuses in totals.
+
+**Notes**:
+- Training works while the creature is not owned by someone else and ignores care cooldowns.
+- Inventory mutations and stat updates are wrapped in DB lock to avoid races.
+
+---
+
 ## Arena System
 
 Hourly tournaments where creatures battle for coins.
@@ -489,6 +512,8 @@ Hourly tournaments where creatures battle for coins.
 **Win**: +150 coins (default, configurable via `arena.win_reward`)
 
 **Loss**: +30 coins (default, configurable via `arena.loss_reward`)
+
+**Bye**: If odd number of entrants, one creature gets a bye win and earns `arena_rewards.bye` coins (default 50).
 
 ### Submission Rules
 
@@ -583,9 +608,14 @@ New players start with **300 coins** (set in `AbsurdiaDatabase.get_player()`)
 - Premium: 200 coins
 - Deluxe: 400 coins
 
+**Training items** (default prices via `training_prices`):
+- `hp` (HP Tonic), `power` (Power Crystal), `shield` (Shield Fragment), `speed` (Speed Charm) — +5 to the corresponding bonus stat, max +50
+
 **Commands**:
 - `!shop` - View available items and prices
 - `!buy <trap_type> [quantity]` - Purchase traps
+- `!buy <training_item> [quantity]` - Purchase training items
+- `!train <id> <hp|power|shield|speed>` - Consume training item to boost stats
 - `!inventory` - View owned items
 
 ### Coin Sources
@@ -594,11 +624,13 @@ New players start with **300 coins** (set in `AbsurdiaDatabase.get_player()`)
 2. **Arena wins**: +150 coins
 3. **Arena losses**: +30 coins
 4. **Duplicate refunds**: 50% of trap cost when swapping
+5. **Exploration**: Rare trap or training item drops (no coins but free items)
 
 ### Coin Sinks
 
 1. **Trap purchases**: 50-400 coins
-2. **Care costs**: Feed (10 coins), Play (5 coins), Pet (free)
+2. **Training item purchases**: Prices from `training_prices` (e.g., 200 each by default)
+3. **Care costs**: Feed (10 coins), Play (5 coins), Pet (free)
 
 ### Daily Care Cap Impact
 
@@ -626,17 +658,17 @@ New players start with **300 coins** (set in `AbsurdiaDatabase.get_player()`)
 
 **Random selection**: One flavor text shown per exploration
 
-### Trap Rewards
+### Rewards
 
 **Drop rates** (see `ExplorationManager.roll_exploration_reward()`):
-- **Premium trap**: 0.5% chance
-- **Standard trap**: 2.0% chance
-- **Basic trap**: 8.0% chance
-- **No reward**: 89.5% chance
+- Traps (10.5% total):
+  - Premium trap: 0.5%
+  - Standard trap: 2.0%
+  - Basic trap: 8.0%
+- Training items (5% total, 1.25% each for hp/power/shield/speed)
+- Nothing: 84.5%
 
-**Total trap chance**: 10.5%
-
-**Display**: Shows flavor text, then "Wait! You found a <trap> trap!" if rewarded
+**Display**: Shows flavor text, then "Wait! You found a <item>!" if rewarded
 
 ---
 

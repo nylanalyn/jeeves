@@ -209,6 +209,7 @@ class Absurdia(SimpleCommandModule):
         """Show help information"""
         help_text = """=== ABSURDIA: Creature Battle Game ===
 Catch absurdist creatures, care for them, and battle in the arena!
+Creature numbers are per-player; use !creatures to see your IDs.
 
 INFO:
   !coins - Check your balance
@@ -435,10 +436,11 @@ For full command list: !absurdia help"""
         lines = [f"=== {username}'s Menagerie ({owned}/{total}) ==="]
 
         for creature in creatures:
+            local_id = creature.get('owner_local_id', creature['id'])
             display_name = creature['nickname'] if creature['nickname'] else creature['name']
             status = "in arena" if creature['submitted_to_arena'] else "available"
 
-            line = (f"[{creature['id']}] {display_name} ({creature['name']}) - "
+            line = (f"[{local_id}] {display_name} ({creature['name']}) - "
                    f"{creature['creature_type']} - "
                    f"W:{creature['total_wins']} L:{creature['total_losses']} - "
                    f"{status}")
@@ -450,16 +452,12 @@ For full command list: !absurdia help"""
     def _cmd_stats(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Show detailed stats for a creature"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
 
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
-            return True
-
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
         # Calculate total stats
@@ -803,13 +801,15 @@ For full command list: !absurdia help"""
                 user_id, creature_name, rarity, creature_type,
                 hp, attack, defense, speed
             )
+            new_creature = self.db.get_creature(creature_id)
+            local_id = new_creature.get('owner_local_id', creature_id)
 
             flavor = self.generator.get_catch_flavor(template, is_hand_catch=True, success=True)
 
             self.safe_reply(
                 connection, event,
                 f"{flavor}\n"
-                f"Caught: {creature_name} (#{creature_id}) - {rarity} {creature_type}\n"
+                f"Caught: {creature_name} (#{local_id}) - {rarity} {creature_type}\n"
                 f"Stats: HP:{hp} ATK:{attack} DEF:{defense} SPD:{speed}"
             )
             return True
@@ -925,13 +925,15 @@ For full command list: !absurdia help"""
             user_id, creature_name, rarity, creature_type,
             hp, attack, defense, speed
         )
+        new_creature = self.db.get_creature(creature_id)
+        local_id = new_creature.get('owner_local_id', creature_id)
 
         flavor = self.generator.get_catch_flavor(template)
 
         self.safe_reply(
             connection, event,
             f"{flavor}\n"
-            f"Caught: {creature_name} (#{creature_id}) - {rarity} {creature_type}\n"
+            f"Caught: {creature_name} (#{local_id}) - {rarity} {creature_type}\n"
             f"Stats: HP:{hp} ATK:{attack} DEF:{defense} SPD:{speed}"
         )
         return True
@@ -975,11 +977,12 @@ For full command list: !absurdia help"""
         current_total_spd = current['base_speed'] + current['bonus_speed']
 
         display_name = current['nickname'] if current['nickname'] else creature_name
+        current_local_id = current.get('owner_local_id', current['id'])
 
         lines = [
             f"You caught a {creature_name}! You already have one.",
             "",
-            f"CURRENT (ID: {current['id']}, {display_name}):",
+            f"CURRENT (ID: {current_local_id}, {display_name}):",
             f"├─ HP: {current_total_hp}, Attack: {current_total_atk}, Defense: {current_total_def}, Speed: {current_total_spd}",
             f"├─ Happiness: {current['happiness']}",
             f"├─ Wins: {current['total_wins']}, Losses: {current['total_losses']}",
@@ -1017,9 +1020,11 @@ For full command list: !absurdia help"""
         refund, new_creature_id = self.db.resolve_pending_catch(user_id, keep_new=True, trap_refund_percent=refund_percent)
 
         if new_creature_id:
+            new_creature = self.db.get_creature(new_creature_id)
+            local_id = new_creature.get('owner_local_id', new_creature_id) if new_creature else new_creature_id
             self.safe_reply(
                 connection, event,
-                f"{self.bot.title_for(username)}, you kept the new {pending['creature_name']} (#{new_creature_id})! "
+                f"{self.bot.title_for(username)}, you kept the new {pending['creature_name']} (#{local_id})! "
                 f"Your old one was released. Refund: {refund} coins."
             )
         else:
@@ -1030,7 +1035,7 @@ For full command list: !absurdia help"""
     def _cmd_nickname(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Set a nickname for a creature"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
         nickname = match.group(2).strip()
 
         # Validate nickname length
@@ -1038,18 +1043,14 @@ For full command list: !absurdia help"""
             self.safe_reply(connection, event, "Nickname must be 30 characters or less.")
             return True
 
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
-            return True
-
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
         # Set nickname
-        self.db.set_creature_nickname(creature_id, nickname)
+        self.db.set_creature_nickname(creature['id'], nickname)
 
         self.safe_reply(
             connection, event,
@@ -1060,17 +1061,15 @@ For full command list: !absurdia help"""
     def _cmd_feed(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Feed a creature"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
 
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
-            return True
+        creature_id = creature['id']
 
         # Check if can care (not in arena)
         can_care, error_msg = self.care.can_care_for(creature)
@@ -1154,17 +1153,15 @@ For full command list: !absurdia help"""
     def _cmd_play(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Play with a creature"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
 
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
-            return True
+        creature_id = creature['id']
 
         # Check if can care (not in arena)
         can_care, error_msg = self.care.can_care_for(creature)
@@ -1248,17 +1245,15 @@ For full command list: !absurdia help"""
     def _cmd_pet(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Pet a creature"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
 
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
-            return True
+        creature_id = creature['id']
 
         # Check if can care (not in arena)
         can_care, error_msg = self.care.can_care_for(creature)
@@ -1315,7 +1310,7 @@ For full command list: !absurdia help"""
     def _cmd_train(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Use a training item to boost a creature's stats"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
         item_type = match.group(2).lower()
 
         # Map item types to stats and names
@@ -1333,15 +1328,13 @@ For full command list: !absurdia help"""
         stat_field, stat_name, item_name = training_items[item_type]
 
         # Get creature
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
-            return True
+        creature_id = creature['id']
 
         # Check if player has the training item
         item_count = self.db.get_item_count(user_id, 'training', item_type)
@@ -1398,17 +1391,15 @@ For full command list: !absurdia help"""
     def _cmd_submit(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Submit a creature to the arena queue"""
         user_id = self.bot.get_user_id(username)
-        creature_id = int(match.group(1))
+        creature_local_id = int(match.group(1))
 
-        creature = self.db.get_creature(creature_id)
+        creature = self.db.get_creature_by_local(user_id, creature_local_id)
 
         if not creature:
-            self.safe_reply(connection, event, f"Creature #{creature_id} not found.")
+            self.safe_reply(connection, event, f"Creature #{creature_local_id} not found.")
             return True
 
-        if creature['owner_id'] != user_id:
-            self.safe_reply(connection, event, "That's not your creature!")
-            return True
+        creature_id = creature['id']
 
         # Check if already submitted
         if creature['submitted_to_arena']:
@@ -1476,7 +1467,7 @@ For full command list: !absurdia help"""
         if not submitted:
             self.safe_reply(
                 connection, event,
-                "The arena queue is currently empty. Use !submit <creature_id> to enter!"
+                "The arena queue is currently empty. Use !submit <creature #> to enter!"
             )
             return True
 
@@ -1485,6 +1476,7 @@ For full command list: !absurdia help"""
         for creature in submitted:
             owner = self.db.get_player(creature['owner_id'], "Unknown")
             display_name = creature['nickname'] if creature['nickname'] else creature['name']
+            owner_local_id = creature.get('owner_local_id', creature['id'])
 
             # Calculate effective stats for display
             stats = {
@@ -1494,7 +1486,7 @@ For full command list: !absurdia help"""
                 'speed': creature['base_speed'] + creature['bonus_speed']
             }
 
-            line = (f"{owner['username']}'s {display_name} - {creature['creature_type']} - "
+            line = (f"{owner['username']}'s [{owner_local_id}] {display_name} - {creature['creature_type']} - "
                    f"HP:{stats['hp']} ATK:{stats['attack']} DEF:{stats['defense']} SPD:{stats['speed']} - "
                    f"Record: {creature['total_wins']}W/{creature['total_losses']}L")
             lines.append(line)
@@ -1560,6 +1552,8 @@ For full command list: !absurdia help"""
                             user_id, creature_name, rarity, creature_type,
                             hp, attack, defense, speed
                         )
+                        creature = self.db.get_creature(creature_id)
+                        local_id = creature.get('owner_local_id', creature_id) if creature else creature_id
 
                         # Mark trap as collected and auto-announced
                         self.db.mark_trap_collected(trap['id'])
@@ -1571,7 +1565,7 @@ For full command list: !absurdia help"""
                         # Announce in channel
                         announcement = (
                             f"{username}'s {trap['trap_quality']} trap caught a creature! {flavor}\n"
-                            f"Caught: {creature_name} (#{creature_id}) - {rarity} {creature_type}\n"
+                            f"Caught: {creature_name} (#{local_id}) - {rarity} {creature_type}\n"
                             f"Stats: HP:{hp} ATK:{attack} DEF:{defense} SPD:{speed}"
                         )
                         self.bot.connection.privmsg(arena_channel, announcement)

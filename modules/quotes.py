@@ -1,10 +1,13 @@
 # modules/quotes.py
 # A module to randomly remember things people say and recall them later.
+import json
 import re
 import random
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, List
 from .base import SimpleCommandModule
+from file_lock import FileLock
 
 UTC = timezone.utc
 
@@ -21,9 +24,26 @@ class Quotes(SimpleCommandModule):
     def __init__(self, bot: Any) -> None:
         """Initializes the module's state."""
         super().__init__(bot)
-        # State structure: { "quotes": [ { "message": str, "nick": str, "timestamp": ISO_STRING }, ... ] }
-        self.set_state("quotes", self.get_state("quotes", []))
-        self.save_state()
+        base_dir = Path(getattr(getattr(self.bot, "state_manager", None), "base_dir", Path("config")))
+        self.quotes_path = base_dir / "quotes.json"
+
+        # Load from new file, falling back to legacy module state if present
+        file_quotes = self._load_quotes()
+        legacy_quotes = self.get_state("quotes", [])
+
+        if legacy_quotes and not file_quotes:
+            file_quotes = legacy_quotes
+        elif legacy_quotes:
+            # Merge but avoid duplicates if both exist
+            file_quotes.extend(q for q in legacy_quotes if q not in file_quotes)
+
+        # Clear legacy state to keep state.json small
+        if legacy_quotes:
+            self.set_state("quotes", [])
+            self.save_state()
+
+        self._quotes = file_quotes
+        self._save_quotes(self._quotes)
 
     def _register_commands(self) -> None:
         """Registers the !quote command."""
@@ -33,6 +53,29 @@ class Quotes(SimpleCommandModule):
     def _get_config(self, key: str, default: Any) -> Any:
         """Helper to get module config with defaults."""
         return self.bot.config.get(self.name, {}).get(key, default)
+
+    def _load_quotes(self) -> List[dict]:
+        """Load quotes from dedicated quotes.json file."""
+        try:
+            if not self.quotes_path.exists():
+                return []
+            with FileLock(self.quotes_path):
+                with open(self.quotes_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data if isinstance(data, list) else []
+        except Exception as e:
+            self.log_debug(f"Failed to load quotes.json: {e}")
+            return []
+
+    def _save_quotes(self, quotes: List[dict]) -> None:
+        """Persist quotes to dedicated quotes.json file."""
+        try:
+            self.quotes_path.parent.mkdir(parents=True, exist_ok=True)
+            with FileLock(self.quotes_path):
+                with open(self.quotes_path, "w", encoding="utf-8") as f:
+                    json.dump(quotes, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.log_debug(f"Failed to save quotes.json: {e}")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         """Randomly stores messages for later recall."""
@@ -58,15 +101,13 @@ class Quotes(SimpleCommandModule):
             return False
 
         # Save the quote
-        quotes = self.get_state("quotes", [])
-        quotes.append({
+        self._quotes.append({
             "message": msg,
             "nick": username,
             "timestamp": datetime.now(UTC).isoformat()
         })
 
-        self.set_state("quotes", quotes)
-        self.save_state()
+        self._save_quotes(self._quotes)
         self.log_debug(f"Saved quote from {username}: {msg[:50]}...")
 
         return False  # Don't stop other ambient handlers
@@ -87,7 +128,9 @@ class Quotes(SimpleCommandModule):
 
     def _cmd_quote(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Handles the !quote command - recalls a random stored quote."""
-        quotes = self.get_state("quotes", [])
+        # Refresh from disk in case multiple processes are writing
+        self._quotes = self._load_quotes()
+        quotes = self._quotes
 
         if not quotes:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but I have not yet committed any remarks to memory.")

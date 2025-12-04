@@ -27,7 +27,7 @@ class BackupModule(ModuleBase):
         super().__init__(bot)
         self.state_manager: Optional[Any] = getattr(self.bot, "state_manager", None)
         self.max_backups: int = 3
-        self.managed_suffixes: Tuple[str, ...] = ("state", "games", "users", "stats")
+        self.managed_suffixes: Tuple[str, ...] = ("state", "games", "users", "stats", "quotes")
 
         if not self.state_manager:
             self.state_dir: Optional[Path] = None

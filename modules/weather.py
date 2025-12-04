@@ -71,8 +71,12 @@ class Weather(SimpleCommandModule):
         # PirateWeather uses DarkSky-compatible API
         weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
         try:
-            # Use shared HTTP client
-            return self.http.get_json(weather_url)
+            # Use shared HTTP client - safe_api_call decorator returns (data, error)
+            data, error = self.http.get_json(weather_url)
+            if error:
+                self._record_error(f"PirateWeather API request failed for {lat},{lon}: {error}")
+                return None
+            return data
         except Exception as e:
             self._record_error(f"PirateWeather API request failed for {lat},{lon}: {e}")
             return None
@@ -82,7 +86,11 @@ class Weather(SimpleCommandModule):
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         try:
             # Use shared HTTP client (User-Agent is handled by http_utils)
-            return self.http.get_json(weather_url)
+            data, error = self.http.get_json(weather_url)
+            if error:
+                self._record_error(f"MET Norway API request failed for {lat},{lon}: {error}")
+                return None
+            return data
         except Exception as e:
             self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
@@ -162,8 +170,10 @@ class Weather(SimpleCommandModule):
 
         weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
         try:
-            # Use shared HTTP client
-            data = self.http.get_json(weather_url)
+            # Use shared HTTP client - safe_api_call decorator returns (data, error)
+            data, error = self.http.get_json(weather_url)
+            if error or not data:
+                return None
 
             daily = data.get('daily', {}).get('data', [])
             if not daily or len(daily) < 4:
@@ -188,8 +198,10 @@ class Weather(SimpleCommandModule):
         """Extract 3-day forecast from MET Norway API."""
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         try:
-            # Use shared HTTP client
-            data = self.http.get_json(weather_url)
+            # Use shared HTTP client - safe_api_call decorator returns (data, error)
+            data, error = self.http.get_json(weather_url)
+            if error or not data:
+                return None
 
             timeseries = data.get('properties', {}).get('timeseries', [])
             if not timeseries:

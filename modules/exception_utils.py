@@ -102,6 +102,7 @@ def safe_execute(
 
 def handle_exceptions(
     error_message: str = "An error occurred",
+    user_message: Optional[str] = None,
     log_exception: bool = True,
     reraise: bool = False,
     exception_types: Tuple[Type[Exception], ...] = (Exception,)

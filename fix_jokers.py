@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import json
 import random
+import shutil
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 # List of hilariously rude real place names
@@ -121,13 +124,50 @@ for user_id, user_data in users.items():
 
                 changes.append(f"User {user_id}: {old_name} -> {rude_place['name']} (input was: '{user_input}')")
 
-# Write back the modified data
+# Write back the modified data with backup and atomic write
 if changes:
-    with open(USERS_JSON_PATH, 'w') as f:
-        json.dump(users, f, indent=4, ensure_ascii=False)
+    # Create timestamped backup
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_path = USERS_JSON_PATH.with_suffix(f'.json.bak.{timestamp}')
 
-    print(f"Fixed {len(changes)} jokers:")
-    for change in changes:
-        print(f"  - {change}")
+    try:
+        # Create backup
+        shutil.copy2(USERS_JSON_PATH, backup_path)
+        print(f"Backup created: {backup_path}")
+
+        # Write to temporary file in the same directory (for atomic rename)
+        temp_fd, temp_path = tempfile.mkstemp(
+            dir=USERS_JSON_PATH.parent,
+            prefix='.users_',
+            suffix='.json.tmp'
+        )
+
+        try:
+            # Write the updated data to temp file
+            with open(temp_fd, 'w') as f:
+                json.dump(users, f, indent=4, ensure_ascii=False)
+
+            # Atomically replace the original file
+            shutil.move(temp_path, USERS_JSON_PATH)
+            print(f"Successfully updated {USERS_JSON_PATH}")
+
+            print(f"\nFixed {len(changes)} jokers:")
+            for change in changes:
+                print(f"  - {change}")
+
+        except Exception as write_error:
+            # Clean up temp file if it still exists
+            if Path(temp_path).exists():
+                Path(temp_path).unlink()
+            raise write_error
+
+    except Exception as e:
+        # Restore from backup if something went wrong
+        print(f"ERROR during write: {e}")
+        if backup_path.exists():
+            print(f"Restoring from backup: {backup_path}")
+            shutil.copy2(backup_path, USERS_JSON_PATH)
+            print("Backup restored successfully")
+        raise
 else:
     print("No jokers found! Everyone behaved properly.")

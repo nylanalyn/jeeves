@@ -78,6 +78,7 @@ class Hunt(SimpleCommandModule):
         if old_active:
             self.set_state("active_animals", [old_active])
             self.set_state("active_animal", None)
+            self.save_state()
         else:
             self.set_state("active_animals", self.get_state("active_animals", []))
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))

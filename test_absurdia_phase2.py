@@ -100,7 +100,15 @@ def test_phase2():
     print("\n[TEST 4] Resolving duplicate - keep new")
     print("-" * 60)
 
-    refund, new_creature_id = db.resolve_pending_catch(user_id, keep_new=True, trap_refund_percent=0.5)
+    # Test trap prices that match config
+    test_trap_prices = {
+        'basic': 50,
+        'standard': 150,
+        'premium': 400,
+        'deluxe': 1000
+    }
+
+    refund, new_creature_id = db.resolve_pending_catch(user_id, keep_new=True, trap_refund_percent=0.5, trap_prices=test_trap_prices)
 
     print(f"  ✓ Kept new creature (#{new_creature_id})")
     print(f"  ✓ Refund: {refund} coins (50% of trap cost)")

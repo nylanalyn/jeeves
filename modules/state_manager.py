@@ -94,7 +94,8 @@ class StateManager:
         Returns:
             Updated state
         """
-        current_state = self.load_state(filename, {})
+        result = self.load_state(filename, {})
+        current_state = result[0] if isinstance(result, tuple) else result
         current_state.update(updates)
         self.save_state(filename, current_state)
         
@@ -107,27 +108,30 @@ class StateManager:
     
     def get_state_value(self, filename: str, key: str, default: Any = None) -> Any:
         """Get a specific value from state.
-        
+
         Args:
             filename: State filename
             key: Key to retrieve
             default: Default value if key doesn't exist
-            
+
         Returns:
             Value for the specified key
         """
-        state = self.load_state(filename, {})
+        result = self.load_state(filename, {})
+        state = result[0] if isinstance(result, tuple) else result
         return state.get(key, default)
     
     def set_state_value(self, filename: str, key: str, value: Any) -> None:
         """Set a specific value in state.
-        
+
         Args:
             filename: State filename
             key: Key to set
             value: Value to set
         """
-        self.update_state(filename, {key: value})
+        result = self.update_state(filename, {key: value})
+        # update_state returns (state, metadata) tuple from decorator
+        # We don't need to use the return value here, just ensuring it completes
 
 
 def create_state_manager(state_dir: str = "config") -> StateManager:

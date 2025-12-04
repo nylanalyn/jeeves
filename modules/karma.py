@@ -79,6 +79,9 @@ class Karma(SimpleCommandModule):
         giver_id = self.bot.get_user_id(giver_nick)
         receiver_id = self.bot.get_user_id(receiver_nick)
 
+        if not giver_id or not receiver_id:
+            return False
+
         # Check cooldown (5 minutes per person-to-person)
         cooldown_seconds = 300  # 5 minutes
         now = time.time()

@@ -591,23 +591,36 @@ class AbsurdiaDatabase:
 
             return dict(row) if row else None
 
-    def resolve_pending_catch(self, owner_id: str, keep_new: bool, trap_refund_percent: float) -> Tuple[int, Optional[int]]:
+    def resolve_pending_catch(self, owner_id: str, keep_new: bool, trap_refund_percent: float, trap_prices: Optional[Dict[str, int]] = None) -> Tuple[int, Optional[int]]:
         """
         Resolve a pending catch.
+
+        Args:
+            owner_id: The user ID of the creature owner
+            keep_new: Whether to keep the new creature (True) or the existing one (False)
+            trap_refund_percent: Percentage of trap cost to refund (0.0-1.0)
+            trap_prices: Dict with keys 'basic','standard','premium','deluxe' from config.
+                        If None or missing keys, falls back to defaults.
+
         Returns: (coin_refund, new_creature_id or None)
         """
         pending = self.get_pending_catch(owner_id)
         if not pending:
             return 0, None
 
-        trap_costs = {
+        # Default trap costs (fallback if config not provided)
+        default_trap_costs = {
             'basic': 50,
             'standard': 150,
             'premium': 400,
             'deluxe': 1000
         }
 
-        trap_cost = trap_costs.get(pending['trap_quality'], 50)
+        # Use provided trap_prices with fallback to defaults for missing keys
+        if trap_prices is None:
+            trap_prices = default_trap_costs
+
+        trap_cost = trap_prices.get(pending['trap_quality'], default_trap_costs.get(pending['trap_quality'], 50))
         refund = int(trap_cost * trap_refund_percent)
 
         with self._lock:

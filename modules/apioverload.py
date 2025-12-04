@@ -135,10 +135,12 @@ class ApiOverload(SimpleCommandModule):
             api_name="TCGdex API",
             user_message="Unable to fetch card information at the moment. Please try again later."
         )
-        
+
         if not response:
+            # safe_api_call already logged the error details
+            self.safe_reply(connection, event, "Unable to fetch card information at the moment. Please try again later.")
             return False
-            
+
         response.raise_for_status()
         data = response.json()
 
@@ -159,8 +161,8 @@ class ApiOverload(SimpleCommandModule):
         )
         
         if not detail_response:
+            self.safe_reply(connection, event, "Unable to fetch card details at the moment.")
             return False
-            
         detail_response.raise_for_status()
         full_card = detail_response.json()
 
@@ -226,8 +228,10 @@ class ApiOverload(SimpleCommandModule):
             api_name="Bible Search API",
             user_message="Unable to search for Bible verse at the moment."
         )
-        
+
         if not response:
+            # safe_api_call already logged the error details
+            self.safe_reply(connection, event, "Unable to search for Bible verse at the moment. Please try again later.")
             return False
 
         # Log the actual response for debugging
@@ -251,10 +255,12 @@ class ApiOverload(SimpleCommandModule):
             api_name="Bible Verse API",
             user_message="Unable to fetch verse text at the moment."
         )
-        
+
         if not verse_response:
+            # safe_api_call already logged the error details
+            self.safe_reply(connection, event, "Unable to fetch verse text at the moment. Please try again later.")
             return False
-            
+
         verse_response.raise_for_status()
         verse_json = verse_response.json()
 
@@ -303,10 +309,12 @@ class ApiOverload(SimpleCommandModule):
             api_name="Brewery API",
             user_message="Unable to fetch brewery information at the moment."
         )
-        
+
         if not response:
+            # safe_api_call already logged the error details
+            self.safe_reply(connection, event, "Unable to fetch brewery information at the moment. Please try again later.")
             return False
-            
+
         response.raise_for_status()
         data = response.json()
 

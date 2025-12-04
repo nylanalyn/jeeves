@@ -11,7 +11,7 @@ from urllib3.util.retry import Retry
 
 from .exception_utils import (
     ExternalAPIException,
-    safe_api_call,
+    safe_api_call_decorator,
     log_module_event,
     log_security_event
 )
@@ -55,8 +55,8 @@ class HTTPClient:
         
         return session
     
-    @safe_api_call()
-    def get_json(self, url: str, params: Optional[Dict] = None, 
+    @safe_api_call_decorator()
+    def get_json(self, url: str, params: Optional[Dict] = None,
                 headers: Optional[Dict] = None) -> Dict[str, Any]:
         """Make GET request and return JSON response.
         
@@ -87,7 +87,7 @@ class HTTPClient:
         
         return response.json()
     
-    @safe_api_call()
+    @safe_api_call_decorator()
     def get_text(self, url: str, params: Optional[Dict] = None,
                 headers: Optional[Dict] = None) -> str:
         """Make GET request and return text response.

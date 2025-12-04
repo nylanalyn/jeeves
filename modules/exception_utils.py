@@ -131,20 +131,18 @@ def handle_exceptions(
                 module_name = getattr(self_obj, 'name', func.__module__) if self_obj else func.__module__
                 
                 if log_exception:
-                    # Use bot's log_debug if available, otherwise use standard logging
                     if bot and hasattr(bot, 'log_debug'):
                         if isinstance(e, (UserInputException, ConfigurationException)):
+                            # User errors are expected - debug level is fine
                             bot.log_debug(f"[{module_name}] {error_message}: {e}")
                         else:
-                            bot.log_debug(f"[{module_name}] {error_message}: {e}")
+                            # Unexpected errors - consider log_error if available
+                            if hasattr(bot, 'log_error'):
+                                bot.log_error(f"[{module_name}] {error_message}: {e}")
+                            else:
+                                bot.log_debug(f"[{module_name}] {error_message}: {e}")
                             # Log full traceback for non-user errors
                             bot.log_debug(f"[{module_name}] Exception details:\n{traceback.format_exc()}")
-                    else:
-                        # Fallback to standard logging
-                        if isinstance(e, (UserInputException, ConfigurationException)):
-                            logging.warning(f"[{module_name}] {error_message}: {e}")
-                        else:
-                            logging.error(f"[{module_name}] {error_message}: {e}")
                             logging.debug(f"[{module_name}] Exception details:\n{traceback.format_exc()}")
                 
                 if reraise:
@@ -159,13 +157,72 @@ def handle_exceptions(
     return decorator
 
 
-def safe_api_call(
+def safe_api_call_wrapper(
+    func: Callable,
+    *args,
+    api_name: str = "external API",
+    user_message: str = "The service is temporarily unavailable. Please try again later.",
+    **kwargs
+) -> Optional[Any]:
+    """
+    Safely call an external API function with standardized error handling.
+
+    This is a wrapper function (not a decorator) that executes an API call and returns
+    None on failure while logging appropriate error messages.
+
+    Args:
+        func: The API function to call (e.g., requests.get)
+        *args: Positional arguments to pass to the function
+        api_name: Name of the API for logging (keyword-only)
+        user_message: User-friendly error message (keyword-only)
+        **kwargs: Keyword arguments to pass to the function
+
+    Returns:
+        The result of the API call on success, or None on failure
+
+    Example:
+        response = safe_api_call(
+            session.get,
+            "https://api.example.com/data",
+            timeout=10,
+            api_name="Example API",
+            user_message="Unable to fetch data at the moment."
+        )
+        if not response:
+            # Handle failure - error already logged
+            return False
+    """
+    try:
+        result = func(*args, **kwargs)
+        return result
+    except (ConnectionError, TimeoutError) as e:
+        # Network-related errors
+        logging.error(f"[{api_name}] Network error: {e}")
+        logging.debug(f"[{api_name}] Exception details:\n{traceback.format_exc()}")
+        return None
+    except ValueError as e:
+        # JSON parsing or value errors
+        logging.error(f"[{api_name}] Value error: {e}")
+        logging.debug(f"[{api_name}] Exception details:\n{traceback.format_exc()}")
+        return None
+    except Exception as e:
+        # Catch-all for other API errors
+        logging.error(f"[{api_name}] API call failed: {e}")
+        logging.debug(f"[{api_name}] Exception details:\n{traceback.format_exc()}")
+        return None
+
+
+# Alias for backward compatibility with the wrapper function usage in apioverload.py
+safe_api_call = safe_api_call_wrapper
+
+
+def safe_api_call_decorator(
     api_name: str = "external API",
     user_message: str = "The service is temporarily unavailable. Please try again later."
 ):
     """
     Decorator for safely calling external APIs with standardized error handling.
-    
+
     Args:
         api_name: Name of the API for logging
         user_message: User-friendly error message

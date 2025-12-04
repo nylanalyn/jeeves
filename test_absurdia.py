@@ -65,7 +65,7 @@ def test_db():
     db.add_item("test_user_1", "training_item", "basic_strength", 1)
 
     inventory = db.get_inventory("test_user_1")
-    print(f"✓ Added items to inventory:")
+    print("✓ Added items to inventory:")
     for item in inventory:
         print(f"  - {item['item_name']}: {item['quantity']}")
 

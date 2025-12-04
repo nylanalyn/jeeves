@@ -1424,10 +1424,10 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match, skip_
     quest_module.save_state()
 
     relic_suffix = "s" if relic_reward != 1 else ""
-    victory_msg = (
-        f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed {relic_reward} {DUNGEON_REWARD_NAME}{relic_suffix}! "
-        f"(Reduced by {relic_penalty} for relying on relic auto-wins) {DUNGEON_REWARD_EFFECT_TEXT}"
-    )
+    victory_msg = f"{username} cleared all {TOTAL_DUNGEON_ROOMS} rooms and claimed {relic_reward} {DUNGEON_REWARD_NAME}{relic_suffix}! "
+    if relic_penalty > 0:
+        victory_msg += f"(Reduced by {relic_penalty} for relying on relic auto-wins) "
+    victory_msg += DUNGEON_REWARD_EFFECT_TEXT
     _broadcast_dungeon_outcome(quest_module, connection, event, dungeon_state.get("last_run"), victory_msg)
     return True
 

@@ -328,7 +328,7 @@ class PluginManager:
 
 # ----- Jeeves Bot -----
 class Jeeves(SingleServerIRCBot):
-    def __init__(self, server, port, channel, nickname, username=None, password=None, config=None, additional_channels=None):
+    def __init__(self, server, port, channel, nickname, config=None, additional_channels=None):
         self.config = config or {}
         self.ROOT = ROOT
         self._setup_logging()

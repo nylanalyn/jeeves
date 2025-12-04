@@ -1,12 +1,79 @@
 # web/quest/themes.py
 # Theme management for quest web UI
 
+import html
 import json
+import re
 from copy import deepcopy
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
 import yaml
+
+
+def sanitize_css_value(value: str) -> str:
+    """
+    Sanitize a CSS value to prevent CSS injection attacks.
+
+    Only allows safe CSS values: colors (hex, rgb, rgba, named colors),
+    numbers with units (px, em, rem, %, etc.), and a limited set of safe keywords.
+    """
+    if not isinstance(value, str):
+        value = str(value)
+
+    value = value.strip()
+
+    # Allow hex colors
+    if re.match(r'^#[0-9a-fA-F]{3,8}$', value):
+        return value
+
+    # Allow rgb/rgba colors
+    if re.match(r'^rgba?\s*\([^)]+\)$', value, re.IGNORECASE):
+        return value
+
+    # Allow numbers with units
+    if re.match(r'^-?\d+\.?\d*(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cm|mm|in|pt|pc|s|ms)?$', value):
+        return value
+
+    # Allow safe CSS keywords (limited set)
+    safe_keywords = {
+        'inherit', 'initial', 'unset', 'auto', 'none', 'transparent',
+        'bold', 'normal', 'italic', 'uppercase', 'lowercase', 'capitalize',
+        'center', 'left', 'right', 'top', 'bottom', 'middle',
+        'block', 'inline', 'inline-block', 'flex', 'grid', 'absolute', 'relative', 'fixed'
+    }
+    if value.lower() in safe_keywords:
+        return value
+
+    # If the value doesn't match any safe pattern, return empty string
+    return ''
+
+
+def sanitize_css_identifier(identifier: str) -> str:
+    """
+    Sanitize a CSS class name or identifier.
+
+    Only allows alphanumeric characters, hyphens, and underscores.
+    Must start with a letter or hyphen followed by a letter.
+    """
+    if not isinstance(identifier, str):
+        identifier = str(identifier)
+
+    # Remove any characters that aren't alphanumeric, hyphen, or underscore
+    sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', identifier)
+
+    # Ensure it starts with a letter or hyphen+letter
+    if not re.match(r'^[a-zA-Z-]', sanitized):
+        sanitized = 'safe-' + sanitized
+
+    return sanitized if sanitized else 'safe-default'
+
+
+def sanitize_html_text(text: str) -> str:
+    """Sanitize text for use in HTML content (not attributes)."""
+    if not isinstance(text, str):
+        text = str(text)
+    return html.escape(text)
 
 
 DEFAULT_THEME: Dict[str, Any] = {
@@ -187,14 +254,21 @@ class ThemeManager:
     def get_prestige_icons(self, prestige: int) -> str:
         """Get formatted prestige icons for display."""
         tier = self.get_prestige_tier(prestige)
-        icons = tier["icon"] * tier["repeat"]
-        return f'<span class="tier {tier["class"]}" style="color: {tier["color"]}">{icons}</span>'
+        # Sanitize all theme values to prevent XSS
+        icons = sanitize_html_text(tier["icon"]) * tier["repeat"]
+        class_name = sanitize_css_identifier(tier["class"])
+        color = sanitize_css_value(tier["color"])
+        return f'<span class="tier {class_name}" style="color: {color}">{icons}</span>'
 
     def get_prestige_banner(self, prestige: int) -> str:
         """Get prestige banner if applicable."""
         tier = self.get_prestige_tier(prestige)
-        if tier.get("banner"):
-            return f'<div class="prestige-banner banner-{tier["banner"]}">{tier["banner"].upper()}</div>'
+        banner = tier.get("banner")
+        if banner:
+            # Sanitize banner value for use in class name and content
+            banner_class = sanitize_css_identifier(str(banner))
+            banner_text = sanitize_html_text(str(banner).upper())
+            return f'<div class="prestige-banner banner-{banner_class}">{banner_text}</div>'
         return ""
 
     def get_css_variables(self) -> str:
@@ -202,27 +276,39 @@ class ThemeManager:
         css_vars = []
         for key, value in self.theme.items():
             if key != "prestige_tiers":
-                css_var = f"--{key}: {value};"
-                css_vars.append(css_var)
+                # Sanitize CSS variable name and value to prevent injection
+                var_name = sanitize_css_identifier(key)
+                var_value = sanitize_css_value(str(value))
+                if var_value:  # Only include if sanitization passed
+                    css_var = f"--{var_name}: {var_value};"
+                    css_vars.append(css_var)
         return "\n".join(css_vars)
 
     def get_prestige_css(self) -> str:
         """Generate CSS for prestige tiers."""
         css_rules = []
         for i, tier in enumerate(self.theme["prestige_tiers"]):
-            # Fix class name extraction to remove "tier-" prefix if already in class
-            class_name = tier["class"].replace("tier-", "")
-            rule = f""".tier-{class_name} {{
-    color: {tier["color"]};
-    text-shadow: 0 0 10px {tier["color"]};
+            # Sanitize class name and color values to prevent CSS injection
+            class_name = sanitize_css_identifier(tier["class"].replace("tier-", ""))
+            color = sanitize_css_value(tier["color"])
+
+            if color:  # Only generate rule if color is valid
+                rule = f""".tier-{class_name} {{
+    color: {color};
+    text-shadow: 0 0 10px {color};
 }}"""
-            css_rules.append(rule)
+                css_rules.append(rule)
 
             # Banner styling
-            if tier.get("banner"):
-                css_rules.append(f""".banner-{tier["banner"]} {{
-    background: linear-gradient(135deg, {tier["color"]}, transparent);
-    color: {self.theme["foreground"]};
+            banner = tier.get("banner")
+            if banner:
+                banner_class = sanitize_css_identifier(str(banner))
+                foreground = sanitize_css_value(str(self.theme.get("foreground", "#f2f2f2")))
+
+                if color and foreground:  # Only generate rule if both colors are valid
+                    css_rules.append(f""".banner-{banner_class} {{
+    background: linear-gradient(135deg, {color}, transparent);
+    color: {foreground};
     padding: 4px 12px;
     border-radius: 4px;
     font-weight: bold;

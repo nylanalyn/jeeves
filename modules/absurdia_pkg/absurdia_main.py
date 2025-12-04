@@ -1015,9 +1015,10 @@ For full command list: !absurdia help"""
 
         config = self.bot.config.get('absurdia', {})
         refund_percent = config.get('duplicate_handling', {}).get('trap_refund_percent', 0.5)
+        trap_prices = config.get('trap_prices', {})
 
         # Resolve - keep new
-        refund, new_creature_id = self.db.resolve_pending_catch(user_id, keep_new=True, trap_refund_percent=refund_percent)
+        refund, new_creature_id = self.db.resolve_pending_catch(user_id, keep_new=True, trap_refund_percent=refund_percent, trap_prices=trap_prices)
 
         if new_creature_id:
             new_creature = self.db.get_creature(new_creature_id)

@@ -68,6 +68,10 @@ class Weather(SimpleCommandModule):
             self._record_error("PirateWeather API key not configured")
             return None
 
+        if self.http is None:
+            self._record_error("HTTP client not available for PirateWeather request")
+            return None
+
         # PirateWeather uses DarkSky-compatible API
         weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
         try:
@@ -83,6 +87,10 @@ class Weather(SimpleCommandModule):
 
     def _get_met_norway_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
         """Fetch weather from MET Norway API (international locations)."""
+        if self.http is None:
+            self._record_error("HTTP client not available for MET Norway request")
+            return None
+
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         try:
             # Use shared HTTP client (User-Agent is handled by http_utils)
@@ -168,6 +176,10 @@ class Weather(SimpleCommandModule):
         if not api_key:
             return None
 
+        if self.http is None:
+            self._record_error("HTTP client not available for PirateWeather forecast request")
+            return None
+
         weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
         try:
             # Use shared HTTP client - safe_api_call decorator returns (data, error)
@@ -196,6 +208,10 @@ class Weather(SimpleCommandModule):
 
     def _get_met_norway_forecast(self, lat: str, lon: str) -> Optional[list]:
         """Extract 3-day forecast from MET Norway API."""
+        if self.http is None:
+            self._record_error("HTTP client not available for MET Norway forecast request")
+            return None
+
         weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
         try:
             # Use shared HTTP client - safe_api_call decorator returns (data, error)

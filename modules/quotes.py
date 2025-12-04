@@ -55,27 +55,45 @@ class Quotes(SimpleCommandModule):
         return self.bot.config.get(self.name, {}).get(key, default)
 
     def _load_quotes(self) -> List[dict]:
-        """Load quotes from dedicated quotes.json file."""
+        """Load quotes from dedicated quotes.json file (no locking - use _load_quotes_locked or _atomic_modify)."""
         try:
             if not self.quotes_path.exists():
                 return []
-            with FileLock(self.quotes_path):
-                with open(self.quotes_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    return data if isinstance(data, list) else []
+            with open(self.quotes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
         except Exception as e:
             self.log_debug(f"Failed to load quotes.json: {e}")
             return []
 
     def _save_quotes(self, quotes: List[dict]) -> None:
-        """Persist quotes to dedicated quotes.json file."""
+        """Persist quotes to dedicated quotes.json file (no locking - use _save_quotes_locked or _atomic_modify)."""
+        try:
+            self.quotes_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.quotes_path, "w", encoding="utf-8") as f:
+                json.dump(quotes, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self.log_debug(f"Failed to save quotes.json: {e}")
+
+    def _atomic_modify(self, modify_fn) -> None:
+        """Atomically load, modify, and save quotes under a single lock.
+
+        Args:
+            modify_fn: A function that takes the quotes list and modifies it in place
+        """
         try:
             self.quotes_path.parent.mkdir(parents=True, exist_ok=True)
             with FileLock(self.quotes_path):
-                with open(self.quotes_path, "w", encoding="utf-8") as f:
-                    json.dump(quotes, f, indent=2, ensure_ascii=False)
+                # Load
+                quotes = self._load_quotes()
+                # Modify
+                modify_fn(quotes)
+                # Save
+                self._save_quotes(quotes)
+                # Update in-memory cache
+                self._quotes = quotes
         except Exception as e:
-            self.log_debug(f"Failed to save quotes.json: {e}")
+            self.log_debug(f"Failed to atomically modify quotes: {e}")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         """Randomly stores messages for later recall."""
@@ -100,15 +118,13 @@ class Quotes(SimpleCommandModule):
         if random.random() > save_chance:
             return False
 
-        # Save the quote
-        self._quotes = self._load_quotes()  # Refresh to avoid overwriting concurrent writes
-        self._quotes.append({
+        # Save the quote atomically
+        new_quote = {
             "message": msg,
             "nick": username,
             "timestamp": datetime.now(UTC).isoformat()
-        })
-
-        self._save_quotes(self._quotes)
+        }
+        self._atomic_modify(lambda quotes: quotes.append(new_quote))
         self.log_debug(f"Saved quote from {username}: {msg[:50]}...")
 
         return False  # Don't stop other ambient handlers
@@ -130,8 +146,13 @@ class Quotes(SimpleCommandModule):
     def _cmd_quote(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Handles the !quote command - recalls a random stored quote."""
         # Refresh from disk in case multiple processes are writing
-        self._quotes = self._load_quotes()
-        quotes = self._quotes
+        try:
+            with FileLock(self.quotes_path):
+                self._quotes = self._load_quotes()
+                quotes = self._quotes
+        except Exception as e:
+            self.log_debug(f"Failed to load quotes for command: {e}")
+            quotes = self._quotes
 
         if not quotes:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, but I have not yet committed any remarks to memory.")

@@ -172,12 +172,16 @@ def test_phase2():
     print(f"  Hand-catch success: {generator.get_catch_flavor(potato_template, is_hand_catch=True, success=True)}")
     print(f"  Hand-catch fail: {generator.get_catch_flavor(potato_template, is_hand_catch=True, success=False)}")
 
-    config = {'care_cooldowns': {}, 'care_costs': {}}
-    care = CreatureCare(config)
-
-    print(f"  Feed: {generator.get_care_flavor(potato_template, 'feed')}")
-    print(f"  Play: {generator.get_care_flavor(potato_template, 'play')}")
-    print(f"  Pet: {generator.get_care_flavor(potato_template, 'pet')}")
+    # Verify flavor text is non-empty
+    feed_flavor = generator.get_care_flavor(potato_template, 'feed')
+    play_flavor = generator.get_care_flavor(potato_template, 'play')
+    pet_flavor = generator.get_care_flavor(potato_template, 'pet')
+    assert feed_flavor, "Feed flavor text should not be empty"
+    assert play_flavor, "Play flavor text should not be empty"
+    assert pet_flavor, "Pet flavor text should not be empty"
+    print(f"  Feed: {feed_flavor}")
+    print(f"  Play: {play_flavor}")
+    print(f"  Pet: {pet_flavor}")
 
     # Summary
     print("\n" + "="*60)

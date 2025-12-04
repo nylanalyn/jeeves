@@ -122,6 +122,24 @@ class Hunt(SimpleCommandModule):
         happiness[user_id] = value
         self.set_state("animal_happiness", happiness)
 
+    def _pluralize(self, word: str, count: int) -> str:
+        """
+        Return the correct plural form of a word based on count.
+        Handles common English pluralization rules:
+        - Returns word unchanged if count == 1
+        - Words ending in 'y' preceded by consonant -> 'ies' (e.g., 'Puppy' -> 'Puppies')
+        - Otherwise appends 's'
+        """
+        if count == 1:
+            return word
+
+        # Handle words ending in 'y' preceded by a consonant
+        if len(word) >= 2 and word[-1].lower() == 'y' and word[-2].lower() not in 'aeiou':
+            return word[:-1] + 'ies'
+
+        # Default: append 's'
+        return word + 's'
+
     def _remove_random_animals_from_scores(self, user_id: str, count: int) -> Dict[str, int]:
         """
         Remove a number of hunted/hugged animals from a user's scores, weighted by their counts.
@@ -780,7 +798,7 @@ class Hunt(SimpleCommandModule):
             for room in spawn_locations:
                 self.log_debug(f"Announcing flock to {room}")
                 self.safe_say(random.choice(self.SPAWN_ANNOUNCEMENTS), target=room)
-                self.safe_say(f"A {collective_noun} of {len(flock)} {display_name}{'s' if len(flock) > 1 else ''} appears!", target=room)
+                self.safe_say(f"A {collective_noun} of {len(flock)} {self._pluralize(display_name, len(flock))} appears!", target=room)
                 # Show the ascii art once for the flock
                 if flock:
                     self.safe_say(flock[0].get("ascii_art", "Animals appear."), target=room)
@@ -846,12 +864,12 @@ class Hunt(SimpleCommandModule):
         self.save_state()
 
         # Build response message
-        flock_msg = f"the entire {collective_noun} of {flock_size} {display_name}{'s' if flock_size > 1 else ''}" if flock_size > 1 else f"the {display_name}"
+        flock_msg = f"the entire {collective_noun} of {flock_size} {self._pluralize(display_name, flock_size)}" if flock_size > 1 else f"the {display_name}"
 
         # Special murder messages for user "dead"
         if is_dead and action == "murdered":
             if flock_size > 1:
-                murder_msg = f"MASSACRE! All {flock_size} {display_name}s in the {collective_noun} obliterated!"
+                murder_msg = f"MASSACRE! All {flock_size} {self._pluralize(display_name, flock_size)} in the {collective_noun} obliterated!"
             else:
                 murder_msg = random.choice(self.MURDER_MESSAGES).format(animal_name=display_name.lower())
             self.safe_reply(connection, event, f"{murder_msg}{time_to_catch_str}.")
@@ -925,7 +943,7 @@ class Hunt(SimpleCommandModule):
 
             # Send failure message
             if flock_size > 1:
-                self.safe_reply(connection, event, f"Good heavens, {self.bot.title_for(username)}! Your reckless shooting has frightened away the entire {collective_noun} of {flock_size} {display_name}s! Perhaps next time you might consider the !hunt command instead?")
+                self.safe_reply(connection, event, f"Good heavens, {self.bot.title_for(username)}! Your reckless shooting has frightened away the entire {collective_noun} of {flock_size} {self._pluralize(display_name, flock_size)}! Perhaps next time you might consider the !hunt command instead?")
             else:
                 self.safe_reply(connection, event, f"Oh dear. You missed entirely, {self.bot.title_for(username)}, and the {display_name} has escaped. I did warn you about using firearms indoors.")
 

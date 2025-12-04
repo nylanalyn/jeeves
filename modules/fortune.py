@@ -45,9 +45,10 @@ class Fortune(SimpleCommandModule):
             return True
 
         category = match.group(1).lower() if match.group(1) else None
-        self._give_fortune(connection, event, username, category)
+        success = self._give_fortune(connection, event, username, category)
         # Record cooldown only after fortune is successfully given
-        self.record_user_cooldown(username, "fortune")
+        if success:
+            self.record_user_cooldown(username, "fortune")
         return True
 
     @admin_required
@@ -65,19 +66,27 @@ class Fortune(SimpleCommandModule):
         # Ambient trigger now requires mentioning Jeeves AND the word "fortune".
         if self.check_user_cooldown(username, "fortune", cooldown) and self.is_mentioned(msg) and re.search(r"\bfortune\b", msg, re.IGNORECASE):
             category = self._extract_category_from_message(msg)
-            self._give_fortune(connection, event, username, category)
+            success = self._give_fortune(connection, event, username, category)
             # Record cooldown only after fortune is successfully given
-            self.record_user_cooldown(username, "fortune")
+            if success:
+                self.record_user_cooldown(username, "fortune")
             return True
         return False
 
-    def _give_fortune(self, connection: Any, event: Any, username: str, category: Optional[str]) -> None:
+    def _give_fortune(self, connection: Any, event: Any, username: str, category: Optional[str]) -> bool:
+        """
+        Give a fortune to the user.
+
+        Returns:
+            bool: True if fortune was successfully sent, False on error
+        """
         fortune_text, actual_category = self._get_fortune(category)
         if actual_category == "error":
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {fortune_text}")
-            return
+            return False
         response = self._format_fortune_response(username, fortune_text, actual_category)
         self.safe_reply(connection, event, response)
+        return True
 
     def _load_all_fortunes(self) -> None:
         fortune_dir = Path(self.bot.ROOT) / "fortunes"

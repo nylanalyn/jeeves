@@ -74,7 +74,8 @@ class StateManager:
         # Create backup if file exists, then atomically replace
         if file_path.exists():
             backup_path = file_path.with_suffix('.json.bak')
-            file_path.replace(backup_path)
+            import shutil
+            shutil.copy2(file_path, backup_path)
         temp_path.replace(file_path)
 
         log_module_event("state_manager", "state_saved", {

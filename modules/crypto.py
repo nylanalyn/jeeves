@@ -116,7 +116,7 @@ class CryptoModule(SimpleCommandModule):
                     return None
                 
                 return data[coin_id]
-            except ExternalAPIException as e:
+            except (ExternalAPIException, KeyError, ValueError) as e:
                 self.log_debug(f"CoinGecko API error: {e}")
                 return None
         else:

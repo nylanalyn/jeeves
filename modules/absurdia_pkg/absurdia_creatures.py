@@ -2,8 +2,11 @@
 # Creature generation and care logic for Absurdia
 
 import random
+import logging
 from typing import Dict, Any, Tuple, Optional, List
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 class CreatureGenerator:
     """Handles creature generation with stat rolling"""
@@ -183,13 +186,10 @@ class CreatureCare:
 
         last_time_str = creature.get(field)
         if not last_time_str:
-            # Never done before, always allowed
             return True, None
-
-        # Parse timestamp
         try:
             last_time = datetime.fromisoformat(last_time_str.replace('Z', '+00:00'))
-        except:
+        except (ValueError, TypeError):
             # Invalid timestamp, allow
             return True, None
 
@@ -268,8 +268,9 @@ class CreatureCare:
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
                     care_times.append(dt)
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to parse {field} timestamp '{time_str}': {e}")
+                    continue
 
         if not care_times:
             # No care history, use caught_at
@@ -278,7 +279,11 @@ class CreatureCare:
                 # Ensure timezone-aware (assume UTC if naive)
                 if last_care.tzinfo is None:
                     last_care = last_care.replace(tzinfo=timezone.utc)
-            except:
+            except KeyError:
+                logger.warning(f"Missing 'caught_at' field for creature, using current time")
+                last_care = datetime.now(timezone.utc)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse caught_at timestamp '{creature.get('caught_at')}': {e}")
                 last_care = datetime.now(timezone.utc)
         else:
             last_care = max(care_times)

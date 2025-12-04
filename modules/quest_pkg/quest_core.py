@@ -114,9 +114,9 @@ def save_challenge_paths(quest_module):
     try:
         with open(paths_file, "w") as f:
             json.dump(quest_module.challenge_paths, f, indent=2)
-    except (IOError, OSError, json.JSONEncodeError) as e:
+    except (IOError, OSError, TypeError) as e:
         quest_module.log_module_event("ERROR", f"Error saving challenge paths: {e}")
-        raise FileOperationException(f"Failed to save challenge paths: {e}")
+        raise FileOperationException(f"Failed to save challenge paths: {e}") from e
 
 
 def get_content(quest_module, key: str, channel: str = None, default: Any = None) -> Any:

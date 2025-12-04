@@ -115,8 +115,12 @@ class TopicOracle(SimpleCommandModule):
 
     def _run_scheduled_job(self):
         self.log_debug("Running scheduled topic rotation")
-        self._refresh_topics(reason="schedule")
-        self._schedule_next_rotation()
+        try:
+            self._refresh_topics(reason="schedule")
+        except Exception as exc:
+            self._record_error(f"Scheduled topic refresh failed: {exc}")
+        finally:
+            self._schedule_next_rotation()
 
     def _refresh_topics(
         self, reason: str, channels: Optional[List[str]] = None
@@ -171,6 +175,10 @@ class TopicOracle(SimpleCommandModule):
                     max_tokens=int(self.get_config_value("max_tokens", channel, default=80)),
                     temperature=float(self.get_config_value("temperature", channel, default=0.85)),
                 )
+                if not getattr(response, 'choices', []):
+                    raise ValueError(
+                        f"OpenAI response missing choices (possible filtering/rate-limit): {response}"
+                    )
                 text = response.choices[0].message.content.strip()
                 return self._sanitize_topic(text)
             except Exception as exc:  # pragma: no cover - network path

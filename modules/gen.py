@@ -1,7 +1,7 @@
 # modules/gen.py
 # A module for generating AI images using pollinations.ai
 import re
-from typing import Optional
+
 from .base import SimpleCommandModule
 
 def setup(bot):

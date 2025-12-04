@@ -166,7 +166,7 @@ class Weather(SimpleCommandModule):
             data = self.http.get_json(weather_url)
 
             daily = data.get('daily', {}).get('data', [])
-            if not daily or len(daily) < 3:
+            if not daily or len(daily) < 4:
                 return None
 
             forecast = []

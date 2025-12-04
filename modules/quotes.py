@@ -101,6 +101,7 @@ class Quotes(SimpleCommandModule):
             return False
 
         # Save the quote
+        self._quotes = self._load_quotes()  # Refresh to avoid overwriting concurrent writes
         self._quotes.append({
             "message": msg,
             "nick": username,

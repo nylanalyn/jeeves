@@ -130,7 +130,7 @@ def _check_boss_state(quest_module, boss_hunt: Dict[str, Any]) -> Dict[str, Any]
         if boss_hunt.get("haunting", {}).get("active"):
             return boss_hunt
 
-        # Don't spawn ANY boss during buff period – we want quiet time between hunts
+        # Don't spawn ANY boss during buff period - we want quiet time between hunts
         buff = boss_hunt.get("buff", {})
         if buff.get("active"):
             quest_module.log_debug("No boss spawns while boss hunt buff is active")

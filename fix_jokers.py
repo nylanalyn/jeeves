@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import random
+from pathlib import Path
 
 # List of hilariously rude real place names
 RUDE_PLACES = [
@@ -86,8 +87,11 @@ RUDE_PLACES = [
     }
 ]
 
+# Compute path to users.json relative to this script
+USERS_JSON_PATH = Path(__file__).resolve().parent / 'config' / 'users.json'
+
 # Read the users file
-with open('/home/zote/bots/jeeves/config/users.json', 'r') as f:
+with open(USERS_JSON_PATH, 'r') as f:
     users = json.load(f)
 
 # Track changes
@@ -119,7 +123,7 @@ for user_id, user_data in users.items():
 
 # Write back the modified data
 if changes:
-    with open('/home/zote/bots/jeeves/config/users.json', 'w') as f:
+    with open(USERS_JSON_PATH, 'w') as f:
         json.dump(users, f, indent=4, ensure_ascii=False)
 
     print(f"Fixed {len(changes)} jokers:")

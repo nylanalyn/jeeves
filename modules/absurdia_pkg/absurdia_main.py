@@ -677,11 +677,11 @@ For full command list: !absurdia help"""
             by_type[item_type].append(item)
 
         for item_type, items in by_type.items():
-            lines.append(f"\\n{item_type.upper()}:")
+            lines.append(f"\n{item_type.upper()}:")
             for item in items:
                 lines.append(f"  {item['item_name']}: {item['quantity']}")
 
-        self.safe_reply(connection, event, "\\n".join(lines))
+        self.safe_reply(connection, event, "\n".join(lines))
         return True
 
     def _cmd_explore(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

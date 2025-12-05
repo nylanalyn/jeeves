@@ -12,11 +12,12 @@ Provides commands for various fun APIs:
 
 import sys
 import json
+import re
 import urllib.parse
 from datetime import datetime
 from .base import SimpleCommandModule
 from .exception_utils import (
-    handle_exceptions, safe_api_call, ExternalAPIException, 
+    handle_exceptions, safe_api_call, ExternalAPIException,
     UserInputException, log_module_event, log_security_event
 )
 
@@ -268,7 +269,6 @@ class ApiOverload(SimpleCommandModule):
         verse_reference = verse_json.get("data", {}).get("reference", verse_ref)
 
         # Clean up HTML tags if present
-        import re
         verse_text = re.sub(r'<[^>]+>', '', verse_content).strip()
 
         # Trim if too long

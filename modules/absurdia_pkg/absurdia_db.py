@@ -1,4 +1,4 @@
-# modules/absurdia_db.py
+# modules/absurdia_pkg/absurdia_db.py
 # Database layer for Absurdia creature battle game
 
 import sqlite3

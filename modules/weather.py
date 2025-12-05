@@ -161,7 +161,7 @@ class Weather(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, "Could not fetch weather.")
 
-    def _get_forecast_data(self, lat: str, lon: str, country_code: str = None) -> Optional[list]:
+    def _get_forecast_data(self, lat: str, lon: str, country_code: Optional[str] = None) -> Optional[list]:
         """Fetch 3-day forecast data."""
         use_pirate = country_code == "US"
 
@@ -432,12 +432,19 @@ class Weather(SimpleCommandModule):
         """Handle !wf <location> command to show forecast for specified location."""
         query = match.group(1).strip()
 
+        users_module = self.bot.pm.plugins.get("users")
+        target_user_id = users_module.get_state("nick_map", {}).get(query.lower()) if users_module else None
+
+        if target_user_id and (location_obj := self.get_state("user_locations", {}).get(target_user_id)):
+            self._reply_with_forecast(connection, event, location_obj, username)
+            return True
+
         geo_data_tuple = self._get_geocode_data(query)
         if not geo_data_tuple:
             if self.has_flavor_enabled(username):
-                self.safe_reply(connection, event, f"My apologies, I could not find a location named '{query}'.")
+                self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
             else:
-                self.safe_reply(connection, event, f"Location '{query}' not found.")
+                self.safe_reply(connection, event, f"User or location '{query}' not found.")
             return True
 
         lat, lon, geo_data = geo_data_tuple

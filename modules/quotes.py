@@ -3,6 +3,7 @@
 import json
 import re
 import random
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
@@ -55,7 +56,7 @@ class Quotes(SimpleCommandModule):
         return self.bot.config.get(self.name, {}).get(key, default)
 
     def _load_quotes(self) -> List[dict]:
-        """Load quotes from dedicated quotes.json file (no locking - use _load_quotes_locked or _atomic_modify)."""
+        """Load quotes from dedicated quotes.json file (no locking - use _atomic_modify for concurrent access)."""
         try:
             if not self.quotes_path.exists():
                 return []
@@ -75,26 +76,43 @@ class Quotes(SimpleCommandModule):
         except Exception as e:
             self.log_debug(f"Failed to save quotes.json: {e}")
 
-    def _atomic_modify(self, modify_fn) -> None:
+    def _atomic_modify(self, modify_fn, max_retries: int = 3, retry_delay: float = 0.1) -> None:
         """Atomically load, modify, and save quotes under a single lock.
 
         Args:
             modify_fn: A function that takes the quotes list and modifies it in place
+            max_retries: Maximum number of retry attempts for transient failures
+            retry_delay: Delay in seconds between retries
+
+        Raises:
+            Exception: Re-raises any exception encountered during the operation
         """
-        try:
-            self.quotes_path.parent.mkdir(parents=True, exist_ok=True)
-            lock_path = self.quotes_path.with_name(self.quotes_path.name + ".lock")
-            with FileLock(lock_path):
-                # Load
-                quotes = self._load_quotes()
-                # Modify
-                modify_fn(quotes)
-                # Save
-                self._save_quotes(quotes)
-                # Update in-memory cache
-                self._quotes = quotes
-        except Exception as e:
-            self.log_debug(f"Failed to atomically modify quotes: {e}")
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                self.quotes_path.parent.mkdir(parents=True, exist_ok=True)
+                lock_path = self.quotes_path.with_name(self.quotes_path.name + ".lock")
+                with FileLock(lock_path):
+                    # Load
+                    quotes = self._load_quotes()
+                    # Modify
+                    modify_fn(quotes)
+                    # Save
+                    self._save_quotes(quotes)
+                    # Only update in-memory cache after successful save
+                    self._quotes = quotes
+                # Success - exit retry loop
+                return
+            except Exception as e:
+                last_exception = e
+                self.log_debug(f"Failed to atomically modify quotes (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+
+        # All retries exhausted - re-raise the last exception
+        self.log_debug("All retry attempts exhausted for atomic modify")
+        raise last_exception
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         """Randomly stores messages for later recall."""
@@ -125,8 +143,12 @@ class Quotes(SimpleCommandModule):
             "nick": username,
             "timestamp": datetime.now(UTC).isoformat()
         }
-        self._atomic_modify(lambda quotes: quotes.append(new_quote))
-        self.log_debug(f"Saved quote from {username}: {msg[:50]}...")
+        try:
+            self._atomic_modify(lambda quotes: quotes.append(new_quote))
+            self.log_debug(f"Saved quote from {username}: {msg[:50]}...")
+        except Exception as e:
+            self.log_debug(f"Failed to save quote from {username}: {e}")
+            # Don't propagate the error - just log and continue
 
         return False  # Don't stop other ambient handlers
 

@@ -149,11 +149,16 @@ class Karma(SimpleCommandModule):
             # Show karma for requesting user
             target_id = self.bot.get_user_id(username)
             display_nick = username
+            if not target_id:
+                self.safe_reply(
+                    connection, event,
+                    f"I haven't seen you before, {username}. Karma: 0"
+                )
+                return True
 
         # Get karma score
         karma_scores = self.get_state("karma_scores", {})
-        karma_key = target_id if target_id is not None else username
-        karma = karma_scores.get(karma_key, 0)
+        karma = karma_scores.get(target_id, 0)
 
         self.safe_reply(
             connection, event,

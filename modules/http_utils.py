@@ -5,6 +5,7 @@ Eliminates duplicate HTTP request patterns across modules.
 
 import requests
 import logging
+import re
 from typing import Optional, Dict, Any, Union
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -59,6 +60,33 @@ def sanitize_params(params: Any) -> Any:
         return params
 
 
+def redact_api_key_from_url(url: str) -> str:
+    """Redact API keys from URL paths to prevent logging secrets.
+
+    Specifically handles PirateWeather-style paths like /forecast/{api_key}/...
+    and replaces the API key segment with "<REDACTED>" while preserving the
+    rest of the path structure for debugging.
+
+    Args:
+        url: URL to sanitize
+
+    Returns:
+        URL with API key segment replaced by "<REDACTED>"
+
+    Examples:
+        >>> redact_api_key_from_url("https://api.pirateweather.net/forecast/abc123/45.5,-122.5")
+        "https://api.pirateweather.net/forecast/<REDACTED>/45.5,-122.5"
+    """
+    # Pattern to match /forecast/{api_key}/ where api_key is typically 32+ hex chars or similar
+    # This pattern captures common API key formats in URL paths
+    pattern = r'(/forecast/)[a-zA-Z0-9_-]{20,}(/)'
+
+    # Replace the API key segment with <REDACTED>
+    redacted = re.sub(pattern, r'\1<REDACTED>\2', url)
+
+    return redacted
+
+
 class HTTPClient:
     """Centralized HTTP client with standardized error handling and retry logic."""
     
@@ -101,22 +129,23 @@ class HTTPClient:
     def get_json(self, url: str, params: Optional[Dict] = None,
                 headers: Optional[Dict] = None) -> Dict[str, Any]:
         """Make GET request and return JSON response.
-        
+
         Args:
             url: Target URL
             params: Query parameters
             headers: Additional headers
-            
+
         Returns:
             JSON response as dictionary
-            
+
         Raises:
             ExternalAPIException: On API errors
         """
         log_module_event("http_client", "api_request", {
-            "url": url,
+            "url": redact_api_key_from_url(url),
             "method": "GET",
-            "params": sanitize_params(params)
+            "params": sanitize_params(params),
+            "headers": sanitize_params(headers)
         })
         
         response = self.session.get(
@@ -133,22 +162,23 @@ class HTTPClient:
     def get_text(self, url: str, params: Optional[Dict] = None,
                 headers: Optional[Dict] = None) -> str:
         """Make GET request and return text response.
-        
+
         Args:
             url: Target URL
             params: Query parameters
             headers: Additional headers
-            
+
         Returns:
             Response text
-            
+
         Raises:
             ExternalAPIException: On API errors
         """
         log_module_event("http_client", "api_request", {
-            "url": url,
+            "url": redact_api_key_from_url(url),
             "method": "GET",
-            "params": sanitize_params(params)
+            "params": sanitize_params(params),
+            "headers": sanitize_params(headers)
         })
         
         response = self.session.get(
@@ -165,6 +195,7 @@ class HTTPClient:
         """Close the HTTP session."""
         if self.session:
             self.session.close()
+            self.session = None
 
 
 # Global HTTP client instance for shared use

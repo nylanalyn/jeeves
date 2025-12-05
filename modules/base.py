@@ -415,12 +415,15 @@ class ModuleBase(ABC):
                 # Cooldown is now fetched dynamically
                 cooldown_val = self.get_config_value("cooldown_seconds", event.target, cmd_info["cooldown"])
 
-                if not self.check_user_cooldown(username, cmd_id, cooldown_val): 
+                if not self.check_user_cooldown(username, cmd_id, cooldown_val):
                     self.log_debug(f"Command '{cmd_info['name']}' on cooldown for user {username}")
                     continue
                 try:
                     if cmd_info["handler"](connection, event, msg, username, match):
                         self.log_debug(f"Command '{cmd_info['name']}' handled successfully.")
+                        # Record cooldown after successful command execution
+                        if cooldown_val > 0:
+                            self.record_user_cooldown(username, cmd_id)
                         if hasattr(self, "_update_stats"):
                             self._update_stats(cmd_info["name"])
                         return True

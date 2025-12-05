@@ -102,6 +102,7 @@ def safe_execute(
 
 def handle_exceptions(
     error_message: str = "An error occurred",
+    user_message: Optional[str] = None,
     log_exception: bool = True,
     reraise: bool = False,
     exception_types: Tuple[Type[Exception], ...] = (Exception,)
@@ -111,6 +112,7 @@ def handle_exceptions(
     
     Args:
         error_message: Internal error message for logging
+        user_message: Optional user-facing message (accepted for decorator compatibility)
         log_exception: Whether to log the exception
         reraise: Whether to re-raise the exception after handling
         exception_types: Tuple of exception types to catch

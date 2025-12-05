@@ -75,12 +75,12 @@ class TopicOracle(SimpleCommandModule):
 
     def on_load(self) -> None:
         super().on_load()
-        schedule.clear(self.name)
+        schedule.clear(f"{self.name}-daily")
         self._schedule_next_rotation()
 
     def on_unload(self) -> None:
         super().on_unload()
-        schedule.clear(self.name)
+        schedule.clear(f"{self.name}-daily")
 
     def on_config_reload(self, new_config: Dict[str, Any]) -> None:
         self._update_cached_state()

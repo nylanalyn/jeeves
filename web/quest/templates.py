@@ -22,13 +22,13 @@ class TemplateEngine:
         theme_vars = self.theme.get_css_variables()
         prestige_css = self.theme.get_prestige_css()
 
-        # Get theme display metadata and sanitize to prevent XSS
-        website_title = sanitize(self.theme.get_website_title())
-        website_subtitle = sanitize(self.theme.get_website_subtitle())
-        decoration_left = sanitize(self.theme.get_website_decoration_left())
-        decoration_right = sanitize(self.theme.get_website_decoration_right())
-        footer_text = sanitize(self.theme.get_website_footer())
-        footer_tagline = sanitize(self.theme.get_website_footer_tagline())
+        # Theme methods already sanitize output
+        website_title = self.theme.get_website_title()
+        website_subtitle = self.theme.get_website_subtitle()
+        decoration_left = self.theme.get_website_decoration_left()
+        decoration_right = self.theme.get_website_decoration_right()
+        footer_text = self.theme.get_website_footer()
+        footer_tagline = self.theme.get_website_footer_tagline()
 
         return f"""<!DOCTYPE html>
 <html lang="en">

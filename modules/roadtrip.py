@@ -120,7 +120,7 @@ class Roadtrip(SimpleCommandModule):
         # Clear all jobs with tags starting with our module name
         all_jobs = schedule.get_jobs()
         for job in all_jobs:
-            if any(tag.startswith(self.name) for tag in job.tags):
+            if any(tag.startswith(f"{self.name}-") for tag in job.tags):
                 schedule.cancel_job(job)
 
         pending_reports = self.get_state("pending_reports", [])
@@ -139,7 +139,7 @@ class Roadtrip(SimpleCommandModule):
         # Clear all jobs with tags starting with our module name
         all_jobs = schedule.get_jobs()
         for job in all_jobs:
-            if any(tag.startswith(self.name) for tag in job.tags):
+            if any(tag.startswith(f"{self.name}-") for tag in job.tags):
                 schedule.cancel_job(job)
 
     def on_ambient_message(self, connection, event, msg, username):

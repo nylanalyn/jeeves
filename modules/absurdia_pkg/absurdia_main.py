@@ -418,12 +418,13 @@ For full command list: !absurdia help"""
         if self._check_and_show_pending_catch(connection, event, username, user_id):
             return True
 
-        player = self.db.get_player(user_id, username)
+        self.db.get_player(user_id, username)  # Ensure player exists
 
         creatures = self.db.get_player_creatures(user_id)
 
         if not creatures:
             owned, total = self.db.get_collection_progress(user_id)
+            player = self.db.get_player(user_id, username)
             self.safe_reply(
                 connection, event,
                 f"{self.bot.title_for(username)}, you have no creatures yet. "
@@ -1374,23 +1375,30 @@ For full command list: !absurdia help"""
         new_bonus = min(50, current_bonus + 5)
         actual_gain = new_bonus - current_bonus
 
-        # Update stat in database
+        # Map display name to canonical key for _update_creature_stat
+        display_to_canonical = {
+            'HP': 'hp',
+            'Attack': 'attack',
+            'Defense': 'defense',
+            'Speed': 'speed'
+        }
+        canonical_stat = display_to_canonical[stat_name]
+
+        # Update stat in database using safe helper
+        self._update_creature_stat(creature_id, canonical_stat, new_bonus)
+
+        # Record training session
         with self.db._lock:
             conn = self.db._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                f'UPDATE creatures SET {stat_field} = ? WHERE id = ?',
-                (new_bonus, creature_id)
-            )
-
-            # Record training session
-            cursor.execute(
-                'INSERT INTO training_sessions (creature_id, stat_trained, improvement) VALUES (?, ?, ?)',
-                (creature_id, stat_name, actual_gain)
-            )
-
-            conn.commit()
-            conn.close()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    'INSERT INTO training_sessions (creature_id, stat_trained, improvement) VALUES (?, ?, ?)',
+                    (creature_id, stat_name, actual_gain)
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
         # Remove item from inventory
         self.db.remove_item(user_id, 'training', item_type, 1)

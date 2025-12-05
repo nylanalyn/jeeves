@@ -41,7 +41,7 @@ class ConfigManager:
         key_path = f"api_keys.{service}"
         key_value = self._get_nested_value(key_path)
         
-        if key_value:
+        if key_value is not None and key_value != "":
             log_module_event("config_manager", "api_key_accessed", {
                 "service": service,
                 "key_available": True

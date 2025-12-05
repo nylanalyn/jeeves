@@ -1169,6 +1169,9 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match, skip_
         if last_run_ended:
             try:
                 last_end_dt = datetime.fromisoformat(last_run_ended)
+                # Normalize to UTC if naive datetime
+                if last_end_dt.tzinfo is None:
+                    last_end_dt = last_end_dt.replace(tzinfo=UTC)
                 if (datetime.now(UTC) - last_end_dt) >= timedelta(hours=24):
                     dungeon_state["relic_penalty_chain"] = 0
             except (ValueError, TypeError):

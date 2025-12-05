@@ -27,35 +27,54 @@ class StateManager:
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(exist_ok=True)
     
-    @safe_file_operation()
-    def load_state(self, filename: str, default: Optional[Dict] = None) -> Dict[str, Any]:
-        """Load state from JSON file.
-        
+    def _load_state_internal(self, filename: str, default: Optional[Dict] = None) -> Dict[str, Any]:
+        """Internal undecorated loader for direct use by other methods.
+
         Args:
             filename: State filename (without .json extension)
             default: Default value if file doesn't exist
-            
+
         Returns:
             Loaded state dictionary
         """
         file_path = self.state_dir / f"{filename}.json"
-        
+
         if not file_path.exists():
             log_module_event("state_manager", "state_file_not_found", {
                 "filename": filename,
                 "using_default": default is not None
             })
             return default or {}
-        
+
         with open(file_path, 'r', encoding='utf-8') as f:
-            state = json.load(f)
-        
+            try:
+                state = json.load(f)
+            except json.JSONDecodeError as e:
+                log_module_event("state_manager", "state_parse_error", {
+                    "filename": filename,
+                    "error": str(e)
+                })
+                return default or {}
+
         log_module_event("state_manager", "state_loaded", {
             "filename": filename,
             "size": len(state)
         })
-        
+
         return state
+
+    @safe_file_operation()
+    def load_state(self, filename: str, default: Optional[Dict] = None) -> Dict[str, Any]:
+        """Load state from JSON file (public API with decorator).
+
+        Args:
+            filename: State filename (without .json extension)
+            default: Default value if file doesn't exist
+
+        Returns:
+            Loaded state dictionary
+        """
+        return self._load_state_internal(filename, default)
     
     @safe_file_operation()
     def save_state(self, filename: str, state: Dict[str, Any]) -> None:
@@ -82,28 +101,39 @@ class StateManager:
             "filename": filename,
             "size": len(state)
         })
-    
+
     @safe_file_operation()
     def update_state(self, filename: str, updates: Dict[str, Any]) -> Dict[str, Any]:
         """Update state with new values.
-        
+
         Args:
             filename: State filename
             updates: Dictionary of updates to apply
-            
+
         Returns:
             Updated state
         """
-        result = self.load_state(filename, {})
-        current_state = result[0] if isinstance(result, tuple) else result
+        current_state = self._load_state_internal(filename, {})
         current_state.update(updates)
-        self.save_state(filename, current_state)
-        
+
+        file_path = self.state_dir / f"{filename}.json"
+        temp_path = file_path.with_suffix('.json.tmp')
+
+        with open(temp_path, 'w', encoding='utf-8') as f:
+            json.dump(current_state, f, indent=2, ensure_ascii=False)
+
+        # Create backup if file exists, then atomically replace
+        if file_path.exists():
+            backup_path = file_path.with_suffix('.json.bak')
+            import shutil
+            shutil.copy2(file_path, backup_path)
+        temp_path.replace(file_path)
+
         log_module_event("state_manager", "state_updated", {
             "filename": filename,
             "updates": len(updates)
         })
-        
+
         return current_state
     
     def get_state_value(self, filename: str, key: str, default: Any = None) -> Any:
@@ -117,8 +147,7 @@ class StateManager:
         Returns:
             Value for the specified key
         """
-        result = self.load_state(filename, {})
-        state = result[0] if isinstance(result, tuple) else result
+        state = self._load_state_internal(filename, {})
         return state.get(key, default)
     
     def set_state_value(self, filename: str, key: str, value: Any) -> None:
@@ -129,9 +158,7 @@ class StateManager:
             key: Key to set
             value: Value to set
         """
-        result = self.update_state(filename, {key: value})
-        # update_state returns (state, metadata) tuple from decorator
-        # We don't need to use the return value here, just ensuring it completes
+        self.update_state(filename, {key: value})
 
 
 def create_state_manager(state_dir: str = "config") -> StateManager:

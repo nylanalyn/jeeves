@@ -460,8 +460,10 @@ class Hunt(SimpleCommandModule):
 
         # Schedule next flock spawn only after this entire flock is cleared
         if sum(event_state.get("remaining", {}).values()) > 0:
-            # Don't schedule next spawn yet - wait for flock to be cleared
-            pass
+            if animals_to_spawn == 0:
+                # All animals escaped, schedule next flock immediately
+                self._schedule_next_event_spawn()
+            # else: wait for flock to be cleared via _end_hunt
         else:
             self._finish_event()
         return schedule.CancelJob

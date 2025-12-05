@@ -127,7 +127,7 @@ class CombatEngine:
         name1 = creature1['nickname'] if creature1['nickname'] else creature1['name']
         name2 = creature2['nickname'] if creature2['nickname'] else creature2['name']
 
-        battle_log.append(f"=== BATTLE START ===")
+        battle_log.append("=== BATTLE START ===")
         battle_log.append(f"{name1} ({creature1['creature_type']}) vs {name2} ({creature2['creature_type']})")
         battle_log.append(f"{name1}: HP={hp1} ATK={stats1['attack']} DEF={stats1['defense']} SPD={stats1['speed']}")
         battle_log.append(f"{name2}: HP={hp2} ATK={stats2['attack']} DEF={stats2['defense']} SPD={stats2['speed']}")

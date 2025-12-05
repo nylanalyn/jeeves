@@ -99,7 +99,7 @@ class Quest(SimpleCommandModule):
         # Fall back to config as legacy support
         return self.get_config_value(key, channel, default=default)
 
-    def get_injury_config(self, channel: str = None) -> Dict[str, Any]:
+    def get_injury_config(self, channel: Optional[str] = None) -> Dict[str, Any]:
         """Return injury settings with config-based overrides applied."""
         injury_config = self._get_content("injury_system", channel, default={}) or {}
         if not isinstance(injury_config, dict):

@@ -305,10 +305,19 @@ class AbsurdiaDatabase:
             conn = self._get_connection()
             cursor = conn.cursor()
 
-            cursor.execute('UPDATE players SET coins = coins + ? WHERE user_id = ?', (amount, user_id))
+            # Read current coins first
             cursor.execute('SELECT coins FROM players WHERE user_id = ?', (user_id,))
-            new_total = cursor.fetchone()['coins']
+            row = cursor.fetchone()
+            current_coins = row['coins']
 
+            # Compute new total and validate
+            new_total = current_coins + amount
+            if new_total < 0:
+                conn.close()
+                raise ValueError(f"Insufficient coins: current={current_coins}, amount={amount}, would result in {new_total}")
+
+            # Update only if valid
+            cursor.execute('UPDATE players SET coins = ? WHERE user_id = ?', (new_total, user_id))
             conn.commit()
             conn.close()
             return new_total

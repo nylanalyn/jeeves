@@ -321,7 +321,8 @@ class ApiOverload(SimpleCommandModule):
         # Handle both single object and array responses
         if isinstance(data, list):
             if len(data) == 0:
-                self.safe_reply(connection, event, f"No breweries found for '{search_term}'")
+                msg = f"No breweries found for '{search_term}'" if search_term else "No random brewery found"
+                self.safe_reply(connection, event, msg)
                 return True
             brewery = data[0]
         else:

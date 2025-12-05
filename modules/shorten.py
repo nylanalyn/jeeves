@@ -19,7 +19,7 @@ def setup(bot):
 
 class Shorten(SimpleCommandModule):
     name = "shorten"
-    version = "3.1.0" # Added Amazon URL cleaning to remove tracking parameters
+    version = "3.2.0"  # Added user opt-out for automatic URL shortening
     description = "Shortens URLs using a self-hosted Shlink instance."
 
     URL_PATTERN = re.compile(r'(https?://\S+)')
@@ -30,6 +30,9 @@ class Shorten(SimpleCommandModule):
         self.SHLINK_API_URL = shlink_url
         self.SHLINK_API_KEY = shlink_key
         self.http_session = self.requests_retry_session()
+        if self.get_state("ignored_users") is None:
+            self.set_state("ignored_users", {})
+            self.save_state()
 
         # Regex to extract Amazon product ASIN from various URL formats
         # Matches patterns like /dp/ASIN, /gp/product/ASIN, /product/ASIN, etc.
@@ -68,8 +71,18 @@ class Shorten(SimpleCommandModule):
         """Registers the !shorten command."""
         self.register_command(
             r"^\s*!shorten\s+(https?://\S+)\s*$", self._cmd_shorten,
-            name="shorten", cooldown=10.0, # Default cooldown
+            name="shorten", cooldown=10.0,  # Default cooldown
             description="Shorten a URL. Usage: !shorten <url>"
+        )
+        self.register_command(
+            r"^\s*!ignoreurl\s*$", self._cmd_ignore_url,
+            name="ignoreurl",
+            description="Opt out of automatic URL shortening"
+        )
+        self.register_command(
+            r"^\s*!allowurl\s*$", self._cmd_allow_url,
+            name="allowurl",
+            description="Re-enable automatic URL shortening"
         )
 
     def shorten_url(self, url_to_shorten: str) -> Optional[str]:
@@ -120,9 +133,41 @@ class Shorten(SimpleCommandModule):
             self.safe_reply(connection, event, f"{username}, I'm afraid I could not shorten that URL at this time.")
         return True
 
+    def _cmd_ignore_url(self, connection, event, msg, username, match):
+        """Allows a user to opt out of automatic URL shortening."""
+        user_id = self.bot.get_user_id(username)
+        ignored_users = self.get_state("ignored_users", {})
+
+        if ignored_users.get(user_id):
+            self.safe_reply(connection, event, f"{username}, I'm already ignoring your URLs.")
+            return True
+
+        ignored_users[user_id] = True
+        self.set_state("ignored_users", ignored_users)
+        self.save_state()
+        self.safe_reply(connection, event, f"{username}, got it. I won't auto-shorten your URLs anymore.")
+        return True
+
+    def _cmd_allow_url(self, connection, event, msg, username, match):
+        """Re-enables automatic URL shortening for a user."""
+        user_id = self.bot.get_user_id(username)
+        ignored_users = self.get_state("ignored_users", {})
+
+        if ignored_users.pop(user_id, None):
+            self.set_state("ignored_users", ignored_users)
+            self.save_state()
+            self.safe_reply(connection, event, f"{username}, I'll resume auto-shortening your URLs.")
+        else:
+            self.safe_reply(connection, event, f"{username}, I wasn't ignoring your URLs.")
+        return True
+
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         """Handles automatic URL shortening."""
         if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        if self.get_state("ignored_users", {}).get(user_id):
             return False
 
         min_length = self.get_config_value("min_length_for_auto_shorten", event.target, 70)
@@ -138,7 +183,7 @@ class Shorten(SimpleCommandModule):
 
             if len(url) > min_length:
                 if not self.check_rate_limit("auto_shorten", 30.0):
-                     return False
+                    return False
                 
                 short_url = self._shorten_url(url)
                 if short_url:

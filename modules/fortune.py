@@ -5,7 +5,7 @@ import random
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 from .base import SimpleCommandModule, admin_required
 
 def setup(bot: Any) -> 'Fortune':
@@ -16,7 +16,7 @@ class Fortune(SimpleCommandModule):
     version = "2.1.0" # Made ambient trigger more specific
     description = "Provides fortunes from a fortune cookie."
     
-    CATEGORIES: List[str] = ["spooky", "happy", "sad", "silly", "sexy", "zippy"]
+    CATEGORIES: ClassVar[List[str]] = ["spooky", "happy", "sad", "silly", "sexy", "zippy"]
 
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)

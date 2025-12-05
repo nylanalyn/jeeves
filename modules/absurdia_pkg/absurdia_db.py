@@ -102,7 +102,7 @@ class AbsurdiaDatabase:
             # Migration: Add owner_local_id column if it doesn't exist
             try:
                 cursor.execute('ALTER TABLE creatures ADD COLUMN owner_local_id INTEGER')
-            except:
+            except sqlite3.OperationalError:
                 pass  # Column already exists
 
             # Ensure unique index for per-owner numbering
@@ -155,8 +155,13 @@ class AbsurdiaDatabase:
             # Migration: Add auto_announced column if it doesn't exist
             try:
                 cursor.execute('ALTER TABLE active_traps ADD COLUMN auto_announced BOOLEAN DEFAULT 0')
-            except:
-                pass  # Column already exists
+            except sqlite3.OperationalError as e:
+                # Only swallow the error if the column already exists
+                error_msg = str(e).lower()
+                if "duplicate column" in error_msg or "already exists" in error_msg:
+                    pass  # Column already exists - migration is idempotent
+                else:
+                    raise  # Unexpected error - re-raise it
 
             # Arena matches table
             cursor.execute('''

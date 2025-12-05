@@ -61,10 +61,8 @@ CREATE TABLE creatures (
     caught_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     submitted_to_arena BOOLEAN DEFAULT 0,  -- Currently in arena queue
 
-    FOREIGN KEY (owner_id) REFERENCES players(user_id),
-
-);
-
+    FOREIGN KEY (owner_id) REFERENCES players(user_id)
+ );
 -- Index for faster lookup when checking if player has creature type
 CREATE INDEX idx_owner_name ON creatures(owner_id, name);
 ```

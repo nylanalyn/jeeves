@@ -19,7 +19,10 @@ except ImportError:
     def handle_exceptions(func):
         return func
     def safe_api_call(func, *args, **kwargs):
-        return func(*args, **kwargs)
+        try:
+            return func(*args, **kwargs), None
+        except Exception:
+            return None, "An error occurred"
     def safe_file_operation(func, *args, **kwargs):
         return func(*args, **kwargs)
     class ExternalAPIException(Exception): pass

@@ -87,6 +87,16 @@ class CreatureGenerator:
             rarity = 'Common'
             available = self.by_rarity.get('Common', [])
 
+        # Final safety check: ensure we have templates to choose from
+        if not available:
+            # No templates available even after fallback
+            rarity_state = {r: len(creatures) for r, creatures in self.by_rarity.items()}
+            raise ValueError(
+                f"No creature templates loaded for any rarity. "
+                f"Requested rarity: '{rarity}'. "
+                f"Current template state: {rarity_state}"
+            )
+
         # Pick random creature of that rarity
         creature_name = random.choice(available)
         template = self.templates[creature_name]
@@ -280,7 +290,7 @@ class CreatureCare:
                 if last_care.tzinfo is None:
                     last_care = last_care.replace(tzinfo=timezone.utc)
             except KeyError:
-                logger.warning(f"Missing 'caught_at' field for creature, using current time")
+                logger.warning("Missing 'caught_at' field for creature, using current time")
                 last_care = datetime.now(timezone.utc)
             except (ValueError, TypeError) as e:
                 logger.warning(f"Failed to parse caught_at timestamp '{creature.get('caught_at')}': {e}")

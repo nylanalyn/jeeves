@@ -1059,6 +1059,37 @@ For full command list: !absurdia help"""
         )
         return True
 
+    def _update_creature_stat(self, creature_id: int, stat: str, new_value: int) -> None:
+        """
+        Update a creature's bonus stat in the database using parameterized queries.
+
+        Args:
+            creature_id: The database ID of the creature
+            stat: The stat to update (hp, attack, defense, or speed)
+            new_value: The new bonus value for the stat
+
+        Raises:
+            ValueError: If stat is not one of the allowed values
+        """
+        # Whitelist of allowed stat columns to prevent SQL injection
+        allowed_stats = {'hp', 'attack', 'defense', 'speed'}
+
+        if stat not in allowed_stats:
+            raise ValueError(f"Invalid stat '{stat}'. Must be one of: {allowed_stats}")
+
+        # Safe to use f-string here because we've validated stat against whitelist
+        column_name = f'bonus_{stat}'
+
+        with self.db._lock:
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                f'UPDATE creatures SET {column_name} = ? WHERE id = ?',
+                (new_value, creature_id)
+            )
+            conn.commit()
+            conn.close()
+
     def _cmd_feed(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Feed a creature"""
         user_id = self.bot.get_user_id(username)
@@ -1120,16 +1151,8 @@ For full command list: !absurdia help"""
         current_bonus = creature[f'bonus_{stat_to_boost}']
         new_bonus = current_bonus + stat_gain
 
-        # Update stat in database
-        with self.db._lock:
-            conn = self.db._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                f'UPDATE creatures SET bonus_{stat_to_boost} = ? WHERE id = ?',
-                (new_bonus, creature_id)
-            )
-            conn.commit()
-            conn.close()
+        # Update stat in database using safe helper
+        self._update_creature_stat(creature_id, stat_to_boost, new_bonus)
 
         # Update player coins and care count
         self.db.update_player_coins(user_id, coins_earned)
@@ -1212,16 +1235,8 @@ For full command list: !absurdia help"""
         current_bonus = creature[f'bonus_{stat_to_boost}']
         new_bonus = current_bonus + stat_gain
 
-        # Update stat in database
-        with self.db._lock:
-            conn = self.db._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                f'UPDATE creatures SET bonus_{stat_to_boost} = ? WHERE id = ?',
-                (new_bonus, creature_id)
-            )
-            conn.commit()
-            conn.close()
+        # Update stat in database using safe helper
+        self._update_creature_stat(creature_id, stat_to_boost, new_bonus)
 
         # Update player coins and care count
         self.db.update_player_coins(user_id, coins_earned)

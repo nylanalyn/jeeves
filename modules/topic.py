@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import re
 import schedule
 import time
 from datetime import datetime, timezone
@@ -152,7 +153,8 @@ class TopicOracle(SimpleCommandModule):
         else:
             channels = [ch for ch in sorted(self.bot.joined_channels) if self.is_enabled(ch)]
         if not channels:
-            channels = [self.bot.primary_channel]
+            if self.is_enabled(self.bot.primary_channel):
+                channels = [self.bot.primary_channel]
         return channels
 
     def _generate_topic(self, channel: str) -> Optional[str]:
@@ -211,11 +213,21 @@ class TopicOracle(SimpleCommandModule):
 
     def _sanitize_topic(self, value: str) -> str:
         collapsed = " ".join(value.replace("\n", " ").split())
-        if "{" not in collapsed or "}" not in collapsed:
+        # Use regex to safely extract braced content
+        brace_match = re.search(r"\{.*?\}", collapsed)
+        if not brace_match:
+            # No valid brace pair found, use a fallback action
             mood = collapsed
-            action = random.choice(self.FALLBACK_TOPICS)
-            inner = action[action.find("{") : action.find("}") + 1]
-            collapsed = f"{mood} {inner}".strip()
+            # Find a fallback action that has valid braces
+            for action in self.FALLBACK_TOPICS:
+                inner_match = re.search(r"\{.*?\}", action)
+                if inner_match:
+                    inner = inner_match.group(0)
+                    collapsed = f"{mood} {inner}".strip()
+                    break
+            else:
+                # If all fallbacks fail (shouldn't happen), use a default
+                collapsed = f"{mood} {{the signal breathing}}".strip()
         return collapsed[:400]
 
     def _cmd_trigger(self, connection, event, msg, username, match):

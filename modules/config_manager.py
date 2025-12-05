@@ -10,6 +10,9 @@ from .exception_utils import (
     log_module_event
 )
 
+# Sentinel value to detect missing configuration keys
+_MISSING = object()
+
 
 class ConfigManager:
     """Centralized configuration management with standardized access patterns."""
@@ -124,21 +127,25 @@ class ConfigManager:
     
     def get_value(self, key_path: str, default: Any = None) -> Any:
         """Get configuration value by dot-separated path.
-        
+
         Args:
             key_path: Dot-separated path to configuration value
             default: Default value if not found
-            
+
         Returns:
             Configuration value
         """
-        value = self._get_nested_value(key_path, default)
-        
+        value = self._get_nested_value(key_path, _MISSING)
+        found = value is not _MISSING
+
+        if value is _MISSING:
+            value = default
+
         log_module_event("config_manager", "config_value_accessed", {
             "key_path": key_path,
-            "found": value is not default
+            "found": found
         })
-        
+
         return value
     
     def _get_nested_value(self, key_path: str, default: Any = None) -> Any:

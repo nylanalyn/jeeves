@@ -27,8 +27,60 @@ def sanitize_css_value(value: str) -> str:
     if re.match(r'^#[0-9a-fA-F]{3,8}$', value):
         return value
 
-    # Allow rgb/rgba colors
-    if re.match(r'^rgba?\s*\([^)]+\)$', value, re.IGNORECASE):
+    # Allow rgb/rgba colors with strict validation
+    rgb_match = re.match(r'^(rgba?)\s*\(([^)]+)\)$', value, re.IGNORECASE)
+    if rgb_match:
+        func_name = rgb_match.group(1).lower()
+        inner_content = rgb_match.group(2).strip()
+
+        # Split by comma and validate each component
+        components = [c.strip() for c in inner_content.split(',')]
+
+        # RGB requires 3 components, RGBA requires 4
+        expected_count = 4 if func_name == 'rgba' else 3
+        if len(components) != expected_count:
+            return ''
+
+        # Validate each component
+        for i, component in enumerate(components):
+            # Last component of RGBA is alpha (0-1 or 0%-100%)
+            if func_name == 'rgba' and i == 3:
+                # Alpha: decimal 0-1 or percentage 0%-100%
+                if component.endswith('%'):
+                    try:
+                        num = float(component[:-1])
+                        if not (0 <= num <= 100):
+                            return ''
+                    except ValueError:
+                        return ''
+                else:
+                    try:
+                        num = float(component)
+                        if not (0 <= num <= 1):
+                            return ''
+                    except ValueError:
+                        return ''
+            else:
+                # RGB components: integer 0-255 or percentage 0%-100%
+                if component.endswith('%'):
+                    try:
+                        num = float(component[:-1])
+                        if not (0 <= num <= 100):
+                            return ''
+                    except ValueError:
+                        return ''
+                else:
+                    # Must be integer (no decimals for RGB values)
+                    if not re.match(r'^\d+$', component):
+                        return ''
+                    try:
+                        num = int(component)
+                        if not (0 <= num <= 255):
+                            return ''
+                    except ValueError:
+                        return ''
+
+        # All validations passed, return the original value
         return value
 
     # Allow numbers with units
@@ -287,7 +339,7 @@ class ThemeManager:
     def get_prestige_css(self) -> str:
         """Generate CSS for prestige tiers."""
         css_rules = []
-        for i, tier in enumerate(self.theme["prestige_tiers"]):
+        for tier in self.theme["prestige_tiers"]:
             # Sanitize class name and color values to prevent CSS injection
             class_name = sanitize_css_identifier(tier["class"].replace("tier-", ""))
             color = sanitize_css_value(tier["color"])

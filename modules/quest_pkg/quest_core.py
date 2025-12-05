@@ -772,7 +772,7 @@ def handle_use_item(quest_module, connection, event, username, args):
         extra_args = [arg.lower() for arg in args[1:]]
         for extra in extra_args:
             if extra in mode_map:
-                if desired_mode != "solo":
+                if mode_explicit:
                     send_response("Specify relic mode only once (solo or boss).")
                     return True
                 desired_mode = mode_map[extra]

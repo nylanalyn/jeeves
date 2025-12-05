@@ -130,15 +130,15 @@ class ApiOverload(SimpleCommandModule):
 
         # TCGdex API - search for Pokemon cards (most popular TCG)
         url = f"https://api.tcgdex.net/v2/en/cards?name={urllib.parse.quote(search_term)}"
-        response = safe_api_call(
+        response, error = safe_api_call(
             self.http_session.get, url, timeout=10,
             api_name="TCGdex API",
             user_message="Unable to fetch card information at the moment. Please try again later."
         )
 
-        if not response:
+        if error:
             # safe_api_call already logged the error details
-            self.safe_reply(connection, event, "Unable to fetch card information at the moment. Please try again later.")
+            self.safe_reply(connection, event, error)
             return False
 
         response.raise_for_status()
@@ -154,14 +154,14 @@ class ApiOverload(SimpleCommandModule):
 
         # Fetch full card details to get flavor text
         detail_url = f"https://api.tcgdex.net/v2/en/cards/{card_id}"
-        detail_response = safe_api_call(
+        detail_response, error = safe_api_call(
             self.http_session.get, detail_url, timeout=10,
             api_name="TCGdex Detail API",
             user_message="Unable to fetch card details at the moment."
         )
-        
-        if not detail_response:
-            self.safe_reply(connection, event, "Unable to fetch card details at the moment.")
+
+        if error:
+            self.safe_reply(connection, event, error)
             return False
         detail_response.raise_for_status()
         full_card = detail_response.json()
@@ -223,15 +223,15 @@ class ApiOverload(SimpleCommandModule):
         # First, search to find the verse ID
         search_url = f"https://rest.api.bible/v1/bibles/{bible_id}/search"
         params = {"query": verse_ref, "limit": 1}
-        response = safe_api_call(
+        response, error = safe_api_call(
             self.http_session.get, search_url, headers=headers, params=params, timeout=10,
             api_name="Bible Search API",
             user_message="Unable to search for Bible verse at the moment."
         )
 
-        if not response:
+        if error:
             # safe_api_call already logged the error details
-            self.safe_reply(connection, event, "Unable to search for Bible verse at the moment. Please try again later.")
+            self.safe_reply(connection, event, error)
             return False
 
         # Log the actual response for debugging
@@ -250,15 +250,15 @@ class ApiOverload(SimpleCommandModule):
 
         # Now fetch the full verse text
         verse_url = f"https://rest.api.bible/v1/bibles/{bible_id}/verses/{verse_id}"
-        verse_response = safe_api_call(
+        verse_response, error = safe_api_call(
             self.http_session.get, verse_url, headers=headers, params={"content-type": "text"}, timeout=10,
             api_name="Bible Verse API",
             user_message="Unable to fetch verse text at the moment."
         )
 
-        if not verse_response:
+        if error:
             # safe_api_call already logged the error details
-            self.safe_reply(connection, event, "Unable to fetch verse text at the moment. Please try again later.")
+            self.safe_reply(connection, event, error)
             return False
 
         verse_response.raise_for_status()
@@ -304,15 +304,15 @@ class ApiOverload(SimpleCommandModule):
             # Search by city or name
             url = f"https://api.openbrewerydb.org/v1/breweries?by_city={urllib.parse.quote(search_term)}&per_page=1"
 
-        response = safe_api_call(
+        response, error = safe_api_call(
             self.http_session.get, url, timeout=10,
             api_name="Brewery API",
             user_message="Unable to fetch brewery information at the moment."
         )
 
-        if not response:
+        if error:
             # safe_api_call already logged the error details
-            self.safe_reply(connection, event, "Unable to fetch brewery information at the moment. Please try again later.")
+            self.safe_reply(connection, event, error)
             return False
 
         response.raise_for_status()

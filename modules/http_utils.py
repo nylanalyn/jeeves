@@ -17,6 +17,48 @@ from .exception_utils import (
 )
 
 
+# Sensitive parameter keys that should be redacted in logs
+SENSITIVE_KEYS = {
+    "api_key", "apikey", "token", "access_token", "password",
+    "secret", "auth", "authorization", "client_secret",
+    "private_key", "session", "sessionid", "cookie"
+}
+
+
+def sanitize_params(params: Any) -> Any:
+    """Sanitize parameters by redacting sensitive values.
+
+    Recursively processes dictionaries and lists to replace sensitive
+    parameter values with "<REDACTED>" to prevent logging secrets.
+
+    Args:
+        params: Parameters to sanitize (dict, list, or primitive)
+
+    Returns:
+        Sanitized copy of parameters with sensitive values redacted
+    """
+    if params is None:
+        return None
+
+    if isinstance(params, dict):
+        sanitized = {}
+        for key, value in params.items():
+            # Check if key matches any sensitive pattern (case-insensitive)
+            if key.lower() in SENSITIVE_KEYS:
+                sanitized[key] = "<REDACTED>"
+            else:
+                # Recursively sanitize nested structures
+                sanitized[key] = sanitize_params(value)
+        return sanitized
+
+    elif isinstance(params, list):
+        return [sanitize_params(item) for item in params]
+
+    else:
+        # Primitive types returned as-is
+        return params
+
+
 class HTTPClient:
     """Centralized HTTP client with standardized error handling and retry logic."""
     
@@ -74,7 +116,7 @@ class HTTPClient:
         log_module_event("http_client", "api_request", {
             "url": url,
             "method": "GET",
-            "params": params
+            "params": sanitize_params(params)
         })
         
         response = self.session.get(
@@ -106,7 +148,7 @@ class HTTPClient:
         log_module_event("http_client", "api_request", {
             "url": url,
             "method": "GET",
-            "params": params
+            "params": sanitize_params(params)
         })
         
         response = self.session.get(

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List
 from .base import SimpleCommandModule
-from file_lock import FileLock
+from filelock import FileLock
 
 UTC = timezone.utc
 
@@ -83,7 +83,8 @@ class Quotes(SimpleCommandModule):
         """
         try:
             self.quotes_path.parent.mkdir(parents=True, exist_ok=True)
-            with FileLock(self.quotes_path):
+            lock_path = self.quotes_path.with_name(self.quotes_path.name + ".lock")
+            with FileLock(lock_path):
                 # Load
                 quotes = self._load_quotes()
                 # Modify
@@ -147,7 +148,8 @@ class Quotes(SimpleCommandModule):
         """Handles the !quote command - recalls a random stored quote."""
         # Refresh from disk in case multiple processes are writing
         try:
-            with FileLock(self.quotes_path):
+            lock_path = self.quotes_path.with_name(self.quotes_path.name + ".lock")
+            with FileLock(lock_path):
                 self._quotes = self._load_quotes()
                 quotes = self._quotes
         except Exception as e:

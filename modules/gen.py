@@ -30,18 +30,27 @@ class Gen(SimpleCommandModule):
         """
         Formats the prompt for the pollinations.ai URL.
         Replaces spaces with +, removes special punctuation.
+
+        Raises:
+            ValueError: If the formatted prompt is empty after sanitization.
         """
         # Remove or replace problematic punctuation (keep alphanumeric and basic punctuation)
         # Replace apostrophes and quotes with nothing
         cleaned = re.sub(r"['\"]", '', prompt)
-        # Replace other special characters with spaces (which will become +)
-        cleaned = re.sub(r"[^a-zA-Z0-9\s.,!?-]", ' ', cleaned)
+        # Replace other special characters with spaces (which will become %20)
+        cleaned = re.sub(r"[^a-zA-Z0-9\s]", ' ', cleaned)
         # Replace multiple spaces with single space
         cleaned = re.sub(r'\s+', ' ', cleaned)
         # Strip leading/trailing spaces
         cleaned = cleaned.strip()
-        # Replace spaces with +
-        formatted = cleaned.replace(' ', '+')
+        # Properly percent-encode the prompt for URL path segment
+        from urllib.parse import quote
+        formatted = quote(cleaned, safe='')
+
+        # Validate that the formatted prompt is not empty
+        if not formatted:
+            raise ValueError("Prompt contains only invalid characters and cannot be processed")
+
         return formatted
 
     def _cmd_gen(self, connection, event, msg, username, match):
@@ -53,22 +62,29 @@ class Gen(SimpleCommandModule):
             return True
 
         # Format the prompt for the URL
-        formatted_prompt = self._format_prompt(prompt)
+        try:
+            formatted_prompt = self._format_prompt(prompt)
+        except ValueError as e:
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, error: {str(e)}")
+            return True
 
         # Create the full pollinations.ai URL
         full_url = f"{self.BASE_URL}{formatted_prompt}"
 
         # Try to shorten the URL using the shorten module if available
         shorten_module = self.bot.pm.plugins.get("shorten")
+        short_url = None
+
         if shorten_module and shorten_module.is_enabled(event.target):
-            short_url = shorten_module._shorten_url(full_url)
-            if short_url:
-                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your generated image: {short_url}")
-            else:
-                # Fall back to full URL if shortening fails
-                self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your generated image: {full_url}")
+            # Use the public API method if available
+            shorten_method = getattr(shorten_module, "shorten_url", None)
+            if shorten_method and callable(shorten_method):
+                short_url = shorten_method(full_url)
+
+        # Reply with shortened URL if available, otherwise use full URL
+        if short_url:
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your generated image: {short_url}")
         else:
-            # If shorten module not available or not enabled, use full URL
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, your generated image: {full_url}")
 
         return True

@@ -16,7 +16,10 @@ except ImportError:
     import requests
     HTTP_CLIENT = None
     def safe_api_call(func, *args, **kwargs):
-        return func(*args, **kwargs)
+        try:
+            return func(*args, **kwargs), None
+        except Exception:
+            return None, "An error occurred"
     class ExternalAPIException(Exception):
         pass
 

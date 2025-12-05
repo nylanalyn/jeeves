@@ -72,8 +72,16 @@ class Shorten(SimpleCommandModule):
             description="Shorten a URL. Usage: !shorten <url>"
         )
 
-    def _shorten_url(self, url_to_shorten: str) -> Optional[str]:
-        """Shortens a URL using the Shlink API."""
+    def shorten_url(self, url_to_shorten: str) -> Optional[str]:
+        """
+        Public API to shorten a URL using the Shlink API.
+
+        Args:
+            url_to_shorten: The URL to shorten
+
+        Returns:
+            The shortened URL, or None if shortening fails
+        """
         if not self.SHLINK_API_URL or not self.SHLINK_API_KEY:
             return None
 
@@ -95,6 +103,10 @@ class Shorten(SimpleCommandModule):
         except (KeyError, json.JSONDecodeError) as e:
             self._record_error(f"Failed to parse Shlink response: {e}")
             return None
+
+    def _shorten_url(self, url_to_shorten: str) -> Optional[str]:
+        """Deprecated: Use shorten_url() instead. Kept for backwards compatibility."""
+        return self.shorten_url(url_to_shorten)
 
     def _cmd_shorten(self, connection, event, msg, username, match):
         """Handles the !shorten command."""

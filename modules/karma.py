@@ -152,7 +152,8 @@ class Karma(SimpleCommandModule):
 
         # Get karma score
         karma_scores = self.get_state("karma_scores", {})
-        karma = karma_scores.get(target_id, 0)
+        karma_key = target_id if target_id is not None else username
+        karma = karma_scores.get(karma_key, 0)
 
         self.safe_reply(
             connection, event,

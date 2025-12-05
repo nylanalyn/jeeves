@@ -102,7 +102,6 @@ def safe_execute(
 
 def handle_exceptions(
     error_message: str = "An error occurred",
-    user_message: Optional[str] = None,
     log_exception: bool = True,
     reraise: bool = False,
     exception_types: Tuple[Type[Exception], ...] = (Exception,)
@@ -112,7 +111,6 @@ def handle_exceptions(
     
     Args:
         error_message: Internal error message for logging
-        user_message: User-friendly error message
         log_exception: Whether to log the exception
         reraise: Whether to re-raise the exception after handling
         exception_types: Tuple of exception types to catch
@@ -163,12 +161,12 @@ def safe_api_call_wrapper(
     api_name: str = "external API",
     user_message: str = "The service is temporarily unavailable. Please try again later.",
     **kwargs
-) -> Optional[Any]:
+) -> Tuple[Optional[Any], Optional[str]]:
     """
     Safely call an external API function with standardized error handling.
 
     This is a wrapper function (not a decorator) that executes an API call and returns
-    None on failure while logging appropriate error messages.
+    a tuple mirroring safe_execute's behavior.
 
     Args:
         func: The API function to call (e.g., requests.get)
@@ -178,38 +176,41 @@ def safe_api_call_wrapper(
         **kwargs: Keyword arguments to pass to the function
 
     Returns:
-        The result of the API call on success, or None on failure
+        Tuple of (result, error_message):
+        - On success: (result, None)
+        - On failure: (None, user_message)
+        Internal error details are logged but not exposed in the error message.
 
     Example:
-        response = safe_api_call(
+        response, error = safe_api_call(
             session.get,
             "https://api.example.com/data",
             timeout=10,
             api_name="Example API",
             user_message="Unable to fetch data at the moment."
         )
-        if not response:
+        if error:
             # Handle failure - error already logged
             return False
     """
     try:
         result = func(*args, **kwargs)
-        return result
+        return result, None
     except (ConnectionError, TimeoutError) as e:
-        # Network-related errors
+        # Network-related errors - log details but return user message
         logging.error(f"[{api_name}] Network error: {e}")
         logging.debug(f"[{api_name}] Exception details:\n{traceback.format_exc()}")
-        return None
+        return None, user_message
     except ValueError as e:
-        # JSON parsing or value errors
+        # JSON parsing or value errors - log details but return user message
         logging.error(f"[{api_name}] Value error: {e}")
         logging.debug(f"[{api_name}] Exception details:\n{traceback.format_exc()}")
-        return None
+        return None, user_message
     except Exception as e:
-        # Catch-all for other API errors
+        # Catch-all for other API errors - log details but return user message
         logging.error(f"[{api_name}] API call failed: {e}")
         logging.debug(f"[{api_name}] Exception details:\n{traceback.format_exc()}")
-        return None
+        return None, user_message
 
 
 # Alias for backward compatibility with the wrapper function usage in apioverload.py
@@ -290,7 +291,7 @@ def validate_user_input(
         if not validation_func(value):
             raise UserInputException(error_message, user_message)
         return True
-    except UserInputException as e:
+    except UserInputException:
         # Log the validation failure
         frame = sys._getframe(1)
         module_name = frame.f_globals.get('__name__', 'unknown')

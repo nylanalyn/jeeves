@@ -86,11 +86,13 @@ class Duel(SimpleCommandModule):
         self.save_state()
 
         timeout = int(self._challenge_timeout_seconds(event.target))
+        challenger_display = self._display_nick(challenger_id, username)
+        target_display = self._display_nick(target_id, target_nick)
         self.safe_reply(
             connection,
             event,
-            f"{self.bot.title_for(username)} slaps {target_nick} with a white glove, issuing a challenge to a duel! "
-            f"{target_nick}, type !accept to answer. Challenge expires in {timeout} seconds.",
+            f"{challenger_display} slaps {target_display} with a white glove, issuing a challenge to a duel! "
+            f"{target_display}, type !accept to answer. Challenge expires in {timeout} seconds.",
         )
         return True
 
@@ -112,17 +114,18 @@ class Duel(SimpleCommandModule):
 
         challenger_id = challenge["challenger_id"]
         challenger_nick = challenge.get("challenger_nick", "someone")
+        challenger_display = self._display_nick(challenger_id, challenger_nick)
+        target_display = self._display_nick(target_id, username)
 
         winner_id = random.choice([challenger_id, target_id])
         loser_id = target_id if winner_id == challenger_id else challenger_id
 
         weapon, flourish = random.choice(self.WEAPONS)
 
-        duel_intro = (
-            f"{self.bot.title_for(challenger_nick)} and {self.bot.title_for(username)} take their places. "
-            f"The chosen weapons: {weapon}."
-        )
-        duel_outcome = f"{flourish} Victory goes to {self.bot.title_for(self._nick_for_user_id(winner_id))}!"
+        duel_intro = f"{challenger_display} and {target_display} take their places. The chosen weapons: {weapon}."
+
+        winner_fallback = challenger_display if winner_id == challenger_id else target_display
+        duel_outcome = f"{flourish} Victory goes to {self._display_nick(winner_id, winner_fallback)}!"
 
         del channel_pending[target_id]
         if channel_pending:
@@ -173,6 +176,13 @@ class Duel(SimpleCommandModule):
         if users_module and hasattr(users_module, "get_user_nick"):
             return users_module.get_user_nick(user_id)
         return user_id
+
+    def _display_nick(self, user_id: str, fallback: Optional[str] = None) -> str:
+        """Prefer a stored nick, fall back to the provided name."""
+        nick = self._nick_for_user_id(user_id)
+        if nick == user_id and fallback:
+            return fallback
+        return nick
 
     def _allow_flavor_off_targets(self, channel: Optional[str]) -> bool:
         return bool(self.get_config_value("include_flavor_off_users", channel, False))

@@ -1177,6 +1177,326 @@
           }
         ]
       }
+    },
+    "eldritch_tides": {
+      "theme": {
+        "name": "eldritch_tides",
+        "background": "#04060b",
+        "foreground": "#e6e2d8",
+        "accent": "#6ef3c3",
+        "accent_text": "#04100b",
+        "card_background": "#0b0f16",
+        "card_border": "#6ef3c3",
+        "table_header": "#111828",
+        "table_stripe": "#0a101b",
+        "link": "#8ae7ff",
+        "link_hover": "#c1f1ff",
+        "website_title": "Jeeves Quest: Eldritch Tides",
+        "website_subtitle": "🜏 Trace the glyphs before the stars align 🜏",
+        "website_decoration_left": "🐙",
+        "website_decoration_right": "🌊",
+        "website_footer": "🐙 Powered by Jeeves IRC Bot | Quest System v6.0 🌊",
+        "website_footer_tagline": "The tide brings whispers from beneath...",
+        "prestige_tiers": [
+          {
+            "max": 3,
+            "icon": "📜",
+            "class": "tier-sigil",
+            "color": "#6ef3c3",
+            "repeat": 3,
+            "banner": null
+          },
+          {
+            "max": 6,
+            "icon": "🐚",
+            "class": "tier-shell",
+            "color": "#e6e2d8",
+            "repeat": 3,
+            "banner": "tide"
+          },
+          {
+            "max": null,
+            "icon": "🌌",
+            "class": "tier-cosmos",
+            "color": "#a5b4fc",
+            "repeat": 2,
+            "banner": "void"
+          }
+        ]
+      },
+      "world_lore": [
+        "The sea breathes in strange rhythms, each wave counting down to an unseen eclipse.",
+        "Harbor fog presses close, thick with brine and half-remembered prayers.",
+        "Ancient stones surface at low tide, carved with sigils no sane archivist will catalogue.",
+        "Eyes gleam beneath the pier; perhaps fish, perhaps something that learned to mimic them.",
+        "Sleep offers no refuge—dreams arrive bloated with saltwater and unfinished sentences."
+      ],
+      "story_beats": {
+        "openers": [
+          "{user} follows the phosphorescent slick to where a {monster} waits, humming a drowned hymn.",
+          "A lighthouse beam sweeps past, revealing a {monster} etched in dripping glyphs before darkness swallows it again.",
+          "The dockside radio crackles with static and whispers; when it clears, a {monster} is already in the doorway.",
+          "Soggy pages spiral in the wind, spelling coordinates that lead {user} straight to a lurking {monster}.",
+          "Black tidepools bubble and pull apart, delivering a {monster} that should have stayed forgotten."
+        ],
+        "actions": [
+          "Salt flecks {user}'s coat as they step between realities, striking at the {monster} before it finishes its chant.",
+          "{user} traces a sigil in the air; reality buckles and drags the {monster} toward the cold floorboards.",
+          "The lantern flickers green when {user} lunges, casting the {monster}'s silhouette into writhing shapes.",
+          "Breath held against the stench, {user} drives a rusted harpoon straight through the {monster}'s omen-slick hide.",
+          "Tuning fork humming, {user} fractures the silence and the {monster} with a single resonant blow."
+        ]
+      },
+      "monsters": [
+        {
+          "name": "Cellar Cultist",
+          "min_level": 1,
+          "max_level": 3,
+          "xp_win_min": 15,
+          "xp_win_max": 30
+        },
+        {
+          "name": "Whispering Acolyte",
+          "min_level": 2,
+          "max_level": 5,
+          "xp_win_min": 20,
+          "xp_win_max": 45
+        },
+        {
+          "name": "Salt-Crusted Mariner",
+          "min_level": 4,
+          "max_level": 8,
+          "xp_win_min": 35,
+          "xp_win_max": 75
+        },
+        {
+          "name": "Tome-Drunk Librarian",
+          "min_level": 6,
+          "max_level": 10,
+          "xp_win_min": 50,
+          "xp_win_max": 110
+        },
+        {
+          "name": "Runescarred Vagrant",
+          "min_level": 8,
+          "max_level": 12,
+          "xp_win_min": 70,
+          "xp_win_max": 140
+        },
+        {
+          "name": "Candlelit Medium",
+          "min_level": 10,
+          "max_level": 15,
+          "xp_win_min": 100,
+          "xp_win_max": 190
+        },
+        {
+          "name": "Shuddering Relic",
+          "min_level": 14,
+          "max_level": 18,
+          "xp_win_min": 150,
+          "xp_win_max": 250
+        },
+        {
+          "name": "Fathomspawn Scout",
+          "min_level": 16,
+          "max_level": 22,
+          "xp_win_min": 200,
+          "xp_win_max": 340
+        },
+        {
+          "name": "Star-Touched Seer",
+          "min_level": 20,
+          "max_level": 26,
+          "xp_win_min": 260,
+          "xp_win_max": 420
+        },
+        {
+          "name": "Gleaming Deep One",
+          "min_level": 24,
+          "max_level": 30,
+          "xp_win_min": 320,
+          "xp_win_max": 520
+        },
+        {
+          "name": "Memory-Eater Mist",
+          "min_level": 28,
+          "max_level": 34,
+          "xp_win_min": 400,
+          "xp_win_max": 650
+        },
+        {
+          "name": "Shoggoth Slurry",
+          "min_level": 32,
+          "max_level": 38,
+          "xp_win_min": 520,
+          "xp_win_max": 780
+        },
+        {
+          "name": "Riftbound Herald",
+          "min_level": 36,
+          "max_level": 42,
+          "xp_win_min": 640,
+          "xp_win_max": 950
+        },
+        {
+          "name": "Moonless High Priest",
+          "min_level": 40,
+          "max_level": 46,
+          "xp_win_min": 780,
+          "xp_win_max": 1100
+        },
+        {
+          "name": "Tidelocked Leviathan",
+          "min_level": 44,
+          "max_level": 52,
+          "xp_win_min": 920,
+          "xp_win_max": 1300
+        },
+        {
+          "name": "Ichor-Bound Avatar",
+          "min_level": 50,
+          "max_level": 58,
+          "xp_win_min": 1100,
+          "xp_win_max": 1600
+        }
+      ],
+      "boss_monsters": [
+        {
+          "name": "The Pallid Admiral",
+          "min_level": 12,
+          "max_level": 22,
+          "xp_win_min": 900,
+          "xp_win_max": 1400
+        },
+        {
+          "name": "Harbinger of the Deep",
+          "min_level": 18,
+          "max_level": 30,
+          "xp_win_min": 1300,
+          "xp_win_max": 1900
+        },
+        {
+          "name": "The Sleepless Dreamer",
+          "min_level": 26,
+          "max_level": 40,
+          "xp_win_min": 1700,
+          "xp_win_max": 2400
+        }
+      ],
+      "classes": {
+        "occultist": {
+          "description": "A scholar of forbidden tides who stitches sanity together with salt and ink.",
+          "actions": [
+            "{user} murmurs a counter-chant, siphoning the {monster}'s strength into a waiting charm.",
+            "Pages whirl around {user}; every torn scrap binds the {monster} tighter to the waking world.",
+            "With a vial of phosphor brine, {user} brands the {monster} and it recoils from the burning rune."
+          ]
+        },
+        "harpooner": {
+          "description": "A weathered hunter who knows which knots keep nightmares from surfacing.",
+          "actions": [
+            "{user} coils rope around a rusted harpoon, dragging the {monster} off balance and closer to the abyss.",
+            "Barnacles crack under {user}'s boots as they drive cold steel through the {monster}'s shifting form.",
+            "Lantern jaw clenched, {user} anchors the {monster} with barbed chains and a whispered warning."
+          ]
+        },
+        "archivist": {
+          "description": "Keeper of sealed stacks, cataloguing every scream so none are forgotten.",
+          "actions": [
+            "{user} snaps open a case file of sigils; each glyph flares and scorches the {monster}.",
+            "With unblinking focus, {user} redacts the {monster} from reality one sentence at a time.",
+            "Index cards scatter like wards when {user} advances, pinning the {monster} beneath impossible geometry."
+          ]
+        }
+      },
+      "injury_system": {
+        "enabled": true,
+        "injury_chance_on_loss": 0.5,
+        "injuries": [
+          {
+            "name": "Salt-Lunged Cough",
+            "description": "Brine floods your throat; every breath tastes like the deep.",
+            "duration_hours": 2,
+            "effects": {
+              "xp_multiplier": 0.5
+            }
+          },
+          {
+            "name": "Fractured Mindscape",
+            "description": "Echoes overlap until you cannot tell which voice is yours.",
+            "duration_hours": 4,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          },
+          {
+            "name": "Inkblot Veins",
+            "description": "Veins run black with moving symbols that slow your pulse.",
+            "duration_hours": 1,
+            "effects": {
+              "energy_regen_modifier": -1,
+              "xp_multiplier": 0.75
+            }
+          },
+          {
+            "name": "Unblinking Stare",
+            "description": "You cannot close your eyes; every blink reveals a new coastline of teeth.",
+            "duration_hours": 3,
+            "effects": {
+              "xp_multiplier": 0.6
+            }
+          },
+          {
+            "name": "Barnacle Bite",
+            "description": "Jagged shells cling to your skin, drinking warmth and will.",
+            "duration_hours": 6,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          }
+        ]
+      },
+      "boss_hunt": {
+        "bosses": [
+          {
+            "name": "The Pallid Admiral",
+            "description": "Commander of a drowned fleet that never stopped sailing.",
+            "max_hp": 520
+          },
+          {
+            "name": "Harbinger of the Deep",
+            "description": "A lighthouse-shaped shadow that signals only ruin.",
+            "max_hp": 600
+          },
+          {
+            "name": "The Sleepless Dreamer",
+            "description": "Its ribcage is a tidepool; its heartbeat is a foghorn.",
+            "max_hp": 700
+          }
+        ],
+        "clue_messages": [
+          "finds a barnacle-clung chart scribbled with impossible currents",
+          "pieces together a chant carved into driftwood and teeth",
+          "uncovers a tide table that predicts voices instead of water levels",
+          "salvages a compass that only points toward whispered regrets",
+          "drains a flood of ink to reveal coordinates that do not exist"
+        ],
+        "haunting_messages": {
+          "injury": [
+            "🦑 The tide drags you under for a moment longer than comfort allows.",
+            "🦑 Salt crusts your lips; something laughs between the waves.",
+            "🦑 You cough seawater and syllables that are not your own."
+          ],
+          "win": [
+            "🦑 The sea goes still for one heartbeat. Then it listens again.",
+            "🦑 Lanterns flicker green; the depths mark your name in bubbles.",
+            "🦑 The horizon tilts. The deep remembers this insult."
+          ]
+        },
+        "return_message": "🦑 {username}: THE TIDE RISES AGAIN!",
+        "defeat_announcement": "🎊 RITUAL DISRUPTED! 🎊"
+      }
     }
   }
 }

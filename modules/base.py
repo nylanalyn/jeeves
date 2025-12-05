@@ -163,11 +163,7 @@ class ModuleBase(ABC):
         
         try:
             if self.http:
-                # Use centralized HTTP client - safe_api_call decorator returns (data, error)
-                geo_data, error = self.http.get_json(geo_url, params=params)
-                if error or not geo_data:
-                    self._record_error(f"Geocoding request failed for '{location}': {error}")
-                    return None
+                geo_data = self.http.get_json(geo_url, params=params)
             else:
                 # Fallback (should rarely be used)
                 response = requests.get(geo_url, params=params, headers={'User-Agent': 'JeevesIRCBot/1.0'}, timeout=10)

@@ -862,7 +862,7 @@ r'^\s*!quote\s+add\s+(.+)$'
 1. **Check debug.log**: `tail -f debug.log` (or `debug.log.1`, etc.)
 2. **Look for module load**: `[plugins] Loaded module: mymodule`
 3. **Check command matches**: `[mymodule] Command 'cmd' matched by user`
-4. **Verify state**: `cat config/state.json | jq '.mymodule'`
+4. **Verify state**: `cat config/state.json | jq '.modules.mymodule'`
 5. **Test in isolation**: `python3 -c "from modules import mymodule"`
 6. **Test web dashboard**: `python3 web/quest_web.py --host 127.0.0.1 --port 8080` - for quest narrative testing
 

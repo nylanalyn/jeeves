@@ -525,13 +525,19 @@ class AbsurdiaDatabase:
 
         field = field_map.get(care_type)
         if not field:
-            return
+            raise ValueError(f"Invalid care_type: {care_type}. Must be one of: {', '.join(field_map.keys())}")
+
+        # Explicit allowlist validation: field is guaranteed to be one of these known column names
+        # Safe to use direct interpolation after validation since field can only be from the allowlist above
+        assert field in {'last_fed', 'last_played', 'last_petted'}, \
+            f"Internal error: field {field} not in validated allowlist"
 
         with self._lock:
             conn = self._get_connection()
             cursor = conn.cursor()
 
             now = datetime.now(timezone.utc).isoformat()
+            # Column name is validated above; timestamp and creature_id use parameterized placeholders
             cursor.execute(f'UPDATE creatures SET {field} = ? WHERE id = ?', (now, creature_id))
             conn.commit()
             conn.close()

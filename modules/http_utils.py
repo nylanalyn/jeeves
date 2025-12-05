@@ -77,12 +77,13 @@ def redact_api_key_from_url(url: str) -> str:
         >>> redact_api_key_from_url("https://api.pirateweather.net/forecast/abc123/45.5,-122.5")
         "https://api.pirateweather.net/forecast/<REDACTED>/45.5,-122.5"
     """
-    # Pattern to match /forecast/{api_key}/ where api_key is typically 32+ hex chars or similar
-    # This pattern captures common API key formats in URL paths
-    pattern = r'(/forecast/)[a-zA-Z0-9_-]{20,}(/)'
+    # Pattern to match /forecast/{api_key} where api_key is typically 20+ alphanumeric chars
+    # Uses lookahead to handle trailing slash, end-of-string, or query parameters
+    # Captures the key itself in group 2, preserving surrounding structure
+    pattern = r'(/forecast/)([a-zA-Z0-9_-]{20,})(?=/|$|\?)'
 
-    # Replace the API key segment with <REDACTED>
-    redacted = re.sub(pattern, r'\1<REDACTED>\2', url)
+    # Replace only the API key segment with <REDACTED>, keeping slashes intact
+    redacted = re.sub(pattern, r'\1<REDACTED>', url)
 
     return redacted
 
@@ -92,19 +93,20 @@ class HTTPClient:
     
     def __init__(self, timeout: int = 30, max_retries: int = 3):
         """Initialize HTTP client with configuration.
-        
+
         Args:
             timeout: Request timeout in seconds
             max_retries: Maximum number of retries for failed requests
         """
         self.timeout = timeout
         self.max_retries = max_retries
+        self._closed = False
         self.session = self._create_session()
     
     def _create_session(self) -> requests.Session:
         """Create a requests session with retry strategy."""
         session = requests.Session()
-        
+
         # Configure retry strategy
         retry_strategy = Retry(
             total=self.max_retries,
@@ -112,20 +114,28 @@ class HTTPClient:
             allowed_methods=["HEAD", "GET", "OPTIONS"],
             backoff_factor=1
         )
-        
+
         adapter = HTTPAdapter(max_retries=retry_strategy)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
-        
+
         # Set default headers
         session.headers.update({
             'User-Agent': 'JeevesBot/1.0',
             'Accept': 'application/json'
         })
-        
+
         return session
+
+    def _ensure_not_closed(self):
+        """Verify that the session is not closed.
+
+        Raises:
+            RuntimeError: If the session has been closed
+        """
+        if self._closed:
+            raise RuntimeError("HTTP session is closed. Cannot perform request on a closed session.")
     
-    @safe_api_call_decorator()
     def get_json(self, url: str, params: Optional[Dict] = None,
                 headers: Optional[Dict] = None) -> Dict[str, Any]:
         """Make GET request and return JSON response.
@@ -140,25 +150,27 @@ class HTTPClient:
 
         Raises:
             ExternalAPIException: On API errors
+            RuntimeError: If the session has been closed
         """
+        self._ensure_not_closed()
+
         log_module_event("http_client", "api_request", {
             "url": redact_api_key_from_url(url),
             "method": "GET",
             "params": sanitize_params(params),
             "headers": sanitize_params(headers)
         })
-        
+
         response = self.session.get(
-            url, 
-            params=params, 
-            headers=headers, 
+            url,
+            params=params,
+            headers=headers,
             timeout=self.timeout
         )
         response.raise_for_status()
-        
+
         return response.json()
     
-    @safe_api_call_decorator()
     def get_text(self, url: str, params: Optional[Dict] = None,
                 headers: Optional[Dict] = None) -> str:
         """Make GET request and return text response.
@@ -173,14 +185,17 @@ class HTTPClient:
 
         Raises:
             ExternalAPIException: On API errors
+            RuntimeError: If the session has been closed
         """
+        self._ensure_not_closed()
+
         log_module_event("http_client", "api_request", {
             "url": redact_api_key_from_url(url),
             "method": "GET",
             "params": sanitize_params(params),
             "headers": sanitize_params(headers)
         })
-        
+
         response = self.session.get(
             url,
             params=params,
@@ -188,14 +203,19 @@ class HTTPClient:
             timeout=self.timeout
         )
         response.raise_for_status()
-        
+
         return response.text
     
     def close(self):
-        """Close the HTTP session."""
+        """Close the HTTP session.
+
+        After closing, any subsequent calls to get_json() or get_text()
+        will raise a RuntimeError.
+        """
         if self.session:
             self.session.close()
             self.session = None
+        self._closed = True
 
 
 # Global HTTP client instance for shared use

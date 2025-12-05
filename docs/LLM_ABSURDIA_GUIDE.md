@@ -45,7 +45,7 @@ Unlike Quest (which uses JSON state), Absurdia uses a **SQLite database** for pe
 
 ## File Structure
 
-```
+```text
 modules/
   absurdia.py                      # Thin wrapper
   absurdia_pkg/

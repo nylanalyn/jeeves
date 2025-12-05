@@ -142,7 +142,6 @@ class ApiOverload(SimpleCommandModule):
             self.safe_reply(connection, event, error)
             return False
 
-        response.raise_for_status()
         data = response.json()
 
         if not data or len(data) == 0:

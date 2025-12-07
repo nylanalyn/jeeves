@@ -259,11 +259,10 @@ class Roadtrip(SimpleCommandModule):
         if not report: return schedule.CancelJob
 
         self.set_state("pending_reports", [r for r in pending_reports if r["id"] != report_id])
-        self.save_state()
 
         p_count = len(report["participants"])
         size_key = "solo" if p_count == 1 else "duo" if p_count == 2 else "group"
-        
+
         events = self.EVENTS.get(report["destination"], self.EVENTS["fallback"])
         story = random.choice(events.get(size_key, self.EVENTS["fallback"][size_key]))
 
@@ -273,6 +272,17 @@ class Roadtrip(SimpleCommandModule):
             story = story.format(p1=report["participants"][0], p2=report["participants"][1], dest=report["destination"])
         else:
             story = story.format(p1=report["participants"][0], dest=report["destination"])
+
+        # Add to history for stats tracking
+        history = self.get_state("history", [])
+        history.append({
+            "destination": report["destination"],
+            "participants": report["participants"],
+            "completed_at": datetime.now(UTC).isoformat(),
+            "room": report["room"]
+        })
+        self.set_state("history", history)
+        self.save_state()
 
         self.safe_say(f"A report from the roadtrip to {report['destination']}: {story}", target=report["room"])
         return schedule.CancelJob

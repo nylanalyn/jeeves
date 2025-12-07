@@ -923,3 +923,36 @@ class AbsurdiaDatabase:
 
             conn.commit()
             conn.close()
+
+    def update_player_arena_stats(self, user_id: str, won: bool) -> None:
+        """
+        Update player's arena win/loss record.
+
+        Args:
+            user_id: Player's user ID
+            won: True if won, False if lost
+        """
+        with self._lock:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+
+            if won:
+                # Increment wins and win streak
+                cursor.execute('''
+                    UPDATE players
+                    SET total_arena_wins = total_arena_wins + 1,
+                        current_win_streak = current_win_streak + 1,
+                        best_win_streak = MAX(best_win_streak, current_win_streak + 1)
+                    WHERE user_id = ?
+                ''', (user_id,))
+            else:
+                # Increment losses and reset win streak
+                cursor.execute('''
+                    UPDATE players
+                    SET total_arena_losses = total_arena_losses + 1,
+                        current_win_streak = 0
+                    WHERE user_id = ?
+                ''', (user_id,))
+
+            conn.commit()
+            conn.close()

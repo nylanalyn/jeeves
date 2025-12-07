@@ -1665,9 +1665,13 @@ For full command list: !absurdia help"""
                 winner = battle_result['winner']
                 loser = battle_result['loser']
 
-                # Update W/L records
+                # Update W/L records for creatures
                 self.db.update_creature_wins_losses(winner['id'], won=True)
                 self.db.update_creature_wins_losses(loser['id'], won=False)
+
+                # Update W/L records for players
+                self.db.update_player_arena_stats(winner['owner_id'], won=True)
+                self.db.update_player_arena_stats(loser['owner_id'], won=False)
 
                 # Award coins
                 winner_coins, loser_coins = self._calculate_arena_rewards(winner, loser)
@@ -1696,6 +1700,7 @@ For full command list: !absurdia help"""
             if bye_creature:
                 # Bye creature gets auto-win
                 self.db.update_creature_wins_losses(bye_creature['id'], won=True)
+                self.db.update_player_arena_stats(bye_creature['owner_id'], won=True)
                 bye_coins = config.get('arena_rewards', {}).get('bye', 50)
                 self.db.update_player_coins(bye_creature['owner_id'], bye_coins)
                 self.db.submit_creature_to_arena(bye_creature['id'], False)

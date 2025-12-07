@@ -4,13 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=nullveil
-Group=nullveil
-WorkingDirectory=/home/nullveil/code/jeeves
-Environment="PATH=/usr/bin:/usr/local/bin"
+WorkingDirectory=/home/zote/bots/jeeves
+Environment="PATH=%h/.pyenv/shims:%h/.pyenv/bin:/usr/bin:/bin"
 
 # Start the quest web server
-ExecStart=/usr/bin/python3 /home/nullveil/code/jeeves/quest_web.py --host 127.0.0.1 --port 8080
+ExecStart=%h/.pyenv/shims/python %h/bots/jeeves/quest_web.py --host 127.0.0.1 --port 8082
 
 # Restart on failure
 Restart=on-failure
@@ -22,4 +20,4 @@ StandardError=journal
 SyslogIdentifier=jeeves-quest-web
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

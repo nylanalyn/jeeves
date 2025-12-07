@@ -1,0 +1,380 @@
+# web/stats/data_loader.py
+# Unified data loader for all Jeeves statistics
+
+import json
+import sqlite3
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional, Any
+
+
+class JeevesStatsLoader:
+    """Loads and aggregates statistics from all Jeeves modules."""
+
+    def __init__(self, config_path: Path):
+        """Initialize the stats loader.
+
+        Args:
+            config_path: Path to the config directory
+        """
+        self.config_path = Path(config_path)
+        self.games_path = self.config_path / "games.json"
+        self.stats_path = self.config_path / "stats.json"
+        self.users_path = self.config_path / "users.json"
+        self.absurdia_db_path = self.config_path / "absurdia.db"
+
+    def load_all(self) -> Dict[str, Any]:
+        """Load all stats from all modules.
+
+        Returns:
+            Dictionary containing all stats organized by category
+        """
+        return {
+            "users": self.load_users(),
+            "quest": self.load_quest_stats(),
+            "hunt": self.load_hunt_stats(),
+            "duel": self.load_duel_stats(),
+            "adventure": self.load_adventure_stats(),
+            "roadtrip": self.load_roadtrip_stats(),
+            "absurdia": self.load_absurdia_stats(),
+            "karma": self.load_karma_stats(),
+            "coffee": self.load_coffee_stats(),
+            "bell": self.load_bell_stats(),
+        }
+
+    def load_users(self) -> Dict[str, Dict[str, Any]]:
+        """Load user information including nick history.
+
+        Returns:
+            Dict mapping user_id to user info (canonical_nick, seen_nicks, first_seen)
+        """
+        if not self.users_path.exists():
+            return {}
+
+        with open(self.users_path, 'r') as f:
+            data = json.load(f)
+
+        users = data.get("modules", {}).get("users", {}).get("user_map", {})
+
+        # Add nick change count to each user
+        for user_id, user_data in users.items():
+            seen_nicks = user_data.get("seen_nicks", [])
+            user_data["nick_change_count"] = len(seen_nicks) - 1  # -1 because first nick isn't a change
+
+        return users
+
+    def load_quest_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Load Quest module statistics.
+
+        Returns:
+            Dict mapping user_id to quest stats (level, xp, prestige, wins, losses, etc.)
+        """
+        if not self.games_path.exists():
+            return {}
+
+        with open(self.games_path, 'r') as f:
+            data = json.load(f)
+
+        return data.get("modules", {}).get("quest", {}).get("players", {})
+
+    def load_hunt_stats(self) -> Dict[str, Dict[str, int]]:
+        """Load Hunt module statistics.
+
+        Returns:
+            Dict mapping user_id to hunt scores (duck_hunted, duck_hugged, etc.)
+        """
+        if not self.games_path.exists():
+            return {}
+
+        with open(self.games_path, 'r') as f:
+            data = json.load(f)
+
+        hunt_data = data.get("modules", {}).get("hunt", {})
+        scores = hunt_data.get("scores", {})
+
+        # Calculate totals for each user
+        for user_id, user_scores in scores.items():
+            total_hunted = sum(v for k, v in user_scores.items() if k.endswith("_hunted"))
+            total_hugged = sum(v for k, v in user_scores.items() if k.endswith("_hugged"))
+            total_murdered = sum(v for k, v in user_scores.items() if k.endswith("_murdered"))
+            user_scores["total_hunted"] = total_hunted
+            user_scores["total_hugged"] = total_hugged
+            user_scores["total_murdered"] = total_murdered
+            user_scores["total_interactions"] = total_hunted + total_hugged + total_murdered
+
+        return scores
+
+    def load_duel_stats(self) -> Dict[str, Dict[str, Dict[str, int]]]:
+        """Load Duel module statistics.
+
+        Returns:
+            Dict with stats categories (wins, losses, duels_started, duels_received)
+        """
+        if not self.stats_path.exists():
+            return {}
+
+        with open(self.stats_path, 'r') as f:
+            data = json.load(f)
+
+        return data.get("modules", {}).get("duel", {}).get("stats", {})
+
+    def load_adventure_stats(self) -> Dict[str, Any]:
+        """Load Adventure module statistics.
+
+        Returns:
+            Dict with global adventure stats and user inventories
+        """
+        if not self.games_path.exists():
+            return {}
+
+        with open(self.games_path, 'r') as f:
+            data = json.load(f)
+
+        return data.get("modules", {}).get("adventure", {})
+
+    def load_roadtrip_stats(self) -> Dict[str, Any]:
+        """Load Roadtrip module statistics.
+
+        Returns:
+            Dict with roadtrip history and participation data
+        """
+        if not self.games_path.exists():
+            return {}
+
+        with open(self.games_path, 'r') as f:
+            data = json.load(f)
+
+        roadtrip_data = data.get("modules", {}).get("roadtrip", {})
+
+        # Calculate participation counts from history
+        history = roadtrip_data.get("history", [])
+        participation = {}
+
+        for trip in history:
+            participants = trip.get("participants", [])
+            for user_id in participants:
+                participation[user_id] = participation.get(user_id, 0) + 1
+
+        roadtrip_data["participation_counts"] = participation
+
+        return roadtrip_data
+
+    def load_absurdia_stats(self) -> Dict[str, Any]:
+        """Load Absurdia module statistics from SQLite database.
+
+        Returns:
+            Dict with player and creature stats from Absurdia
+        """
+        if not self.absurdia_db_path.exists():
+            return {"players": {}, "creatures": {}}
+
+        try:
+            conn = sqlite3.connect(self.absurdia_db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Load player stats
+            players = {}
+            cursor.execute("""
+                SELECT user_id, coins, total_arena_wins, total_arena_losses,
+                       current_win_streak, best_win_streak
+                FROM players
+            """)
+
+            for row in cursor.fetchall():
+                user_id = row["user_id"]
+                players[user_id] = {
+                    "coins": row["coins"],
+                    "total_arena_wins": row["total_arena_wins"],
+                    "total_arena_losses": row["total_arena_losses"],
+                    "current_win_streak": row["current_win_streak"],
+                    "best_win_streak": row["best_win_streak"],
+                    "win_rate": (row["total_arena_wins"] /
+                               (row["total_arena_wins"] + row["total_arena_losses"])
+                               if (row["total_arena_wins"] + row["total_arena_losses"]) > 0 else 0)
+                }
+
+            # Load creature counts per player
+            cursor.execute("""
+                SELECT owner_id, COUNT(*) as creature_count,
+                       SUM(CASE WHEN rarity = 'common' THEN 1 ELSE 0 END) as common_count,
+                       SUM(CASE WHEN rarity = 'uncommon' THEN 1 ELSE 0 END) as uncommon_count,
+                       SUM(CASE WHEN rarity = 'rare' THEN 1 ELSE 0 END) as rare_count,
+                       SUM(CASE WHEN rarity = 'epic' THEN 1 ELSE 0 END) as epic_count,
+                       SUM(CASE WHEN rarity = 'legendary' THEN 1 ELSE 0 END) as legendary_count
+                FROM creatures
+                WHERE owner_id IS NOT NULL
+                GROUP BY owner_id
+            """)
+
+            for row in cursor.fetchall():
+                user_id = row["owner_id"]
+                if user_id in players:
+                    players[user_id].update({
+                        "creature_count": row["creature_count"],
+                        "common_count": row["common_count"],
+                        "uncommon_count": row["uncommon_count"],
+                        "rare_count": row["rare_count"],
+                        "epic_count": row["epic_count"],
+                        "legendary_count": row["legendary_count"],
+                    })
+
+            conn.close()
+
+            return {"players": players}
+
+        except sqlite3.Error as e:
+            print(f"Error loading Absurdia stats: {e}")
+            return {"players": {}}
+
+    def load_karma_stats(self) -> Dict[str, int]:
+        """Load Karma module statistics.
+
+        Returns:
+            Dict mapping user_id to karma score
+        """
+        if not self.stats_path.exists():
+            return {}
+
+        with open(self.stats_path, 'r') as f:
+            data = json.load(f)
+
+        # Karma might not exist yet
+        karma_module = data.get("modules", {}).get("karma", {})
+        return karma_module.get("karma_scores", {})
+
+    def load_coffee_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Load Coffee module statistics.
+
+        Returns:
+            Dict mapping user_id to beverage counts
+        """
+        if not self.stats_path.exists():
+            return {}
+
+        with open(self.stats_path, 'r') as f:
+            data = json.load(f)
+
+        return data.get("modules", {}).get("coffee", {}).get("user_beverage_counts", {})
+
+    def load_bell_stats(self) -> Dict[str, int]:
+        """Load Bell module statistics.
+
+        Returns:
+            Dict mapping user_id to bell scores
+        """
+        if not self.games_path.exists():
+            return {}
+
+        with open(self.games_path, 'r') as f:
+            data = json.load(f)
+
+        return data.get("modules", {}).get("bell", {}).get("scores", {})
+
+
+class StatsAggregator:
+    """Aggregates and calculates cross-module statistics."""
+
+    def __init__(self, all_stats: Dict[str, Any]):
+        """Initialize aggregator with all loaded stats.
+
+        Args:
+            all_stats: Dict from JeevesStatsLoader.load_all()
+        """
+        self.stats = all_stats
+
+    def get_top_users_by_activity(self, limit: int = 10) -> List[Tuple[str, int]]:
+        """Get top users by overall activity across all modules.
+
+        Activity is calculated as a weighted sum of participation in different modules.
+
+        Args:
+            limit: Maximum number of users to return
+
+        Returns:
+            List of (user_id, activity_score) tuples
+        """
+        activity_scores = {}
+
+        for user_id in self.stats["users"].keys():
+            score = 0
+
+            # Quest activity (10 points per prestige, 1 per level)
+            if user_id in self.stats["quest"]:
+                quest_data = self.stats["quest"][user_id]
+                score += quest_data.get("prestige", 0) * 10
+                score += quest_data.get("level", 0)
+
+            # Hunt activity (1 point per interaction)
+            if user_id in self.stats["hunt"]:
+                hunt_data = self.stats["hunt"][user_id]
+                score += hunt_data.get("total_interactions", 0)
+
+            # Duel activity (2 points per duel)
+            duel_started = self.stats["duel"].get("duels_started", {}).get(user_id, 0)
+            duel_received = self.stats["duel"].get("duels_received", {}).get(user_id, 0)
+            score += (duel_started + duel_received) * 2
+
+            # Absurdia activity (5 points per creature, 1 per arena fight)
+            if user_id in self.stats["absurdia"].get("players", {}):
+                abs_data = self.stats["absurdia"]["players"][user_id]
+                score += abs_data.get("creature_count", 0) * 5
+                score += abs_data.get("total_arena_wins", 0) + abs_data.get("total_arena_losses", 0)
+
+            # Roadtrip participation (3 points per trip)
+            roadtrip_count = self.stats["roadtrip"].get("participation_counts", {}).get(user_id, 0)
+            score += roadtrip_count * 3
+
+            # Coffee drinking (0.5 points per coffee)
+            if user_id in self.stats["coffee"]:
+                score += self.stats["coffee"][user_id].get("count", 0) * 0.5
+
+            # Bell ringing (1 point per bell)
+            score += self.stats["bell"].get(user_id, 0)
+
+            if score > 0:
+                activity_scores[user_id] = score
+
+        # Sort by score and return top N
+        sorted_users = sorted(activity_scores.items(), key=lambda x: x[1], reverse=True)
+        return sorted_users[:limit]
+
+    def get_user_display_name(self, user_id: str) -> str:
+        """Get the display name for a user.
+
+        Args:
+            user_id: The user's UUID
+
+        Returns:
+            The user's canonical nickname or user_id if not found
+        """
+        user_data = self.stats["users"].get(user_id)
+        if user_data:
+            return user_data.get("canonical_nick", user_id)
+        return user_id
+
+    def get_leaderboard(self, category: str, stat_key: str, limit: int = 10) -> List[Tuple[str, Any]]:
+        """Get a leaderboard for a specific stat.
+
+        Args:
+            category: Module category (e.g., "quest", "hunt", "duel")
+            stat_key: The stat to sort by
+            limit: Maximum number of entries
+
+        Returns:
+            List of (user_id, stat_value) tuples
+        """
+        results = []
+
+        if category == "duel":
+            # Duel stats have a different structure
+            stat_dict = self.stats["duel"].get(stat_key, {})
+            results = list(stat_dict.items())
+        elif category in self.stats:
+            # For other categories, iterate through users
+            for user_id, user_data in self.stats[category].items():
+                if isinstance(user_data, dict) and stat_key in user_data:
+                    results.append((user_id, user_data[stat_key]))
+
+        # Sort by value (descending) and return top N
+        sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
+        return sorted_results[:limit]

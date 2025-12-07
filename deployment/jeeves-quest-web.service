@@ -1,0 +1,25 @@
+[Unit]
+Description=Jeeves Quest Web Server
+After=network.target
+
+[Service]
+Type=simple
+User=nullveil
+Group=nullveil
+WorkingDirectory=/home/nullveil/code/jeeves
+Environment="PATH=/usr/bin:/usr/local/bin"
+
+# Start the quest web server
+ExecStart=/usr/bin/python3 /home/nullveil/code/jeeves/quest_web.py --host 127.0.0.1 --port 8080
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jeeves-quest-web
+
+[Install]
+WantedBy=multi-user.target

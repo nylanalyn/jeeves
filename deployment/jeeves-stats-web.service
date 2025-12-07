@@ -1,0 +1,25 @@
+[Unit]
+Description=Jeeves Stats Web Server
+After=network.target
+
+[Service]
+Type=simple
+User=nullveil
+Group=nullveil
+WorkingDirectory=/home/nullveil/code/jeeves
+Environment="PATH=/usr/bin:/usr/local/bin"
+
+# Start the stats web server
+ExecStart=/usr/bin/python3 /home/nullveil/code/jeeves/stats_web.py --host 127.0.0.1 --port 8081
+
+# Restart on failure
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=jeeves-stats-web
+
+[Install]
+WantedBy=multi-user.target

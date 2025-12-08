@@ -133,14 +133,14 @@ class Absurdia(SimpleCommandModule):
             r"^\s*!keep\s*$",
             self._cmd_keep,
             name="keep",
-            description="Keep newly caught creature (release old one)"
+            description="Keep your current creature (discard new catch)"
         )
 
         self.register_command(
             r"^\s*!swap\s*$",
-            self._cmd_keep,  # Same handler
+            self._cmd_swap,
             name="swap",
-            description="Keep newly caught creature (alias for !keep)"
+            description="Swap to newly caught creature (release old one)"
         )
 
         # Creature management commands
@@ -226,8 +226,8 @@ CATCHING:
   !check - Check trap status and collect creature
 
 DUPLICATES:
-  !keep - Keep new creature (during duplicate catch)
-  !swap - Same as !keep
+  !keep - Keep your current creature (discard new catch)
+  !swap - Swap to new creature (release current one)
 
 CARE (earn coins & boost stats!):
   !feed <id> - Feed creature (4h cooldown, costs 10, +5 happy, +stats)
@@ -788,7 +788,7 @@ For full command list: !absurdia help"""
 
             if self.db.has_creature_type(user_id, creature_name):
                 # Duplicate - create pending catch
-                timeout = config.get('duplicate_handling', {}).get('comparison_timeout_seconds', 30)
+                timeout = config.get('duplicate_handling', {}).get('comparison_timeout_seconds', 300)
                 self.db.create_pending_catch(
                     user_id, creature_name, rarity, creature_type,
                     hp, attack, defense, speed, 'hand', timeout
@@ -971,6 +971,19 @@ For full command list: !absurdia help"""
             self.safe_reply(connection, event, "Error: Pending catch not found.")
             return True
 
+        # Calculate time remaining
+        from datetime import datetime, timezone
+        expires_at = datetime.fromisoformat(pending['expires_at'])
+        now = datetime.now(timezone.utc)
+        time_remaining = int((expires_at - now).total_seconds())
+
+        # Format time remaining
+        if time_remaining >= 60:
+            minutes = time_remaining // 60
+            time_str = f"{minutes} minute{'s' if minutes != 1 else ''}"
+        else:
+            time_str = f"{time_remaining} second{'s' if time_remaining != 1 else ''}"
+
         # Build comparison
         current_total_hp = current['base_hp'] + current['bonus_hp']
         current_total_atk = current['base_attack'] + current['bonus_attack']
@@ -995,14 +1008,42 @@ For full command list: !absurdia help"""
             f"├─ Wins: 0, Losses: 0",
             f"└─ Type: {pending['new_creature_type']}",
             "",
-            "Use !keep or !swap to accept the new catch and release your current one."
+            f"Use !keep or !swap to decide within {time_str}. The new catch will be lost if you don't choose in time."
         ]
 
         self.safe_reply(connection, event, "\n".join(lines))
         return True
 
     def _cmd_keep(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
-        """Resolve pending catch - keep new creature"""
+        """Resolve pending catch - keep current creature"""
+        user_id = self.bot.get_user_id(username)
+
+        pending = self.db.get_pending_catch(user_id)
+
+        if not pending:
+            self.safe_reply(
+                connection, event,
+                "You have no pending creature catch. This command is only used during duplicate catches."
+            )
+            return True
+
+        config = self.bot.config.get('absurdia', {})
+        refund_percent = config.get('duplicate_handling', {}).get('trap_refund_percent', 0.5)
+        trap_prices = config.get('trap_prices', {})
+
+        # Resolve - keep old (discard new)
+        refund, _ = self.db.resolve_pending_catch(user_id, keep_new=False, trap_refund_percent=refund_percent, trap_prices=trap_prices)
+
+        self.safe_reply(
+            connection, event,
+            f"{self.bot.title_for(username)}, you kept your current {pending['creature_name']}. "
+            f"The new catch was released. Refund: {refund} coins."
+        )
+
+        return True
+
+    def _cmd_swap(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        """Resolve pending catch - swap to new creature"""
         user_id = self.bot.get_user_id(username)
 
         pending = self.db.get_pending_catch(user_id)
@@ -1026,7 +1067,7 @@ For full command list: !absurdia help"""
             local_id = new_creature.get('owner_local_id', new_creature_id) if new_creature else new_creature_id
             self.safe_reply(
                 connection, event,
-                f"{self.bot.title_for(username)}, you kept the new {pending['creature_name']} (#{local_id})! "
+                f"{self.bot.title_for(username)}, you swapped to the new {pending['creature_name']} (#{local_id})! "
                 f"Your old one was released. Refund: {refund} coins."
             )
         else:

@@ -282,6 +282,57 @@ class StatsAggregator:
         """
         self.stats = all_stats
 
+    def get_active_users_count(self, days: int = 90) -> int:
+        """Get count of users who have been active in the last N days.
+
+        Args:
+            days: Number of days to look back for activity
+
+        Returns:
+            Count of unique users with activity in the time period
+        """
+        from datetime import datetime, timezone, timedelta
+
+        cutoff_timestamp = (datetime.now(timezone.utc) - timedelta(days=days)).timestamp()
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).date()
+
+        active_users = set()
+
+        # Check coffee module (has unix timestamps)
+        for user_id, coffee_data in self.stats["coffee"].items():
+            if isinstance(coffee_data, dict):
+                timestamp = coffee_data.get("timestamp", 0)
+                if timestamp > cutoff_timestamp:
+                    active_users.add(user_id)
+
+        # Check quest module (has last_win_date as string)
+        for user_id, quest_data in self.stats["quest"].items():
+            last_win = quest_data.get("last_win_date")
+            if last_win:
+                try:
+                    last_win_date = datetime.fromisoformat(last_win.replace('Z', '+00:00')).date()
+                    if last_win_date >= cutoff_date:
+                        active_users.add(user_id)
+                except (ValueError, AttributeError):
+                    pass
+
+        # Check roadtrip history
+        for trip in self.stats["roadtrip"].get("history", []):
+            started = trip.get("started")
+            if started:
+                try:
+                    trip_date = datetime.fromisoformat(started.replace('Z', '+00:00'))
+                    if trip_date.timestamp() > cutoff_timestamp:
+                        for participant in trip.get("participants", []):
+                            active_users.add(participant)
+                except (ValueError, AttributeError):
+                    pass
+
+        # Hunt, duel, absurdia, and bell don't have timestamps currently,
+        # so we can't determine recent activity from them
+
+        return len(active_users)
+
     def get_top_users_by_activity(self, limit: int = 10) -> List[Tuple[str, int]]:
         """Get top users by overall activity across all modules.
 

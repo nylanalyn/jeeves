@@ -51,7 +51,8 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
     )[:5]
 
     # Count stats
-    total_users = len(stats["users"])
+    total_nicks = len(stats["users"])
+    active_users_90d = aggregator.get_active_users_count(days=90)
     quest_players = len(stats["quest"])
     hunt_players = len(stats["hunt"])
     duel_players = len(set(
@@ -239,8 +240,12 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
 
         <div class="summary-stats">
             <div class="summary-card">
-                <div class="number">{total_users}</div>
-                <div class="label">Total Users</div>
+                <div class="number">{total_nicks}</div>
+                <div class="label">Total Nicks Tracked</div>
+            </div>
+            <div class="summary-card">
+                <div class="number">{active_users_90d}</div>
+                <div class="label">Active Users (90d)</div>
             </div>
             <div class="summary-card">
                 <div class="number">{quest_players}</div>

@@ -119,7 +119,7 @@ class Chatter(SimpleCommandModule):
         else: return "evening"
 
     def _format_line(self, line: str, username: str = "nobody") -> str:
-        return line.format(title=self.bot.title_for(username), pronouns=self.bot.pronouns_for(username), time_of_day=self._get_time_of_day())
+        return line.format(title=self.bot.title_for(username), time_of_day=self._get_time_of_day())
 
     def _random_time(self) -> str:
         if random.random() < 0.7: hour = random.randint(9, 17)

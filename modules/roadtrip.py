@@ -234,8 +234,7 @@ class Roadtrip(SimpleCommandModule):
         report_delay = self.get_config_value("report_delay_seconds", room, default=3600)
 
         if participants:
-            details = [f"{p} ({self.bot.pronouns_for(p)})" for p in participants]
-            self.safe_say(f"Very good. Outing to {dest}: {', '.join(details)}. Do buckle up.", target=room)
+            self.safe_say(f"Very good. Outing to {dest}: {', '.join(participants)}. Do buckle up.", target=room)
             
             report_id = f"{self.name}-{int(time.time())}"
             report_at = datetime.now(UTC) + timedelta(seconds=report_delay)

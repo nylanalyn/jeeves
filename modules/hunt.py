@@ -21,6 +21,8 @@ class Hunt(SimpleCommandModule):
     version = "2.0.0" # Added catch timer and reverted score complexity.
     description = "A game of hunting or hugging randomly appearing animals."
 
+    REMINDER_INTERVAL_HOURS = 12
+    MAX_REMINDERS = 4
     ESCAPE_MISHAP_CHANCE = 0.05
     DEFAULT_ANIMAL_HAPPINESS = 3
     MIN_FOLLOWER_ESCAPE = 2
@@ -50,6 +52,13 @@ class Hunt(SimpleCommandModule):
         "Pardon me, but it seems we have a small, uninvited guest.",
         "Attention, please. A wild animal has been spotted in the vicinity."
     ]
+    REMINDER_MESSAGES: List[str] = [
+        "Please, people. The {animal} is still running amok in here!",
+        "Now, people, this is getting ridiculous, that {animal} is still loose!",
+        "I must insist, this unruly {animal} remains at large and it is most unseemly.",
+        "This is quite beyond the pale. Someone must address the {animal} immediately.",
+    ]
+    REMOVAL_MESSAGE = "You will be happy to know I took care of the intruder. The {animal} has been removed."
     RELEASE_MESSAGES: List[str] = [
         "Very well, {title}. I shall open the doors. Do try to be more decisive in the future.",
         "As you wish, {title}. The {animal_name} has been... liberated. I shall fetch a dustpan.",
@@ -84,6 +93,7 @@ class Hunt(SimpleCommandModule):
         self.set_state("next_spawn_time", self.get_state("next_spawn_time", None))
         self.set_state("event", self.get_state("event", None))
         self.set_state("active_collective_noun", self.get_state("active_collective_noun", None))
+        self.set_state("reminder_state", self.get_state("reminder_state", None))
         # The on_config_reload will be called by the bot core on load
         # so we don't need to call it manually here.
 
@@ -283,7 +293,7 @@ class Hunt(SimpleCommandModule):
     def on_load(self) -> None:
         super().on_load()
         self._is_loaded = True
-        cleared = self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn")
+        cleared = self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn", self._reminder_tag())
         if cleared:
             self.log_debug(f"on_load: cleared {cleared} leftover scheduled job(s)")
         
@@ -291,6 +301,7 @@ class Hunt(SimpleCommandModule):
         if event and event.get("active"):
             # Logic to resume an event
             self._resume_event_scheduler()
+            self._resume_reminder_scheduler()
             return
 
         next_spawn_str = self.get_state("next_spawn_time")
@@ -299,10 +310,11 @@ class Hunt(SimpleCommandModule):
             self._resume_normal_spawn_scheduler(next_spawn_str)
         elif not self.get_state("active_animals"):
             self._schedule_next_spawn()
+        self._resume_reminder_scheduler()
 
     def _clear_scheduled_jobs(self, *tags: str) -> int:
         if not tags:
-            tags = (f"{self.name}-spawn", f"{self.name}-event_spawn", self.name)
+            tags = (f"{self.name}-spawn", f"{self.name}-event_spawn", self._reminder_tag(), self.name)
         total_cleared = 0
         for tag in tags:
             jobs = schedule.get_jobs(tag)
@@ -314,6 +326,121 @@ class Hunt(SimpleCommandModule):
                 self._spawn_job_token = None
             total_cleared += count
         return total_cleared
+
+    def _reminder_tag(self) -> str:
+        return f"{self.name}-reminder"
+
+    def _reminder_interval_seconds(self) -> float:
+        return max(self.REMINDER_INTERVAL_HOURS * 3600, 1.0)
+
+    def _clear_reminder_state(self, save: bool = True) -> None:
+        self._clear_scheduled_jobs(self._reminder_tag())
+        self.set_state("reminder_state", None)
+        if save:
+            self.save_state()
+
+    def _get_reminder_channels(self, preferred: Optional[List[str]] = None) -> List[str]:
+        preferred = preferred or []
+        channels = [room for room in preferred if room in self.bot.joined_channels and self.is_enabled(room)]
+        if channels:
+            return list(dict.fromkeys(channels))
+        allowed_channels = self.get_config_value("allowed_channels", default=[])
+        return [room for room in allowed_channels if room in self.bot.joined_channels and self.is_enabled(room)]
+
+    def _schedule_reminder(self, count: int, delay_seconds: float, channels: Optional[List[str]] = None) -> None:
+        self._clear_scheduled_jobs(self._reminder_tag())
+        next_time = datetime.now(UTC) + timedelta(seconds=max(delay_seconds, 1))
+        reminder_state = {
+            "count": max(0, int(count)),
+            "next_time": next_time.isoformat(),
+            "channels": channels or self.get_state("reminder_state", {}).get("channels") or [],
+        }
+        self.set_state("reminder_state", reminder_state)
+        self.save_state()
+        schedule.every(max(delay_seconds, 1)).seconds.do(self._handle_reminder_tick).tag(self._reminder_tag())
+
+    def _resume_reminder_scheduler(self) -> None:
+        active_animals = self.get_state("active_animals", [])
+        if not active_animals:
+            self._clear_reminder_state()
+            return
+
+        reminder_state = self.get_state("reminder_state") or {}
+        count = int(reminder_state.get("count") or 0)
+        channels = reminder_state.get("channels") or []
+        delay_seconds = self._reminder_interval_seconds()
+
+        next_time_str = reminder_state.get("next_time")
+        if next_time_str:
+            try:
+                next_time = datetime.fromisoformat(next_time_str)
+                now = datetime.now(UTC)
+                if now >= next_time:
+                    delay_seconds = 1
+                else:
+                    delay_seconds = max((next_time - now).total_seconds(), 1)
+            except (ValueError, TypeError):
+                pass
+        else:
+            try:
+                spawn_time = datetime.fromisoformat(active_animals[0].get("spawned_at"))
+                now = datetime.now(UTC)
+                elapsed = (now - spawn_time).total_seconds()
+                interval = self._reminder_interval_seconds()
+                intervals_elapsed = int(elapsed // interval)
+                count = min(max(count, intervals_elapsed), self.MAX_REMINDERS)
+                time_into_interval = elapsed % interval
+                delay_seconds = max(interval - time_into_interval, 1)
+            except Exception:
+                pass
+
+        self._schedule_reminder(count=count, delay_seconds=delay_seconds, channels=channels)
+
+    def _handle_reminder_tick(self):
+        active_animals = self.get_state("active_animals", [])
+        if not active_animals:
+            self._clear_reminder_state()
+            return schedule.CancelJob
+
+        reminder_state = self.get_state("reminder_state") or {}
+        count = int(reminder_state.get("count") or 0)
+        channels = reminder_state.get("channels") or []
+
+        if count >= self.MAX_REMINDERS:
+            self._handle_forced_removal(channels)
+            return schedule.CancelJob
+
+        first_animal = active_animals[0]
+        display_name = self._get_animal_display_name(first_animal).lower()
+        template_index = min(count, len(self.REMINDER_MESSAGES) - 1)
+        message_template = self.REMINDER_MESSAGES[template_index]
+
+        for room in self._get_reminder_channels(channels):
+            self.safe_say(message_template.format(animal=display_name), target=room)
+
+        count += 1
+        self._schedule_reminder(count=count, delay_seconds=self._reminder_interval_seconds(), channels=channels)
+        return schedule.CancelJob
+
+    def _handle_forced_removal(self, channels: Optional[List[str]] = None) -> None:
+        active_animals = self.get_state("active_animals", [])
+        if not active_animals:
+            self._clear_reminder_state()
+            return
+
+        display_name = self._get_animal_display_name(active_animals[0]).lower()
+        for room in self._get_reminder_channels(channels):
+            self.safe_say(self.REMOVAL_MESSAGE.format(animal=display_name), target=room)
+
+        self.set_state("active_animals", [])
+        self._set_active_collective_noun(None)
+        self._clear_reminder_state(save=False)
+        self.save_state()
+
+        if self._event_is_active():
+            self._schedule_next_event_spawn()
+        else:
+            self._schedule_next_spawn()
 
     def _resume_event_scheduler(self) -> None:
         self._clear_scheduled_jobs(f"{self.name}-event_spawn")
@@ -470,7 +597,7 @@ class Hunt(SimpleCommandModule):
 
     def on_unload(self) -> None:
         super().on_unload()
-        self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn")
+        self._clear_scheduled_jobs(self.name, f"{self.name}-spawn", f"{self.name}-event_spawn", self._reminder_tag())
 
     def _register_commands(self) -> None:
         self.register_command(r"^\s*!hug(?:\s+(.+))?\s*$", self._cmd_hug, name="hug", description="Befriend the animal.")
@@ -729,6 +856,7 @@ class Hunt(SimpleCommandModule):
             self.set_state("next_spawn_time", None)
             self.save_state()
             self.log_debug(f"Saved active_animal to state (now using active_animals list)")
+            self._schedule_reminder(count=0, delay_seconds=self._reminder_interval_seconds(), channels=spawn_locations)
 
             self.log_debug(f"Announcing to {len(spawn_locations)} rooms: {spawn_locations}")
             for room in spawn_locations:
@@ -795,6 +923,7 @@ class Hunt(SimpleCommandModule):
             self.set_state("next_spawn_time", None)
             self.save_state()
             self.log_debug(f"Spawned flock of {len(flock)} {forced_animal_key or 'animals'}")
+            self._schedule_reminder(count=0, delay_seconds=self._reminder_interval_seconds(), channels=spawn_locations)
 
             # Announce the flock
             display_name = flock[0]["display_name"] if flock else "animals"
@@ -863,6 +992,7 @@ class Hunt(SimpleCommandModule):
         self.set_state("scores", scores)
         self.set_state("active_animals", [])
         self._set_active_collective_noun(None)
+        self._clear_reminder_state(save=False)
         self.log_debug(f"_end_hunt: caught entire flock of {flock_size} animals, cleared active_animals, saved scores")
         self.save_state()
 
@@ -942,6 +1072,7 @@ class Hunt(SimpleCommandModule):
             # Clear the animals without awarding points
             self.set_state("active_animals", [])
             self._set_active_collective_noun(None)
+            self._clear_reminder_state(save=False)
             self.save_state()
 
             # Send failure message
@@ -1004,6 +1135,7 @@ class Hunt(SimpleCommandModule):
 
         self.set_state("active_animals", [])
         self._set_active_collective_noun(None)
+        self._clear_reminder_state(save=False)
         self.save_state()
 
         reply_parts = [f"Oh no, {self.bot.title_for(username)}! {mishap_msg}"]

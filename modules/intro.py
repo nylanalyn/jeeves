@@ -37,14 +37,14 @@ class Intro(SimpleCommandModule):
         is_admin = self.bot.is_admin(event.source)
 
         if user_id in introduced_users and not is_admin:
-            self.safe_reply(connection, event, f"Already gave you the rundown, {self.bot.title_for(username)}. This brief is reserved for fresh faces.")
+            self.safe_reply(connection, event, f"I believe we've already completed the tour, {self.bot.title_for(username)}. I reserve the formal welcome for newly arrived guests.")
             return True
 
         intro_lines = [
-            f"Name's {self.bot.connection.get_nickname()}. I keep the lights on and the secrets filed in locked cabinets.",
-            "Tune the experience with `!gender <identity>` and `!location <city, country>` so I can tailor the briefing.",
-            "Need intel? Try `!weather`, `!time`, `!fortune`, or shake down the wires with `!yt <query>`.",
-            "If you want the full case file, ask `!help` and I'll slide it across the desk."
+            f"{self.bot.connection.get_nickname()} at your service—your Wodehouse-grade butler with a polishing cloth in one hand and an eye on the room's wellbeing.",
+            "Tune the niceties with `!gender <identity>` and `!location <city, country>` so I may address you properly and keep the atmosphere agreeable.",
+            "Need something fetched? Try `!weather`, `!time`, `!fortune`, or allow me to retrieve a clip with `!yt <query>`.",
+            "If you want the full service card, ask `!help` and I'll present it neatly folded."
         ]
         
         if is_admin:
@@ -53,7 +53,7 @@ class Intro(SimpleCommandModule):
         else:
             for line in intro_lines:
                 self.safe_privmsg(username, line)
-            self.safe_reply(connection, event, f"Check your private line, {self.bot.title_for(username)}—the dossier's waiting there.")
+            self.safe_reply(connection, event, f"You'll find the welcome notes in your private line, {self.bot.title_for(username)}—no need to clutter the drawing room.")
 
         if not is_admin and user_id not in introduced_users:
             introduced_users.append(user_id)

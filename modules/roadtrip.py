@@ -37,7 +37,7 @@ class Roadtrip(SimpleCommandModule):
         },
         "the roadside flea market": {
             "solo": ["{p1} haggled for a mysterious brass compass that definitely points somewhere important."],
-            "duo": ["{p1} and {p2} bought matching sunglasses and decided they were now a detective duo."],
+            "duo": ["{p1} and {p2} bought matching sunglasses and appointed themselves the household's official glare inspectors."],
             "group": ["{p1} and the others pooled coins to rescue a wobbling lava lamp that is now the group's mascot."]
         },
         "the decommissioned airfield": {

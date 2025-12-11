@@ -72,32 +72,32 @@ class Arithmetic(SimpleCommandModule):
                 else:
                     whimsical_result = result + fudge
                 
-                response = f"The numbers are smeared and the neon keeps flickering, {self.bot.title_for(username)}, but I'd call it {whimsical_result:.2f}."
+                response = f"The numbers are smudged and the study lamps are flickering, {self.bot.title_for(username)}, but I'd call it {whimsical_result:.2f}."
                 self.set_state("whimsical_results", self.get_state("whimsical_results", 0) + 1)
             
             self.save_state()
             self.safe_reply(connection, event, response)
         
         except (ValueError, ZeroDivisionError) as e:
-            self.safe_reply(connection, event, f"Ran the figures and hit a brick wall, {self.bot.title_for(username)}: {e}")
+            self.safe_reply(connection, event, f"I ran the sums and the ledger balked, {self.bot.title_for(username)}: {e}")
         except Exception:
-            self.safe_reply(connection, event, f"That calculation is rougher than a back-alley shakedown, {self.bot.title_for(username)}.")
+            self.safe_reply(connection, event, f"That calculation scattered papers all over the study, {self.bot.title_for(username)}. Let's try something tidier.")
 
     def _safe_eval(self, expr: str) -> Union[int, float]:
         """A safe evaluator for basic arithmetic using AST parsing."""
         if len(expr) > 100:
-            raise ValueError("That expression stretches longer than a midnight stakeout.")
+            raise ValueError("That expression rambles on longer than any sensible ledger entry.")
 
         expr = expr.replace('^', '**')
 
         if not re.match(r"^[0-9\s\+\-\*/\.\(\)\^]+$", expr.replace('**', '^')):
-            raise ValueError("Those characters don't belong on these streets.")
+            raise ValueError("Those characters don't belong in the household accounts.")
 
         # Parse the expression into an AST
         try:
             tree = ast.parse(expr, mode='eval')
         except SyntaxError:
-            raise ValueError("Can't parse that syntax through the cigarette smoke.")
+            raise ValueError("The figures are smudged; the study chalkboard can't make sense of that syntax.")
 
         # Validate that only safe operations are used
         for node in ast.walk(tree):
@@ -108,11 +108,11 @@ class Arithmetic(SimpleCommandModule):
             elif isinstance(node, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow, ast.Mod, ast.USub, ast.UAdd)):
                 continue
             else:
-                raise ValueError(f"That operation ({node.__class__.__name__}) isn't sanctioned by the department.")
+                raise ValueError(f"That operation ({node.__class__.__name__}) isn't in the approved household manual.")
 
         # Check for excessive nesting/complexity
         if self._ast_depth(tree) > 20:
-            raise ValueError("Too many twists in that caper for my ledger.")
+            raise ValueError("Too many nested flourishes for the household ledger.")
 
         # Evaluate the validated AST
         allowed_operators = {

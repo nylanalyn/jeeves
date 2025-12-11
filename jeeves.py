@@ -627,6 +627,10 @@ class Jeeves(SingleServerIRCBot):
         if self.nickserv_pass:
             connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
 
+        # Set mode +B on self (server rules requirement)
+        connection.mode(self.connection.get_nickname(), "+B")
+        self.log_debug(f"[core] Set mode +B on {self.connection.get_nickname()}")
+
         loaded_modules = self.pm.load_all()
         self.log_debug(f"[core] Modules loaded: {', '.join(sorted(loaded_modules))}")
 

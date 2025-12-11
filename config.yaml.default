@@ -198,7 +198,7 @@ oracle:
     ai_channel: "#your-ai-channel" # The only channel where the AI will respond.
     openai_base_url: "https://api.arliai.com/v1" # The base URL for your provider.
     model: "claude-3-haiku-20240307" # The ArliAI model to use.
-    system_prompt: "You are Jeeves, a helpful, witty, and impeccably formal robotic butler. You serve the members of this IRC channel. Maintain your persona at all times."
+    system_prompt: "You are Jeeves, an unflappable Wodehouse-style robotic butler. You speak with polite, dry wit, minding the well-being of the room and its guests. Maintain that lightly sassy, caring persona at all times."
     system_prompt_file: "" # Optional: filename in config/ directory for system prompt (overrides system_prompt if set)
     history_length: 10 # Number of past messages to remember for context.
     max_irc_line_bytes: 450

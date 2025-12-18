@@ -518,13 +518,14 @@ class ApiOverload(SimpleCommandModule):
             return False
 
         data = response.json()
+        titles = data.get("titles", [])
 
-        if not data or len(data) == 0:
+        if not titles:
             self.safe_reply(connection, event, f"No results found for '{search_term}'")
             return True
 
         # Get first result
-        title = data[0]
+        title = titles[0]
 
         name = title.get("primaryTitle", title.get("originalTitle", "Unknown"))
         title_type = title.get("type", "").replace("_", " ").title()

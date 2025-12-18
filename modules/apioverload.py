@@ -4,7 +4,7 @@ apioverload.py - A collection of silly and fun API integrations
 Provides commands for various fun APIs:
 - icanhazdadjoke: Random dad jokes
 - TCGdex: Trading card game cards
-- API.Bible: Bible verses
+- Jikan (MyAnimeList): Anime information
 - Open Brewery DB: Brewery information
 - CATAAS: Cat pictures (because internet)
 - Nager.Date: Public holidays worldwide
@@ -37,9 +37,6 @@ class ApiOverload(SimpleCommandModule):
         super().__init__(bot)
         self.http_session = self.requests_retry_session()
 
-        # API.Bible requires an API key
-        self.bible_api_key = bot.config.get("api_keys", {}).get("bible_api_key")
-
     def _register_commands(self):
         """Register all the silly commands"""
 
@@ -60,11 +57,11 @@ class ApiOverload(SimpleCommandModule):
         )
 
         self.register_command(
-            pattern=r"^\s*!verse\s+(.+)$",
-            handler=self._cmd_verse,
-            name="verse",
+            pattern=r"^\s*!anime\s+(.+)$",
+            handler=self._cmd_anime,
+            name="anime",
             cooldown=3.0,
-            description="Get a Bible verse. Usage: !verse <reference> (e.g., !verse John 3:16)"
+            description="Search for anime on MyAnimeList. Usage: !anime <title>"
         )
 
         self.register_command(
@@ -211,89 +208,102 @@ class ApiOverload(SimpleCommandModule):
         return True
 
     @handle_exceptions(
-        error_message="Bible API call failed",
-        user_message="Unable to fetch Bible verse at the moment. Please try again later.",
+        error_message="Jikan API call failed",
+        user_message="Unable to fetch anime information at the moment. Please try again later.",
         log_exception=True,
         reraise=False
     )
-    def _cmd_verse(self, connection, event, msg, username, match):
-        """Get a Bible verse from API.Bible"""
+    def _cmd_anime(self, connection, event, msg, username, match):
+        """Search for anime on MyAnimeList via Jikan API"""
         if not self.is_enabled(event.target):
             return False
 
-        verse_ref = match.group(1).strip()
+        search_term = match.group(1).strip()
 
-        if not self.bible_api_key:
-            self.safe_reply(connection, event,
-                          "Bible API key not configured. Please add 'bible_api_key' to api_keys in config to use this command.")
-            return True
+        # Validate search term
+        if len(search_term) > 100:
+            raise UserInputException("Search term too long", "Search term is too long. Please use a shorter title.")
 
-        # Validate verse reference
-        if len(verse_ref) > 100:
-            raise UserInputException("Verse reference too long", "Verse reference is too long. Please use a shorter reference.")
+        # Jikan API - unofficial MAL API (no auth required)
+        url = f"https://api.jikan.moe/v4/anime?q={urllib.parse.quote(search_term)}&limit=1"
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "JeevesBot IRC Bot"
+        }
 
-        # API.Bible requires authentication
-        headers = {"api-key": self.bible_api_key}
-
-        # Using KJV Bible
-        bible_id = "de4e12af7f28f599-02"
-
-        # First, search to find the verse ID
-        search_url = f"https://rest.api.bible/v1/bibles/{bible_id}/search"
-        params = {"query": verse_ref, "limit": 1}
         response, error = safe_api_call(
-            self.http_session.get, search_url, headers=headers, params=params, timeout=10,
-            api_name="Bible Search API",
-            user_message="Unable to search for Bible verse at the moment."
+            self.http_session.get, url, headers=headers, timeout=10,
+            api_name="Jikan API",
+            user_message="Unable to fetch anime information at the moment."
         )
 
         if error:
-            # safe_api_call already logged the error details
             self.safe_reply(connection, event, error)
             return False
 
-        # Log the actual response for debugging
-        self.log_debug(f"[apioverload] Bible API status: {response.status_code}")
-
-        response.raise_for_status()
         data = response.json()
+        anime_list = data.get("data", [])
 
-        if not data.get("data", {}).get("verses"):
-            self.safe_reply(connection, event, f"Verse not found: {verse_ref}")
+        if not anime_list:
+            self.safe_reply(connection, event, f"No anime found for '{search_term}'")
             return True
 
-        # Get the verse ID
-        verse_data = data["data"]["verses"][0]
-        verse_id = verse_data.get("id")
+        # Get first result
+        anime = anime_list[0]
 
-        # Now fetch the full verse text
-        verse_url = f"https://rest.api.bible/v1/bibles/{bible_id}/verses/{verse_id}"
-        verse_response, error = safe_api_call(
-            self.http_session.get, verse_url, headers=headers, params={"content-type": "text"}, timeout=10,
-            api_name="Bible Verse API",
-            user_message="Unable to fetch verse text at the moment."
-        )
+        title = anime.get("title", "Unknown")
+        title_english = anime.get("title_english", "")
+        anime_type = anime.get("type", "")  # TV, Movie, OVA, etc.
+        episodes = anime.get("episodes")
+        status = anime.get("status", "")  # Airing, Finished, etc.
+        score = anime.get("score", "N/A")
+        scored_by = anime.get("scored_by", 0)
 
-        if error:
-            # safe_api_call already logged the error details
-            self.safe_reply(connection, event, error)
-            return False
+        # Genres
+        genres = anime.get("genres", [])
+        genre_names = [g.get("name", "") for g in genres[:3]]
+        genres_str = ", ".join(genre_names) if genre_names else "N/A"
 
-        verse_response.raise_for_status()
-        verse_json = verse_response.json()
+        # Year/season
+        year = anime.get("year", "")
+        season = anime.get("season", "")
 
-        verse_content = verse_json.get("data", {}).get("content", "")
-        verse_reference = verse_json.get("data", {}).get("reference", verse_ref)
+        # Build response
+        parts = [f"\x02{title}\x02"]  # Bold title
+        if title_english and title_english != title:
+            parts.append(f"({title_english})")
+        if anime_type:
+            parts.append(f"[{anime_type}]")
 
-        # Clean up HTML tags if present
-        verse_text = re.sub(r'<[^>]+>', '', verse_content).strip()
+        response_text = " ".join(parts)
 
-        # Trim if too long
-        if len(verse_text) > 350:
-            verse_text = verse_text[:350] + "..."
+        if score and score != "N/A":
+            response_text += f" | Score: {score}/10"
+            if scored_by:
+                response_text += f" ({scored_by:,} votes)"
 
-        self.safe_reply(connection, event, f"{verse_reference}: {verse_text}")
-        log_module_event(self.name, "Bible verse fetched", {"user": username, "verse": verse_ref})
+        if episodes:
+            response_text += f" | Episodes: {episodes}"
+
+        if status:
+            response_text += f" | {status}"
+
+        if year:
+            year_str = f"{season.capitalize()} {year}" if season else str(year)
+            response_text += f" | {year_str}"
+
+        response_text += f" | Genres: {genres_str}"
+
+        # Add synopsis if available (trimmed)
+        synopsis = anime.get("synopsis", "")
+        if synopsis:
+            max_synopsis_len = 150
+            if len(synopsis) > max_synopsis_len:
+                synopsis = synopsis[:max_synopsis_len] + "..."
+            response_text += f" | {synopsis}"
+
+        self.safe_reply(connection, event, response_text)
+        log_module_event(self.name, "Anime search", {"user": username, "query": search_term})
 
         return True
 

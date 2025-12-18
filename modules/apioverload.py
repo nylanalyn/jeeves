@@ -8,6 +8,8 @@ Provides commands for various fun APIs:
 - Open Brewery DB: Brewery information
 - CATAAS: Cat pictures (because internet)
 - Nager.Date: Public holidays worldwide
+- IMDb API: Movie and TV show information
+- MusicBrainz: Artist and band information
 """
 
 import sys
@@ -87,6 +89,22 @@ class ApiOverload(SimpleCommandModule):
             name="holiday",
             cooldown=5.0,
             description="Get today's holidays worldwide or search by country. Usage: !holiday [country code]"
+        )
+
+        self.register_command(
+            pattern=r"^\s*!imdb\s+(.+)$",
+            handler=self._cmd_imdb,
+            name="imdb",
+            cooldown=3.0,
+            description="Search IMDb for movies and TV shows. Usage: !imdb <title>"
+        )
+
+        self.register_command(
+            pattern=r"^\s*!music\s+(.+)$",
+            handler=self._cmd_music,
+            name="music",
+            cooldown=3.0,
+            description="Look up artist/band info from MusicBrainz. Usage: !music <artist name>"
         )
 
     def _cmd_dad(self, connection, event, msg, username, match):
@@ -462,5 +480,196 @@ class ApiOverload(SimpleCommandModule):
         except Exception as e:
             self.log_debug(f"Error fetching holiday data: {e}")
             self.safe_reply(connection, event, f"Error fetching holiday data: {str(e)}")
+
+        return True
+
+    @handle_exceptions(
+        error_message="IMDb API call failed",
+        user_message="Unable to fetch movie/TV information at the moment. Please try again later.",
+        log_exception=True,
+        reraise=False
+    )
+    def _cmd_imdb(self, connection, event, msg, username, match):
+        """Search IMDb for movies and TV shows"""
+        if not self.is_enabled(event.target):
+            return False
+
+        search_term = match.group(1).strip()
+
+        # Validate search term
+        if len(search_term) > 100:
+            raise UserInputException("Search term too long", "Search term is too long. Please use a shorter title.")
+
+        # IMDb API search
+        url = f"https://api.imdbapi.dev/search/titles?query={urllib.parse.quote(search_term)}&limit=1"
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "JeevesBot IRC Bot"
+        }
+
+        response, error = safe_api_call(
+            self.http_session.get, url, headers=headers, timeout=10,
+            api_name="IMDb API",
+            user_message="Unable to fetch movie/TV information at the moment."
+        )
+
+        if error:
+            self.safe_reply(connection, event, error)
+            return False
+
+        data = response.json()
+
+        if not data or len(data) == 0:
+            self.safe_reply(connection, event, f"No results found for '{search_term}'")
+            return True
+
+        # Get first result
+        title = data[0]
+
+        name = title.get("primaryTitle", title.get("originalTitle", "Unknown"))
+        title_type = title.get("type", "").replace("_", " ").title()
+        start_year = title.get("startYear", "")
+        end_year = title.get("endYear", "")
+
+        # Format year range for TV series
+        if end_year and end_year != start_year:
+            year_str = f"{start_year}-{end_year}"
+        elif start_year:
+            year_str = str(start_year)
+        else:
+            year_str = "N/A"
+
+        # Rating info
+        rating_obj = title.get("rating", {})
+        rating = rating_obj.get("aggregateRating", "N/A")
+        vote_count = rating_obj.get("voteCount", 0)
+
+        # Genres
+        genres = title.get("genres", [])
+        genres_str = ", ".join(genres[:3]) if genres else "N/A"
+
+        # Runtime
+        runtime = title.get("runtimeMinutes")
+        runtime_str = f"{runtime} min" if runtime else ""
+
+        # Build response
+        parts = [f"\x02{name}\x02"]  # Bold title
+        if title_type:
+            parts.append(f"({title_type})")
+        if year_str:
+            parts.append(f"[{year_str}]")
+
+        response_text = " ".join(parts)
+        response_text += f" | Rating: {rating}/10"
+        if vote_count:
+            response_text += f" ({vote_count:,} votes)"
+        response_text += f" | Genres: {genres_str}"
+        if runtime_str:
+            response_text += f" | {runtime_str}"
+
+        # Add plot if available (trimmed)
+        plot = title.get("plot", "")
+        if plot:
+            max_plot_len = 150
+            if len(plot) > max_plot_len:
+                plot = plot[:max_plot_len] + "..."
+            response_text += f" | {plot}"
+
+        self.safe_reply(connection, event, response_text)
+        log_module_event(self.name, "IMDb search", {"user": username, "query": search_term})
+
+        return True
+
+    @handle_exceptions(
+        error_message="MusicBrainz API call failed",
+        user_message="Unable to fetch artist information at the moment. Please try again later.",
+        log_exception=True,
+        reraise=False
+    )
+    def _cmd_music(self, connection, event, msg, username, match):
+        """Look up artist/band info from MusicBrainz"""
+        if not self.is_enabled(event.target):
+            return False
+
+        search_term = match.group(1).strip()
+
+        # Validate search term
+        if len(search_term) > 100:
+            raise UserInputException("Search term too long", "Search term is too long. Please use a shorter name.")
+
+        # MusicBrainz requires a proper User-Agent
+        url = f"https://musicbrainz.org/ws/2/artist?query={urllib.parse.quote(search_term)}&fmt=json&limit=1"
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "JeevesBot/1.0 (IRC Bot; contact: https://github.com/jeeves-bot)"
+        }
+
+        response, error = safe_api_call(
+            self.http_session.get, url, headers=headers, timeout=10,
+            api_name="MusicBrainz API",
+            user_message="Unable to fetch artist information at the moment."
+        )
+
+        if error:
+            self.safe_reply(connection, event, error)
+            return False
+
+        data = response.json()
+        artists = data.get("artists", [])
+
+        if not artists:
+            self.safe_reply(connection, event, f"No artists found for '{search_term}'")
+            return True
+
+        # Get first result
+        artist = artists[0]
+
+        name = artist.get("name", "Unknown")
+        artist_type = artist.get("type", "")  # Person, Group, Orchestra, etc.
+        country = artist.get("country", "")
+        disambiguation = artist.get("disambiguation", "")
+
+        # Life span
+        life_span = artist.get("life-span", {})
+        begin = life_span.get("begin", "")
+        end = life_span.get("end", "")
+        ended = life_span.get("ended", False)
+
+        # Tags (genres)
+        tags = artist.get("tags", [])
+        # Sort by count (popularity) and get top 3
+        sorted_tags = sorted(tags, key=lambda t: t.get("count", 0), reverse=True)
+        tag_names = [t.get("name", "") for t in sorted_tags[:3] if t.get("name")]
+        genres_str = ", ".join(tag_names) if tag_names else "N/A"
+
+        # Build response
+        parts = [f"\x02{name}\x02"]  # Bold name
+        if artist_type:
+            parts.append(f"({artist_type})")
+        if country:
+            parts.append(f"[{country}]")
+
+        response_text = " ".join(parts)
+
+        # Add active years
+        if begin:
+            if ended and end:
+                response_text += f" | Active: {begin}-{end}"
+            elif ended:
+                response_text += f" | Active: {begin} (disbanded)"
+            else:
+                response_text += f" | Active since {begin}"
+
+        response_text += f" | Genre: {genres_str}"
+
+        # Add disambiguation if helpful
+        if disambiguation:
+            max_disambig_len = 80
+            if len(disambiguation) > max_disambig_len:
+                disambiguation = disambiguation[:max_disambig_len] + "..."
+            response_text += f" | {disambiguation}"
+
+        self.safe_reply(connection, event, response_text)
+        log_module_event(self.name, "MusicBrainz search", {"user": username, "query": search_term})
 
         return True

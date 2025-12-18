@@ -65,11 +65,11 @@ class CryptoModule(SimpleCommandModule):
     def _register_commands(self):
         """Register crypto price commands."""
         self.register_command(
-            r"^\s*!(?:crypto|price)\s+(\S+)(?:\s+(\w+))?$",
+            r"^\s*!(?:crypto|price)\s+(\S+)(?:\s+(\S+))?(?:\s+(\w+))?$",
             self._cmd_price,
             name="crypto",
             cooldown=5.0,
-            description="!crypto <symbol> [currency] - Get cryptocurrency price (e.g., !crypto btc, !crypto eth usd)"
+            description="!crypto <symbol> [amount|currency] [currency] - Get cryptocurrency price (e.g., !crypto btc, !crypto 1 btc, !crypto btc 1, !crypto eth usd)"
         )
 
     def _get_coin_id(self, identifier):
@@ -203,11 +203,51 @@ class CryptoModule(SimpleCommandModule):
         """
         Handle crypto price command.
 
-        Usage: !crypto <symbol> [currency]
-        Examples: !crypto btc, !crypto eth eur
+        Usage: !crypto <symbol> [amount|currency] [currency]
+        Examples: !crypto btc, !crypto 1 btc, !crypto btc 1, !crypto 2.5 eth eur
         """
-        identifier = match.group(1)
-        currency = match.group(2) if match.group(2) else 'usd'
+        arg1 = match.group(1)
+        arg2 = match.group(2)
+        arg3 = match.group(3)
+
+        # Smart parsing: figure out which argument is what
+        amount = 1.0
+        identifier = None
+        currency = 'usd'
+
+        # Helper to check if a string is a number
+        def is_number(s):
+            if not s:
+                return False
+            try:
+                float(s)
+                return True
+            except ValueError:
+                return False
+
+        # Parse arguments based on what they look like
+        if is_number(arg1):
+            # Pattern: !crypto 1 btc [usd]
+            amount = float(arg1)
+            identifier = arg2
+            currency = arg3 if arg3 else 'usd'
+        else:
+            # arg1 is the symbol
+            identifier = arg1
+            if is_number(arg2):
+                # Pattern: !crypto btc 1 [usd]
+                amount = float(arg2)
+                currency = arg3 if arg3 else 'usd'
+            else:
+                # Pattern: !crypto btc [usd]
+                currency = arg2 if arg2 else 'usd'
+
+        if not identifier:
+            self.safe_reply(
+                connection, event,
+                "Invalid syntax. Usage: !crypto <symbol> [amount] [currency]"
+            )
+            return True
 
         # Get CoinGecko coin ID
         coin_id = self._get_coin_id(identifier)
@@ -237,17 +277,23 @@ class CryptoModule(SimpleCommandModule):
             )
             return True
 
+        # Calculate total value if amount specified
+        total_value = price * amount
+
         # Format response
-        price_str = self._format_price(price, currency)
-        response = f"{identifier.upper()}: {price_str}"
+        price_str = self._format_price(total_value, currency)
+        if amount != 1.0:
+            response = f"{amount} {identifier.upper()}: {price_str}"
+        else:
+            response = f"{identifier.upper()}: {price_str}"
 
         # Add 24h change if available
         if change_24h is not None:
             change_str = self._format_change(change_24h)
             response += f" ({change_str} 24h)"
 
-        # Add market cap if available (for larger coins)
-        if market_cap and market_cap > 1_000_000_000:  # Show only if > 1B
+        # Add market cap if available (for larger coins) - only when amount is 1
+        if amount == 1.0 and market_cap and market_cap > 1_000_000_000:  # Show only if > 1B
             if market_cap >= 1_000_000_000_000:  # Trillions
                 mcap_str = f"{market_cap / 1_000_000_000_000:.2f}T"
             elif market_cap >= 1_000_000_000:  # Billions

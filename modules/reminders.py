@@ -140,5 +140,5 @@ class Reminders(SimpleCommandModule):
         # Schedule the delivery
         schedule.every(delta.total_seconds()).seconds.do(self._deliver_reminder, reminder_id=reminder_id).tag(self.name)
         
-        self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. I shall remind {to_user} in {timeframe_str}.")
+        self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. I shall remind {to_user} {timeframe_str}.")
         return True

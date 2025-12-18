@@ -147,7 +147,7 @@
         }
 
         .module.expanded .module-content {
-            max-height: 3000px;
+            max-height: 5000px;
         }
 
         .module-inner {
@@ -390,6 +390,134 @@
                 <h2 style="color: #d4af37; font-size: 1.6em; border-bottom: 2px solid rgba(212, 175, 55, 0.3); padding-bottom: 10px;">🎮 Games & Activities</h2>
             </div>
 
+            <!-- Absurdia Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🎪 Absurdia: Creature Battle Game</h3>
+                        <span class="module-badge">absurdia.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="ambient-note">
+                            <strong>About Absurdia:</strong> Catch absurdist creatures, care for them, and battle in the arena! A complete creature collection and battling game with exploration, training, and hourly tournaments.
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Getting Started</h4>
+                            <div class="command">
+                                <div class="command-syntax">!absurdia help</div>
+                                <div class="command-syntax">!abs help</div>
+                                <div class="command-desc">Show Absurdia help and commands</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!guide [start|next|reset|1|2|3|4]</div>
+                                <div class="command-desc">Show beginner's guide to playing Absurdia (sent via DM)</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Exploration & Catching</h4>
+                            <div class="command">
+                                <div class="command-syntax">!explore</div>
+                                <div class="command-desc">Explore the absurd world (4h cooldown)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!catch [trap_type]</div>
+                                <div class="command-desc">Set a trap or attempt hand-catching</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!check</div>
+                                <div class="command-desc">Check trap status and collect creatures</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Collection Management</h4>
+                            <div class="command">
+                                <div class="command-syntax">!creatures</div>
+                                <div class="command-syntax">!menagerie</div>
+                                <div class="command-desc">List your creature collection</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!stats &lt;id&gt;</div>
+                                <div class="command-desc">View detailed stats for a creature</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!nickname &lt;id&gt; &lt;name&gt;</div>
+                                <div class="command-desc">Set a nickname for your creature</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!keep</div>
+                                <div class="command-desc">Keep your current creature (discard new catch)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!swap</div>
+                                <div class="command-desc">Swap to newly caught creature (release old one)</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Creature Care</h4>
+                            <div class="command">
+                                <div class="command-syntax">!feed &lt;id&gt;</div>
+                                <div class="command-desc">Feed your creature (4h cooldown)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!play &lt;id&gt;</div>
+                                <div class="command-desc">Play with your creature (2h cooldown)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!pet &lt;id&gt;</div>
+                                <div class="command-desc">Pet your creature (1h cooldown)</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!train &lt;id&gt; &lt;hp|power|shield|speed&gt;</div>
+                                <div class="command-desc">Use training item to boost creature stats</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Arena & Combat</h4>
+                            <div class="command">
+                                <div class="command-syntax">!submit &lt;id&gt;</div>
+                                <div class="command-desc">Submit creature to arena queue</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!withdraw</div>
+                                <div class="command-desc">Withdraw creature from arena queue</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!arena</div>
+                                <div class="command-desc">View current arena queue</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Economy & Shop</h4>
+                            <div class="command">
+                                <div class="command-syntax">!coins</div>
+                                <div class="command-desc">Check your coin balance</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!shop</div>
+                                <div class="command-desc">View available items for purchase</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!buy &lt;item&gt; [amount]</div>
+                                <div class="command-desc">Purchase items from the shop</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!inventory</div>
+                                <div class="command-desc">View your inventory</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Adventure Module -->
             <div class="module">
                 <div class="module-header" onclick="toggleModule(this)">
@@ -449,6 +577,36 @@
                         </div>
                         <div class="ambient-note">
                             <strong>How it works:</strong> The service bell rings at random intervals. Be the first to answer!
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Duel Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>⚔️ Dueling</h3>
+                        <span class="module-badge">duel.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!slap &lt;user&gt;</div>
+                            <div class="command-desc">Challenge someone to a duel with a white glove</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!accept [user]</div>
+                            <div class="command-desc">Accept a pending duel challenge</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!duelstats</div>
+                            <div class="command-desc">Show duel leaders and most challenged users</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>How it works:</strong> Challenge someone with !slap. They have 3 minutes to !accept. The winner is chosen randomly with dramatic flair!
                         </div>
                     </div>
                 </div>
@@ -755,6 +913,114 @@
                                 <div class="command-syntax">!pron</div>
                                 <div class="command-desc">Get a wholesome, humorously suggestive scenario</div>
                             </div>
+                            <div class="command">
+                                <div class="command-syntax">!scare</div>
+                                <div class="command-desc">Hear a frightening horror story, if you dare</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Social Features Header -->
+            <div style="padding: 30px 0 15px 10px;">
+                <h2 style="color: #d4af37; font-size: 1.6em; border-bottom: 2px solid rgba(212, 175, 55, 0.3); padding-bottom: 10px;">💬 Social Features</h2>
+            </div>
+
+            <!-- Karma Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>⭐ Karma System</h3>
+                        <span class="module-badge">karma.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!karma [user]</div>
+                            <div class="command-desc">Check karma score for yourself or another user</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>How to give karma:</strong> Simply mention a username followed by ++ (increase) or -- (decrease) in your message. Example: "alice++ for helping me" or "bob-- for breaking the build". You cannot karma yourself, and there's a 5-minute cooldown per person.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quotes Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>💬 Memorable Quotes</h3>
+                        <span class="module-badge">quotes.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!quote</div>
+                            <div class="command-desc">Recalls a random thing someone once said in the channel</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>Automatic Collection:</strong> Jeeves randomly remembers things people say in the channel (about 1 in 200 messages) and can recall them later with perfect attribution and date.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Crypto & Tech Header -->
+            <div style="padding: 30px 0 15px 10px;">
+                <h2 style="color: #d4af37; font-size: 1.6em; border-bottom: 2px solid rgba(212, 175, 55, 0.3); padding-bottom: 10px;">💰 Crypto & Technology</h2>
+            </div>
+
+            <!-- Crypto Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>₿ Cryptocurrency Prices</h3>
+                        <span class="module-badge">crypto.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!crypto &lt;symbol&gt; [currency]</div>
+                            <div class="command-syntax">!price &lt;symbol&gt; [currency]</div>
+                            <div class="command-desc">Get cryptocurrency price (e.g., !crypto btc, !crypto eth usd, !crypto sol eur)</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>Supported coins:</strong> BTC, ETH, SOL, XRP, ADA, DOGE, and many more. Currency defaults to USD but supports EUR, GBP, JPY, etc. Shows current price, 24h change, and market cap.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI & Creative Header -->
+            <div style="padding: 30px 0 15px 10px;">
+                <h2 style="color: #d4af37; font-size: 1.6em; border-bottom: 2px solid rgba(212, 175, 55, 0.3); padding-bottom: 10px;">🎨 AI & Creative Tools</h2>
+            </div>
+
+            <!-- Gen Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🎨 AI Image Generation</h3>
+                        <span class="module-badge">gen.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!gen &lt;prompt&gt;</div>
+                            <div class="command-desc">Generate an AI image using pollinations.ai. Example: !gen a majestic castle at sunset</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>How it works:</strong> Jeeves generates an AI image based on your text prompt and returns a (shortened) link to view it. Be creative with your descriptions!
                         </div>
                     </div>
                 </div>

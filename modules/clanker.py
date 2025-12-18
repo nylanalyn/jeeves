@@ -41,6 +41,10 @@ class Clanker(ModuleBase):
         self.set_state("last_response", last_responses)
         self.save_state()
 
+    def get_title_for(self, username: str) -> str:
+        """Return a formal title for addressing the user."""
+        return f"dear {username}"
+
     def on_ambient_message(self, connection: Any, event: Any, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
             return False

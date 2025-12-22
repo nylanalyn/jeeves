@@ -505,7 +505,7 @@ def render_activity_page(stats: Dict[str, Any], aggregator, channels: List[str],
                         <label for="channel">Channel</label>
                         <select id="channel" name="channel">
                             <option value="" {"selected" if not selected_channel else ""}>All Channels (Combined)</option>
-                            {"".join([f'<option value=\"{_escape_html(ch)}\" ' + ('selected' if ch == selected_channel else '') + f'> {_escape_html(ch)}</option>' for ch in channels])}
+                            {"".join([f'<option value="{_escape_html(ch)}" ' + ('selected' if ch == selected_channel else '') + f'> {_escape_html(ch)}</option>' for ch in channels])}
                         </select>
                     </div>
                     <div>
@@ -521,7 +521,7 @@ def render_activity_page(stats: Dict[str, Any], aggregator, channels: List[str],
 
             <div class="card">
                 <h2>👤 User Activity</h2>
-                {(_render_user_activity(aggregator, user_id, user_name, user_bucket) if user_id and user_bucket else '<div class=\"empty\">Enter a nick above to view a user heatmap.</div>')}
+                {(_render_user_activity(aggregator, user_id, user_name, user_bucket) if user_id and user_bucket else '<div class="empty">Enter a nick above to view a user heatmap.</div>')}
             </div>
         </div>
     </div>

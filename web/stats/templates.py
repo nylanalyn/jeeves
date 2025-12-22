@@ -238,6 +238,12 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
             <p>Comprehensive statistics across all modules</p>
         </header>
 
+        <nav style="text-align:center; margin-bottom: 1.5rem;">
+            <a href="/" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">📊 Overview</a>
+            <a href="/activity" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">🗓️ Activity</a>
+            <a href="/achievements" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">🏆 Achievements</a>
+        </nav>
+
         <div class="summary-stats">
             <div class="summary-card">
                 <div class="number">{total_nicks}</div>
@@ -323,6 +329,272 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
 </html>"""
 
     return html
+
+
+def render_activity_page(stats: Dict[str, Any], aggregator, channels: List[str],
+                         selected_channel: str | None = None, user_query: str | None = None) -> str:
+    channel_bucket = (aggregator.get_activity_bucket_channel(selected_channel)
+                      if selected_channel else aggregator.get_activity_bucket_global())
+    channel_title = selected_channel or "All Channels (Combined)"
+
+    user_id = aggregator.find_user_id(user_query or "")
+    user_bucket = aggregator.get_activity_bucket_user(user_id) if user_id else None
+    user_name = aggregator.get_user_display_name(user_id) if user_id else None
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeeves Activity</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 2rem;
+        }}
+        .container {{ max-width: 1400px; margin: 0 auto; }}
+        header {{ text-align: center; color: white; margin-bottom: 1rem; }}
+        header h1 {{ font-size: 2.6rem; margin-bottom: 0.5rem; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3); }}
+        header p {{ font-size: 1.1rem; opacity: 0.9; }}
+        nav {{
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }}
+        nav a {{
+            color: white;
+            text-decoration: none;
+            margin: 0 0.75rem;
+            font-weight: 600;
+        }}
+        .grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }}
+        .card {{
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }}
+        .card h2 {{
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        .note {{
+            color: #6c757d;
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+            line-height: 1.4;
+        }}
+        .controls {{
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }}
+        .controls label {{
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.25rem;
+            display: block;
+        }}
+        .controls input, .controls select {{
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1rem;
+        }}
+        .controls button {{
+            padding: 0.7rem 0.9rem;
+            border: none;
+            border-radius: 8px;
+            background: #667eea;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+        }}
+        .heatmap {{
+            width: 100%;
+            overflow-x: auto;
+        }}
+        table.heatmap-table {{
+            border-collapse: collapse;
+            width: max-content;
+            min-width: 100%;
+        }}
+        table.heatmap-table th, table.heatmap-table td {{
+            border: 1px solid #e9ecef;
+            text-align: center;
+            padding: 0;
+            font-size: 0.75rem;
+            color: #495057;
+        }}
+        table.heatmap-table th.label {{
+            background: #f8f9fa;
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            min-width: 3.2rem;
+        }}
+        table.heatmap-table th.hour {{
+            background: #f8f9fa;
+            min-width: 1.2rem;
+            padding: 0.2rem 0.15rem;
+        }}
+        table.heatmap-table td.cell {{
+            width: 18px;
+            height: 18px;
+        }}
+        .meta {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }}
+        .meta-box {{
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 0.75rem;
+        }}
+        .meta-box .title {{
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 0.4rem;
+        }}
+        .meta-box ul {{ margin-left: 1.1rem; }}
+        .meta-box li {{ margin: 0.2rem 0; }}
+        .empty {{
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 8px;
+            color: #6c757d;
+            font-style: italic;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗓️ Activity</h1>
+            <p>Heatmaps and active-time summaries (UTC)</p>
+        </header>
+
+        <nav>
+            <a href="/">📊 Overview</a>
+            <a href="/activity">🗓️ Activity</a>
+            <a href="/achievements">🏆 Achievements</a>
+        </nav>
+
+        <div class="grid">
+            <div class="card">
+                <h2>🌡️ Channel Activity Heatmap</h2>
+                <div class="note">Tracks non-command channel messages (ambient chat only). Commands are excluded.</div>
+                <form class="controls" method="GET" action="/activity">
+                    <div>
+                        <label for="channel">Channel</label>
+                        <select id="channel" name="channel">
+                            <option value="" {"selected" if not selected_channel else ""}>All Channels (Combined)</option>
+                            {"".join([f'<option value=\"{_escape_html(ch)}\" ' + ('selected' if ch == selected_channel else '') + f'> {_escape_html(ch)}</option>' for ch in channels])}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="user">User (nick or user id)</label>
+                        <input id="user" name="user" value="{_escape_html(user_query or '')}" placeholder="e.g. alice">
+                    </div>
+                    <button type="submit">Update</button>
+                </form>
+                <div class="note"><b>Viewing:</b> {_escape_html(channel_title)}</div>
+                {_render_heatmap_table(aggregator, channel_bucket)}
+                {_render_heatmap_meta(aggregator, channel_bucket)}
+            </div>
+
+            <div class="card">
+                <h2>👤 User Activity</h2>
+                {(_render_user_activity(aggregator, user_id, user_name, user_bucket) if user_id and user_bucket else '<div class=\"empty\">Enter a nick above to view a user heatmap.</div>')}
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    return html
+
+
+def _render_heatmap_table(aggregator, bucket: Dict[str, Any]) -> str:
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    matrix = aggregator.get_heatmap_matrix(bucket)
+    max_val = aggregator.get_heatmap_max(bucket)
+
+    def color_for(value: int) -> str:
+        if max_val <= 0 or value <= 0:
+            return "#f1f3f5"
+        ratio = value / max_val
+        alpha = 0.15 + (0.85 * ratio)
+        return f"rgba(102, 126, 234, {alpha:.3f})"
+
+    header_cells = "".join([f'<th class="hour">{h}</th>' for h in range(24)])
+    rows_html = ""
+    for dow, row in enumerate(matrix):
+        cells = ""
+        for hour, value in enumerate(row):
+            title = f"{days[dow]} {hour:02d}:00 — {value}"
+            cells += f'<td class="cell" title="{_escape_html(title)}" style="background:{color_for(int(value))};"></td>'
+        rows_html += f'<tr><th class="label">{days[dow]}</th>{cells}</tr>'
+
+    return f"""
+<div class="heatmap">
+  <table class="heatmap-table">
+    <thead><tr><th class="label"></th>{header_cells}</tr></thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+</div>"""
+
+
+def _render_heatmap_meta(aggregator, bucket: Dict[str, Any]) -> str:
+    total = int((bucket or {}).get("total", 0) or 0)
+    updated_at = (bucket or {}).get("updated_at")
+
+    top_hours = aggregator.get_top_hours(bucket, limit=5)
+    top_days = aggregator.get_top_days(bucket, limit=3)
+
+    def hour_label(h: int) -> str:
+        return f"{h:02d}:00"
+
+    days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    hours_list = "".join([f"<li>{hour_label(h)} — {c}</li>" for h, c in top_hours if c > 0]) or "<li>—</li>"
+    days_list = "".join([f"<li>{days[d]} — {c}</li>" for d, c in top_days if c > 0]) or "<li>—</li>"
+
+    updated = _escape_html(str(updated_at)) if updated_at else "—"
+
+    return f"""
+<div class="meta">
+  <div class="meta-box"><div class="title">Total Messages Tracked</div>{total}</div>
+  <div class="meta-box"><div class="title">Last Updated</div>{updated}</div>
+  <div class="meta-box"><div class="title">Top Hours (UTC)</div><ul>{hours_list}</ul></div>
+  <div class="meta-box"><div class="title">Top Days</div><ul>{days_list}</ul></div>
+</div>"""
+
+
+def _render_user_activity(aggregator, user_id: str, user_name: str, bucket: Dict[str, Any]) -> str:
+    safe_name = _escape_html(user_name or user_id)
+    safe_id = _escape_html(user_id)
+    return f"""
+<div class="note"><b>User:</b> {safe_name} <span style="color:#6c757d;">({safe_id})</span></div>
+{_render_heatmap_table(aggregator, bucket)}
+{_render_heatmap_meta(aggregator, bucket)}
+"""
 
 
 def _render_leaderboard_list(entries: List[Tuple[str, Any]], aggregator, score_label: str = "Score") -> str:
@@ -818,6 +1090,7 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
 
         <nav>
             <a href="/">📊 Overview</a>
+            <a href="/activity">🗓️ Activity</a>
             <a href="/achievements">🏆 Achievements</a>
         </nav>
 

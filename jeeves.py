@@ -79,6 +79,7 @@ class MultiFileStateManager:
         'leveling': 'stats',
         'duel': 'stats',
         'karma': 'stats',
+        'activity': 'stats',
         # Everything else uses 'state' (config storage)
     }
 

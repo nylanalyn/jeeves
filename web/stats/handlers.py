@@ -7,10 +7,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from .data_loader import JeevesStatsLoader, StatsAggregator
-from .templates import render_overview_page, render_achievements_page
+from .templates import render_overview_page, render_achievements_page, render_activity_page
+from .config import load_stats_web_config, get_channel_filters, filter_channels
 
 
 class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -99,6 +100,7 @@ class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
         # Parse URL
         parsed_url = urlparse(self.path)
         path = parsed_url.path
+        query = parse_qs(parsed_url.query or "")
 
         # Load stats
         self._load_stats()
@@ -112,6 +114,8 @@ class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
             self._handle_overview()
         elif path == "/achievements":
             self._handle_achievements()
+        elif path == "/activity":
+            self._handle_activity(query)
         elif path == "/api/stats":
             self._handle_api_stats()
         else:
@@ -136,6 +140,33 @@ class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
             logging.error(f"Error rendering achievements page: {e}")
             self._send_error_page(HTTPStatus.INTERNAL_SERVER_ERROR,
                                 "Failed to render achievements page.")
+
+    def _handle_activity(self, query: dict) -> None:
+        """Handle the activity page."""
+        try:
+            full_config = load_stats_web_config(self.config_path)
+            visible_channels, hidden_channels = get_channel_filters(full_config)
+
+            available_channels = sorted((self.stats.get("activity", {}).get("channels") or {}).keys())
+            channels = filter_channels(available_channels, visible_channels, hidden_channels)
+
+            selected_channel = (query.get("channel", [None])[0] or None)
+            if selected_channel and selected_channel not in channels:
+                selected_channel = None
+
+            user_query = (query.get("user", [None])[0] or None)
+            html = render_activity_page(
+                self.stats,
+                self.aggregator,
+                channels=channels,
+                selected_channel=selected_channel,
+                user_query=user_query,
+            )
+            self._send_response(HTTPStatus.OK, html)
+        except Exception as e:
+            logging.error(f"Error rendering activity page: {e}")
+            self._send_error_page(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                  "Failed to render activity page.")
 
     def _handle_api_stats(self) -> None:
         """Handle API request for raw stats (JSON)."""

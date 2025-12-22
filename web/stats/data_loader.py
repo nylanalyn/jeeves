@@ -6,6 +6,8 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 
+HEATMAP_BINS = 7 * 24
+
 
 class JeevesStatsLoader:
     """Loads and aggregates statistics from all Jeeves modules."""
@@ -40,6 +42,7 @@ class JeevesStatsLoader:
             "coffee": self.load_coffee_stats(),
             "bell": self.load_bell_stats(),
             "achievements": self.load_achievements_stats(),
+            "activity": self.load_activity_stats(),
         }
 
     def load_users(self) -> Dict[str, Dict[str, Any]]:
@@ -290,6 +293,33 @@ class JeevesStatsLoader:
             "global_first_unlocks": achievements_data.get("global_first_unlocks", {}),
         }
 
+    def load_activity_stats(self) -> Dict[str, Any]:
+        """Load Activity module statistics.
+
+        Returns:
+            Dict containing global/channel/user heatmap buckets.
+        """
+        if not self.stats_path.exists():
+            return {"global": {"grid": [0] * HEATMAP_BINS, "total": 0}, "channels": {}, "users": {}}
+
+        with open(self.stats_path, "r") as f:
+            data = json.load(f)
+
+        activity = data.get("modules", {}).get("activity", {})
+        if not isinstance(activity, dict):
+            return {"global": {"grid": [0] * HEATMAP_BINS, "total": 0}, "channels": {}, "users": {}}
+
+        global_bucket = activity.get("global") or {"grid": [0] * HEATMAP_BINS, "total": 0}
+        channels = activity.get("channels") or {}
+        users = activity.get("users") or {}
+
+        if not isinstance(channels, dict):
+            channels = {}
+        if not isinstance(users, dict):
+            users = {}
+
+        return {"global": global_bucket, "channels": channels, "users": users}
+
 
 class StatsAggregator:
     """Aggregates and calculates cross-module statistics."""
@@ -449,3 +479,80 @@ class StatsAggregator:
         # Sort by value (descending) and return top N
         sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
         return sorted_results[:limit]
+
+    def find_user_id(self, query: str) -> Optional[str]:
+        """Best-effort lookup of a user_id from a nick/user_id string."""
+        if not query:
+            return None
+
+        query_norm = str(query).strip().lower()
+        if not query_norm:
+            return None
+
+        if query in self.stats.get("users", {}):
+            return query
+
+        for user_id, user_data in self.stats.get("users", {}).items():
+            if not isinstance(user_data, dict):
+                continue
+            canonical = str(user_data.get("canonical_nick", "")).lower()
+            if canonical and canonical == query_norm:
+                return user_id
+            for nick in user_data.get("seen_nicks", []) or []:
+                if str(nick).lower() == query_norm:
+                    return user_id
+
+        return None
+
+    def _normalize_bucket(self, bucket: Any) -> Dict[str, Any]:
+        default = {"grid": [0] * HEATMAP_BINS, "total": 0, "updated_at": None}
+        if not isinstance(bucket, dict):
+            return default
+        grid = bucket.get("grid")
+        if not isinstance(grid, list) or len(grid) != HEATMAP_BINS:
+            bucket = dict(bucket)
+            bucket["grid"] = [0] * HEATMAP_BINS
+        bucket.setdefault("total", 0)
+        bucket.setdefault("updated_at", None)
+        return bucket
+
+    def get_activity_bucket_global(self) -> Dict[str, Any]:
+        return self._normalize_bucket(self.stats.get("activity", {}).get("global"))
+
+    def get_activity_bucket_channel(self, channel: str) -> Dict[str, Any]:
+        return self._normalize_bucket(self.stats.get("activity", {}).get("channels", {}).get(channel))
+
+    def get_activity_bucket_user(self, user_id: str) -> Dict[str, Any]:
+        return self._normalize_bucket(self.stats.get("activity", {}).get("users", {}).get(user_id))
+
+    def get_heatmap_matrix(self, bucket: Dict[str, Any]) -> List[List[int]]:
+        grid = self._normalize_bucket(bucket).get("grid", [0] * HEATMAP_BINS)
+        rows: List[List[int]] = []
+        for dow in range(7):
+            start = dow * 24
+            rows.append([int(x or 0) for x in grid[start:start + 24]])
+        return rows
+
+    def get_heatmap_max(self, bucket: Dict[str, Any]) -> int:
+        grid = self._normalize_bucket(bucket).get("grid", [0] * HEATMAP_BINS)
+        try:
+            return max(int(x or 0) for x in grid) if grid else 0
+        except Exception:
+            return 0
+
+    def get_top_hours(self, bucket: Dict[str, Any], limit: int = 5) -> List[Tuple[int, int]]:
+        grid = self._normalize_bucket(bucket).get("grid", [0] * HEATMAP_BINS)
+        totals = [(hour, 0) for hour in range(24)]
+        for dow in range(7):
+            for hour in range(24):
+                idx = (dow * 24) + hour
+                totals[hour] = (hour, totals[hour][1] + int(grid[idx] or 0))
+        return sorted(totals, key=lambda x: x[1], reverse=True)[:limit]
+
+    def get_top_days(self, bucket: Dict[str, Any], limit: int = 3) -> List[Tuple[int, int]]:
+        grid = self._normalize_bucket(bucket).get("grid", [0] * HEATMAP_BINS)
+        totals: List[Tuple[int, int]] = []
+        for dow in range(7):
+            start = dow * 24
+            totals.append((dow, sum(int(x or 0) for x in grid[start:start + 24])))
+        return sorted(totals, key=lambda x: x[1], reverse=True)[:limit]

@@ -15,6 +15,7 @@ import yaml
 import shutil
 import functools
 import logging
+import random
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime, timezone
@@ -812,15 +813,60 @@ def main():
     print("="*40 + "\n", file=sys.stderr)
 
     bot = Jeeves(server, port, main_channel, nick, config=config, additional_channels=additional_channels)
-    
+
     def on_exit(sig, frame):
+        """Graceful shutdown handler with proper IRC disconnect and timeout."""
         bot.log_debug("[core] shutting down...")
-        if state_manager:
-            state_manager.force_save()
-        if bot and bot.pm:
-            bot.pm.unload_all()
-        sys.exit(0)
-    
+
+        # Set up a timeout to force exit if graceful shutdown hangs
+        def force_exit():
+            bot.log_debug("[core] Shutdown timeout reached, forcing exit")
+            os._exit(1)
+
+        shutdown_timer = threading.Timer(5.0, force_exit)
+        shutdown_timer.daemon = True
+        shutdown_timer.start()
+
+        try:
+            # Send IRC QUIT message and close connection properly
+            if bot and hasattr(bot, 'connection') and bot.connection.is_connected():
+                try:
+                    # Random Jeeves-appropriate quit messages
+                    quit_messages = [
+                        "My duties require me elsewhere, I'm afraid.",
+                        "I must take my leave. Good day.",
+                        "Duty calls elsewhere. I shall return.",
+                        "If you'll excuse me, I have matters to attend to.",
+                        "I shall return momentarily.",
+                        "Pardon the interruption. I shall return shortly.",
+                    ]
+                    quit_msg = random.choice(quit_messages)
+                    bot.log_debug(f"[core] Sending QUIT message to IRC server: {quit_msg}")
+                    bot.connection.quit(quit_msg)
+                    # Give the QUIT message a moment to send
+                    time.sleep(0.5)
+                except Exception as e:
+                    bot.log_debug(f"[core] Error sending QUIT: {e}")
+
+            # Save all state
+            if state_manager:
+                bot.log_debug("[core] Saving state...")
+                state_manager.force_save()
+
+            # Unload all modules
+            if bot and bot.pm:
+                bot.log_debug("[core] Unloading modules...")
+                bot.pm.unload_all()
+
+            bot.log_debug("[core] Shutdown complete")
+            shutdown_timer.cancel()
+            sys.exit(0)
+
+        except Exception as e:
+            bot.log_debug(f"[core] Error during shutdown: {e}")
+            shutdown_timer.cancel()
+            sys.exit(1)
+
     signal.signal(signal.SIGINT, on_exit)
     signal.signal(signal.SIGTERM, on_exit)
 

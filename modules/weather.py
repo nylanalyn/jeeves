@@ -96,6 +96,33 @@ class Weather(SimpleCommandModule):
             self._record_error(f"MET Norway API request failed for {lat},{lon}: {e}")
             return None
 
+    def _calculate_feels_like(self, temp_c: float, humidity: float, wind_speed_ms: float) -> float:
+        """Calculate feels-like temperature using heat index and wind chill formulas."""
+        temp_f = (temp_c * 9 / 5) + 32
+
+        # If cold (below 50°F / 10°C), use wind chill
+        if temp_f <= 50:
+            # Wind chill formula (requires wind speed in mph)
+            wind_mph = wind_speed_ms * 2.237
+            if wind_mph > 3:
+                feels_like_f = 35.74 + (0.6215 * temp_f) - (35.75 * (wind_mph ** 0.16)) + (0.4275 * temp_f * (wind_mph ** 0.16))
+                return round((feels_like_f - 32) * 5 / 9, 1)
+
+        # If warm (above 80°F / 26.7°C), use heat index
+        elif temp_f >= 80 and humidity >= 40:
+            # Heat index formula
+            hi = -42.379 + (2.04901523 * temp_f) + (10.14333127 * humidity)
+            hi -= 0.22475541 * temp_f * humidity
+            hi -= 6.83783e-3 * temp_f ** 2
+            hi -= 5.481717e-2 * humidity ** 2
+            hi += 1.22874e-3 * temp_f ** 2 * humidity
+            hi += 8.5282e-4 * temp_f * humidity ** 2
+            hi -= 1.99e-6 * temp_f ** 2 * humidity ** 2
+            return round((hi - 32) * 5 / 9, 1)
+
+        # Otherwise, feels like equals actual temperature
+        return temp_c
+
     def _format_weather_report(self, data: Dict[str, Any], location_name: str, requester: str, is_pirate: bool = False, target_user: Optional[str] = None) -> str:
         try:
             if is_pirate:
@@ -103,14 +130,21 @@ class Weather(SimpleCommandModule):
                 current = data.get('currently', {})
                 temp_f = current.get('temperature')
                 temp_c = round((temp_f - 32) * 5 / 9, 1) if temp_f is not None else None
+                feels_like_f = current.get('apparentTemperature')
+                feels_like_c = round((feels_like_f - 32) * 5 / 9, 1) if feels_like_f is not None else None
+                humidity = current.get('humidity')
+                humidity_pct = int(humidity * 100) if humidity is not None else None
                 wind_mph = round(current.get('windSpeed', 0.0))
                 wind_kph = round(wind_mph * 1.60934)
                 summary = current.get('summary', 'N/A')
                 temp_str = f"{int(temp_f)}°F/{temp_c}°C" if temp_f is not None else "N/A"
+                feels_like_str = f" Feels like: {int(feels_like_f)}°F/{feels_like_c}°C." if feels_like_f is not None else ""
+                humidity_str = f" Humidity: {humidity_pct}%." if humidity_pct is not None else ""
             else:
                 # MET Norway format
                 now = data['properties']['timeseries'][0]['data']['instant']['details']
                 temp_c = now.get('air_temperature')
+                humidity_pct = now.get('relative_humidity')
                 wind_speed_ms = float(now.get('wind_speed', 0.0))
                 wind_mph = round(wind_speed_ms * 2.237)
                 wind_kph = round(wind_speed_ms * 3.6)
@@ -118,7 +152,17 @@ class Weather(SimpleCommandModule):
                 summary = summary_code.replace('_', ' ').capitalize()
                 temp_str = f"{int((temp_c * 9 / 5) + 32)}°F/{temp_c}°C" if temp_c is not None else "N/A"
 
-            report = f"{summary}. Temp: {temp_str}. Wind: {wind_mph} mph / {wind_kph} kph."
+                # Calculate feels-like temperature
+                if temp_c is not None and humidity_pct is not None:
+                    feels_like_c = self._calculate_feels_like(temp_c, humidity_pct, wind_speed_ms)
+                    feels_like_f = int((feels_like_c * 9 / 5) + 32)
+                    feels_like_str = f" Feels like: {feels_like_f}°F/{feels_like_c}°C."
+                else:
+                    feels_like_str = ""
+
+                humidity_str = f" Humidity: {int(humidity_pct)}%." if humidity_pct is not None else ""
+
+            report = f"{summary}. Temp: {temp_str}.{feels_like_str}{humidity_str} Wind: {wind_mph} mph / {wind_kph} kph."
 
             if self.has_flavor_enabled(requester):
                 requester_title = self.bot.title_for(requester)

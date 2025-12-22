@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List
 
 from .base import SimpleCommandModule, admin_required
+from . import achievement_hooks
 
 UTC = timezone.utc
 
@@ -995,6 +996,12 @@ class Hunt(SimpleCommandModule):
         self._clear_reminder_state(save=False)
         self.log_debug(f"_end_hunt: caught entire flock of {flock_size} animals, cleared active_animals, saved scores")
         self.save_state()
+
+        # Record achievement progress
+        if action == "hunted":
+            achievement_hooks.record_animal_hunt(self.bot, username)
+        elif action == "hugged":
+            achievement_hooks.record_animal_hug(self.bot, username)
 
         # Build response message
         flock_msg = f"the entire {collective_noun} of {flock_size} {self._pluralize(display_name, flock_size)}" if flock_size > 1 else f"the {display_name}"

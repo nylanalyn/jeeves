@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Tuple
 from .constants import UTC, DUNGEON_REWARD_NAME
 from . import quest_utils
 from . import quest_progression
+from .. import achievement_hooks
 
 
 def apply_active_effects_to_combat(player: Dict[str, Any], base_win_chance: float, base_xp: int, is_win: bool) -> Tuple[float, int, List[str]]:
@@ -528,6 +529,10 @@ def close_mob_window(quest_module):
         # Save all player states
         quest_module.set_state("players", players_state)
         quest_module.save_state()
+
+        # Record achievement progress for quest completion for all participants
+        for p in participants:
+            achievement_hooks.record_quest_completion(quest_module.bot, p["username"])
 
         quest_module.set_state("active_mob", None)
         schedule.clear(quest_module.name)

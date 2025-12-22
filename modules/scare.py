@@ -4,6 +4,7 @@ import random
 import re
 from typing import Any, List
 from .base import SimpleCommandModule
+from . import achievement_hooks
 
 def setup(bot: Any) -> 'Scare':
     return Scare(bot)
@@ -43,4 +44,5 @@ class Scare(SimpleCommandModule):
     def _cmd_scare(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         story = random.choice(self.SPOOKY_STORIES)
         self.safe_reply(connection, event, f"{self.bot.title_for(username)}, steel yourself... {story}")
+        achievement_hooks.record_scare(self.bot, username)
         return True

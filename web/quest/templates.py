@@ -684,35 +684,16 @@ class TemplateEngine:
         </div>
         """
 
-        link_style = "" if not current_user else "display: none;"
-        action_style = "" if current_user else "display: none;"
-        current_user_html = sanitize(current_user) if current_user else ""
-
-        content += f"""
-        <div class="card action-card" id="link-section" style="{link_style}">
-            <h3>🔐 Link your IRC account</h3>
+        # Interactive questing features removed for security (read-only web interface)
+        content += """
+        <div class="card action-card">
+            <h3>📜 Quest on IRC</h3>
             <p class="description">
-                Run <code>!weblink</code> in IRC to get a short-lived code, then paste it below to play from the web.
+                This is a read-only leaderboard. To play, connect to IRC and use <code>!quest</code> commands.
             </p>
-            <form class="link-form" id="link-form">
-                <input type="text" name="token" id="link-token" placeholder="Enter your link code" autocomplete="one-time-code" required>
-                <button type="submit">Link account</button>
-            </form>
-            <div class="action-status" id="link-message"></div>
-        </div>
-
-        <div class="card action-card" id="action-section" style="{action_style}">
-            <h3>⚔️ Quest from the browser</h3>
-            <p class="description">
-                Logged in as <strong id="action-username">{current_user_html}</strong>. Choose a difficulty to embark on a solo quest.
+            <p class="description" style="font-size: 0.9em; color: var(--fg-dim);">
+                See the <a href="/commands" style="color: var(--link);">Commands page</a> for full IRC command reference.
             </p>
-            <div class="action-buttons">
-                <button type="button" data-difficulty="easy">Easy Quest</button>
-                <button type="button" data-difficulty="normal">Normal Quest</button>
-                <button type="button" data-difficulty="hard">Hard Quest</button>
-            </div>
-            <div class="action-output" id="action-output">Awaiting your command...</div>
-            <div class="action-status" id="action-status"></div>
         </div>
         """
 
@@ -917,67 +898,7 @@ class TemplateEngine:
                 }
             }
 
-            if (linkForm && linkInput) {
-                linkForm.addEventListener('submit', async function(ev) {
-                    ev.preventDefault();
-                    const token = (linkInput.value || '').trim();
-                    if (!token) {
-                        setStatus(linkMessage, 'Please enter your link code.', 'error');
-                        return;
-                    }
-                    setStatus(linkMessage, 'Linking account…');
-                    try {
-                        const res = await fetch('/api/link/claim', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ token })
-                        });
-                        const data = await res.json();
-                        if (!res.ok || !data.success) {
-                            throw new Error(data.error || 'Unable to link account.');
-                        }
-                        setStatus(linkMessage, 'Linked successfully! You can quest from here now.', 'success');
-                        if (linkSection && actionSection) {
-                            linkSection.style.display = 'none';
-                            actionSection.style.display = '';
-                        }
-                        if (actionUsername && data.username) {
-                            actionUsername.textContent = data.username;
-                        }
-                    } catch (err) {
-                        setStatus(linkMessage, err.message || 'Unable to link account.', 'error');
-                    }
-                });
-            }
-
-            if (actionButtons.length && actionOutput && actionStatus) {
-                actionButtons.forEach((button) => {
-                    button.addEventListener('click', async () => {
-                        const difficulty = button.getAttribute('data-difficulty');
-                        setStatus(actionStatus, 'Venturing forth…');
-                        actionOutput.textContent = '';
-                        try {
-                            const res = await fetch('/api/quest/solo', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ difficulty })
-                            });
-                            const data = await res.json();
-                            if (!res.ok || !data.success) {
-                                throw new Error(data.error || 'Quest failed.');
-                            }
-                            const messages = Array.isArray(data.messages) ? data.messages : [];
-                            actionOutput.textContent = messages.join('\\n') || 'No response from Jeeves.';
-                            if (data.username && actionUsername) {
-                                actionUsername.textContent = data.username;
-                            }
-                            setStatus(actionStatus, 'Quest complete!', 'success');
-                        } catch (err) {
-                            setStatus(actionStatus, err.message || 'Quest failed.', 'error');
-                        }
-                    });
-                });
-            }
+            // Interactive features removed - this is now a read-only interface
         })();
         </script>
         """
@@ -1078,10 +999,6 @@ class TemplateEngine:
             {
                 "cmd": "!dungeon quit",
                 "desc": "Abandon your dungeon run and claim partial rewards"
-            },
-            {
-                "cmd": "!weblink",
-                "desc": "Generate a short-lived code to link your IRC account to the quest website for browser play"
             }
         ]
 
@@ -1198,39 +1115,9 @@ class TemplateEngine:
         # Unlocked abilities
         unlocked_abilities = player.get("unlocked_abilities", [])
 
-        link_style = "" if not current_user else "display: none;"
-        action_style = "" if current_user else "display: none;"
-        current_user_html = sanitize(current_user) if current_user else ""
-
         content = f"""
         <div style="margin-bottom: 20px;">
             <a href="/" style="color: var(--link); text-decoration: none;">&larr; Back to Leaderboard</a>
-        </div>
-
-        <div class="card action-card" id="link-section" style="{link_style}">
-            <h3>🔐 Link your IRC account</h3>
-            <p class="description">
-                Run <code>!weblink</code> in IRC to get a short-lived code, then paste it below to play from the web.
-            </p>
-            <form class="link-form" id="link-form">
-                <input type="text" name="token" id="link-token" placeholder="Enter your link code" autocomplete="one-time-code" required>
-                <button type="submit">Link account</button>
-            </form>
-            <div class="action-status" id="link-message"></div>
-        </div>
-
-        <div class="card action-card" id="action-section" style="{action_style}">
-            <h3>⚔️ Quest from the browser</h3>
-            <p class="description">
-                Logged in as <strong id="action-username">{current_user_html}</strong>. Choose a difficulty to embark on a solo quest.
-            </p>
-            <div class="action-buttons">
-                <button type="button" data-difficulty="easy">Easy Quest</button>
-                <button type="button" data-difficulty="normal">Normal Quest</button>
-                <button type="button" data-difficulty="hard">Hard Quest</button>
-            </div>
-            <div class="action-output" id="action-output">Awaiting your command...</div>
-            <div class="action-status" id="action-status"></div>
         </div>
 
         <div class="card" style="margin-bottom: 20px;">

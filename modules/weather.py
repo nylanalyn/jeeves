@@ -4,6 +4,7 @@ import re
 import json
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
+from . import achievement_hooks
 
 class Weather(SimpleCommandModule):
     name = "weather"
@@ -192,6 +193,8 @@ class Weather(SimpleCommandModule):
             is_pirate = country_code == "US"
             report = self._format_weather_report(weather_data, location_name, requester, is_pirate, target_user)
             self.safe_reply(connection, event, report)
+            # Record achievement progress
+            achievement_hooks.record_weather_check(self.bot, requester)
         else:
             if self.has_flavor_enabled(requester):
                 self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(requester)}, I could not fetch the weather.")

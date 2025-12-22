@@ -19,6 +19,7 @@ from .constants import (
     DUNGEON_REWARD_CHARGES,
 )
 from . import quest_utils
+from .. import achievement_hooks
 
 
 def get_prestige_win_bonus(prestige: int) -> float:
@@ -460,6 +461,11 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
         player["win_streak"] = current_streak + 1
         player["wins"] = player.get("wins", 0) + 1
 
+        # Record achievement progress for quest win
+        achievement_hooks.record_quest_win(quest_module.bot, username)
+        # Record win streak achievement if applicable
+        achievement_hooks.record_win_streak(quest_module.bot, username, player["win_streak"])
+
     first_win_bonus = quest_module.get_config_value("first_win_bonus_xp", default=50)
 
     if is_win and player.get("last_win_date") != today:
@@ -591,6 +597,9 @@ def deduct_xp(quest_module, user_id: str, username: str, amount: int) -> Dict[st
     # Reset win streak on loss and increment loss counter
     player["win_streak"] = 0
     player["losses"] = player.get("losses", 0) + 1
+
+    # Record achievement progress for quest loss
+    achievement_hooks.record_quest_loss(quest_module.bot, username)
 
     players = quest_module.get_state("players")
     players[user_id] = player
@@ -881,6 +890,9 @@ def handle_prestige(quest_module, connection, event, username, args):
     quest_module.safe_reply(connection, event, f"*** {quest_module.bot.title_for(username)} HAS ASCENDED TO PRESTIGE {new_prestige}! ***")
     quest_module.safe_reply(connection, event, f"Reborn at Level 1 with permanent bonuses: {bonus_text}")
     quest_module.safe_reply(connection, event, f"The cycle begins anew, but you are forever changed...")
+
+    # Record achievement progress for prestige level
+    achievement_hooks.record_prestige_level(quest_module.bot, username, new_prestige)
 
     return True
 

@@ -1,13 +1,8 @@
 # web/quest/handlers.py
-# HTTP request handlers for quest web UI
+# HTTP request handlers for quest web UI (read-only)
 
 import json
 import logging
-import secrets
-import threading
-import time
-from http import HTTPStatus
-from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
@@ -16,14 +11,10 @@ from urllib.parse import parse_qs, urlparse
 from .templates import TemplateEngine
 from .themes import ThemeManager
 from .utils import sanitize, validate_search_term, load_quest_state, load_challenge_paths, load_mob_cooldowns, load_boss_hunt_data, sort_players_by_prestige
-from .actions import QuestActionService
-
-SESSION_COOKIE = "jeeves_quest_session"
-SESSION_TTL = 24 * 60 * 60  # 24 hours
 
 
 class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for quest web UI."""
+    """HTTP request handler for quest web UI (read-only display)."""
 
     def __init__(self, *args, games_path: Path, content_path: Path, **kwargs):
         # Initialize all instance attributes BEFORE calling super().__init__()
@@ -36,7 +27,6 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         self.challenge_info = load_challenge_paths(content_path / "challenge_paths.json")
         self.mob_cooldowns = load_mob_cooldowns(games_path)
         self.boss_hunt_data = load_boss_hunt_data(games_path)
-        self.active_session_id: Optional[str] = None
         # Now call parent init which will handle the request
         super().__init__(*args, **kwargs)
 
@@ -50,170 +40,14 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         self.challenge_info = load_challenge_paths(self.content_path / "challenge_paths.json")
         self.mob_cooldowns = load_mob_cooldowns(self.games_path)
         self.boss_hunt_data = load_boss_hunt_data(self.games_path)
-        self.active_session_id = None
-
-    # --- Session helpers -------------------------------------------------
-    def _prune_sessions(self) -> None:
-        now = time.time()
-        with self.session_lock:
-            for session_id, session in list(self.session_store.items()):
-                if session.get("expires_at", 0) <= now:
-                    self.session_store.pop(session_id, None)
-
-    def _current_session(self) -> Optional[Dict[str, Any]]:
-        self._prune_sessions()
-        cookie_header = self.headers.get("Cookie")
-        if not cookie_header:
-            return None
-        cookie = SimpleCookie()
-        cookie.load(cookie_header)
-        morsel = cookie.get(SESSION_COOKIE)
-        if not morsel:
-            return None
-        session_id = morsel.value
-        with self.session_lock:
-            session = self.session_store.get(session_id)
-            if not session:
-                return None
-            if session.get("expires_at", 0) <= time.time():
-                self.session_store.pop(session_id, None)
-                return None
-            session["expires_at"] = time.time() + SESSION_TTL
-            self.session_store[session_id] = session
-            self.active_session_id = session_id
-            return session
-
-    def _start_session(self, user_id: str, username: str) -> str:
-        session_id = secrets.token_urlsafe(24)
-        session_data = {
-            "user_id": user_id,
-            "username": username,
-            "created_at": time.time(),
-            "expires_at": time.time() + SESSION_TTL,
-        }
-        with self.session_lock:
-            self.session_store[session_id] = session_data
-        self.active_session_id = session_id
-        return f"{SESSION_COOKIE}={session_id}; Path=/; HttpOnly; SameSite=Lax"
-
-    def _clear_current_session(self) -> None:
-        if not self.active_session_id:
-            return
-        with self.session_lock:
-            self.session_store.pop(self.active_session_id, None)
-        self.active_session_id = None
-
-    # --- Request helpers -------------------------------------------------
-    def _read_json_body(self) -> Optional[Dict[str, Any]]:
-        try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            length = 0
-        if length <= 0:
-            return {}
-        body = self.rfile.read(length)
-        try:
-            return json.loads(body.decode("utf-8"))
-        except json.JSONDecodeError:
-            return None
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003 pylint: disable=redefined-builtin
         """Override to reduce log noise."""
         if "--debug" in args:  # Only log when debugging
             super().log_message(format, *args)
 
-    def _handle_api_session(self) -> None:
-        session = self._current_session()
-        if not session:
-            self._send_json({"authenticated": False})
-            return
-        self._send_json({
-            "authenticated": True,
-            "username": session.get("username"),
-        })
-
-    def _handle_api_link_claim(self) -> None:
-        payload = self._read_json_body()
-        if payload is None or "token" not in payload:
-            self._send_json({"success": False, "error": "Invalid request payload"}, status=400)
-            return
-
-        token = str(payload.get("token", "")).strip()
-        if not token:
-            self._send_json({"success": False, "error": "Token is required"}, status=400)
-            return
-
-        result = self.action_service.consume_link_token(token)
-        if not result or not result.get("user_id"):
-            self._send_json({"success": False, "error": "Token is invalid or expired"}, status=400)
-            return
-
-        username = result.get("username") or result["user_id"]
-        cookie_header = self._start_session(result["user_id"], username)
-        self._send_json(
-            {"success": True, "username": username},
-            headers={"Set-Cookie": cookie_header}
-        )
-
-    def _handle_api_quest_solo(self) -> None:
-        session = self._current_session()
-        if not session:
-            self._send_json({"success": False, "error": "Not authenticated"}, status=401)
-            return
-
-        payload = self._read_json_body() or {}
-        difficulty = str(payload.get("difficulty", "normal")).lower()
-        allowed = {"easy", "normal", "hard"}
-        if difficulty not in allowed:
-            self._send_json({"success": False, "error": "Invalid difficulty"}, status=400)
-            return
-
-        try:
-            result = self.action_service.perform_solo_quest(session["user_id"], difficulty)
-        except Exception as exc:  # pylint: disable=broad-except
-            logging.exception("Failed to run solo quest via web: %s", exc)
-            self._send_json({"success": False, "error": "Quest action failed"}, status=500)
-            return
-
-        # Keep username in session store up-to-date and extend cookie
-        response_data = {"success": True}
-        response_data.update(result)
-        if result.get("username"):
-            with self.session_lock:
-                if self.active_session_id and self.active_session_id in self.session_store:
-                    self.session_store[self.active_session_id]["username"] = result["username"]
-        self._send_json(response_data)
-
-    def _handle_api_use_item(self) -> None:
-        session = self._current_session()
-        if not session:
-            self._send_json({"success": False, "error": "Not authenticated"}, status=401)
-            return
-
-        payload = self._read_json_body() or {}
-        item_name = str(payload.get("item", "")).strip()
-        if not item_name:
-            self._send_json({"success": False, "error": "Item name is required"}, status=400)
-            return
-
-        try:
-            result = self.action_service.use_item(session["user_id"], item_name)
-        except Exception as exc:  # pylint: disable=broad-except
-            logging.exception("Failed to use item via web: %s", exc)
-            self._send_json({"success": False, "error": "Failed to use item"}, status=500)
-            return
-
-        # Keep username in session store up-to-date
-        response_data = {"success": True}
-        response_data.update(result)
-        if result.get("username"):
-            with self.session_lock:
-                if self.active_session_id and self.active_session_id in self.session_store:
-                    self.session_store[self.active_session_id]["username"] = result["username"]
-        self._send_json(response_data)
-
     def do_GET(self) -> None:
-        """Handle GET requests."""
+        """Handle GET requests (read-only)."""
         try:
             parsed_path = urlparse(self.path)
             if parsed_path.path == "/":
@@ -224,8 +58,6 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
                 self._handle_player_detail()
             elif parsed_path.path == "/api/status":
                 self._handle_api_status()
-            elif parsed_path.path == "/api/session":
-                self._handle_api_session()
             elif parsed_path.path == "/api/reload":
                 self._handle_api_reload()
             else:
@@ -235,17 +67,11 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             self._send_500()
 
     def do_POST(self) -> None:
-        """Handle POST requests."""
+        """Handle POST requests (read-only operations only)."""
         try:
             parsed_path = urlparse(self.path)
             if parsed_path.path == "/api/reload":
                 self._handle_api_reload()
-            elif parsed_path.path == "/api/link/claim":
-                self._handle_api_link_claim()
-            elif parsed_path.path == "/api/quest/solo":
-                self._handle_api_quest_solo()
-            elif parsed_path.path == "/api/item/use":
-                self._handle_api_use_item()
             else:
                 self._send_404()
         except Exception as e:
@@ -269,9 +95,6 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
         # Sort players
         sorted_players = sort_players_by_prestige(filtered_players)
 
-        session = self._current_session()
-        current_user = session.get("username") if session else None
-
         content = self.template_engine.render_leaderboard(
             sorted_players,
             self.classes,
@@ -279,7 +102,7 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             self.challenge_info,
             self.mob_cooldowns,
             self.boss_hunt_data,
-            current_user
+            None  # No authenticated user (interactive features removed)
         )
 
         html = self.template_engine.render_page(
@@ -319,11 +142,8 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             self._send_404()
             return
 
-        session = self._current_session()
-        current_user = session.get("username") if session else None
-
         player_class = self.classes.get(user_id, "No class")
-        content = self.template_engine.render_player_detail(player, player_class, self.challenge_info, current_user)
+        content = self.template_engine.render_player_detail(player, player_class, self.challenge_info, None)  # No authenticated user
         html = self.template_engine.render_page(
             f"{player.get('username', 'Player')} - Profile",
             content,
@@ -421,18 +241,8 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
 
 
 def create_handler_class(games_path: Path, content_path: Path) -> type:
-    """Create a request handler class with bound paths."""
-    config_dir = games_path.parent
-    config_path = config_dir / "config.yaml"
-    shared_session_store: Dict[str, Dict[str, Any]] = {}
-    shared_session_lock = threading.RLock()
-    shared_action_service = QuestActionService(config_dir, config_path)
-
+    """Create a request handler class with bound paths (read-only)."""
     class BoundRequestHandler(QuestHTTPRequestHandler):
-        session_store = shared_session_store
-        session_lock = shared_session_lock
-        action_service = shared_action_service
-
         def __init__(self, *args, **kwargs):
             super().__init__(*args, games_path=games_path, content_path=content_path, **kwargs)
 

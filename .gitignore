@@ -109,3 +109,6 @@ docs/*_audit.md
 *.backup
 config/*.backup
 .aider*
+
+# --- Team Reports ---
+team_reports/

@@ -477,3 +477,368 @@ def _escape_html(text: str) -> str:
             .replace(">", "&gt;")
             .replace('"', "&quot;")
             .replace("'", "&#x27;"))
+
+
+def render_achievements_page(stats: Dict[str, Any]) -> str:
+    """Render the achievements page.
+
+    Args:
+        stats: All loaded stats from JeevesStatsLoader
+
+    Returns:
+        HTML string
+    """
+    # Achievement definitions (copied from modules/achievements.py)
+    ACHIEVEMENTS = {
+        # Quest Achievements
+        "quest_novice": {"name": "Quest Novice", "description": "Complete 10 quests", "category": "quest", "requirement": {"quests_completed": 10}, "secret": False, "tier": 1},
+        "quest_adept": {"name": "Quest Adept", "description": "Complete 50 quests", "category": "quest", "requirement": {"quests_completed": 50}, "secret": False, "tier": 2},
+        "quest_master": {"name": "Quest Master", "description": "Complete 100 quests", "category": "quest", "requirement": {"quests_completed": 100}, "secret": False, "tier": 3},
+        "quest_legend": {"name": "Quest Legend", "description": "Complete 500 quests", "category": "quest", "requirement": {"quests_completed": 500}, "secret": False, "tier": 4},
+        "quest_mythic": {"name": "Quest Mythic", "description": "Complete 1000 quests", "category": "quest", "requirement": {"quests_completed": 1000}, "secret": False, "tier": 5},
+        "prestige_1": {"name": "First Prestige", "description": "Reach Prestige 1", "category": "quest", "requirement": {"prestige": 1}, "secret": False},
+        "prestige_5": {"name": "Prestige Elite", "description": "Reach Prestige 5", "category": "quest", "requirement": {"prestige": 5}, "secret": False},
+        "prestige_10": {"name": "Prestige Master", "description": "Reach Prestige 10", "category": "quest", "requirement": {"prestige": 10}, "secret": False},
+        "win_streak_5": {"name": "On a Roll", "description": "Win 5 quests in a row", "category": "quest", "requirement": {"win_streak": 5}, "secret": False},
+        "win_streak_10": {"name": "Unstoppable", "description": "Win 10 quests in a row", "category": "quest", "requirement": {"win_streak": 10}, "secret": False},
+        "win_streak_25": {"name": "Legendary Streak", "description": "Win 25 quests in a row", "category": "quest", "requirement": {"win_streak": 25}, "secret": False},
+        "unlucky": {"name": "Unlucky", "description": "Lose 10 quests in a row", "category": "quest", "requirement": {"loss_streak": 10}, "secret": True},
+
+        # Creature/Animal Achievements
+        "hunter_1": {"name": "Hunter", "description": "Hunt 10 creatures", "category": "creatures", "requirement": {"animals_hunted": 10}, "secret": False, "tier": 1},
+        "hunter_2": {"name": "Hunter II", "description": "Hunt 50 creatures", "category": "creatures", "requirement": {"animals_hunted": 50}, "secret": False, "tier": 2},
+        "hunter_3": {"name": "Hunter III", "description": "Hunt 100 creatures", "category": "creatures", "requirement": {"animals_hunted": 100}, "secret": False, "tier": 3},
+        "apex_predator": {"name": "Apex Predator", "description": "Hunt 250 creatures", "category": "creatures", "requirement": {"animals_hunted": 250}, "secret": False, "tier": 4},
+        "lover_1": {"name": "Animal Lover", "description": "Hug 10 creatures", "category": "creatures", "requirement": {"animals_hugged": 10}, "secret": False, "tier": 1},
+        "lover_2": {"name": "Animal Lover II", "description": "Hug 50 creatures", "category": "creatures", "requirement": {"animals_hugged": 50}, "secret": False, "tier": 2},
+        "lover_3": {"name": "Animal Lover III", "description": "Hug 100 creatures", "category": "creatures", "requirement": {"animals_hugged": 100}, "secret": False, "tier": 3},
+        "pacifist": {"name": "Pacifist", "description": "Hug 100 creatures without hunting any", "category": "creatures", "requirement": {"animals_hugged": 100, "animals_hunted": 0}, "secret": True},
+        "bloodthirsty": {"name": "Bloodthirsty", "description": "Hunt 100 creatures without hugging any", "category": "creatures", "requirement": {"animals_hunted": 100, "animals_hugged": 0}, "secret": True},
+
+        # Coffee Achievements
+        "coffee_drinker": {"name": "Coffee Drinker", "description": "Order 25 coffees", "category": "social", "requirement": {"coffees_ordered": 25}, "secret": False, "tier": 1},
+        "coffee_addict": {"name": "Coffee Addict", "description": "Order 100 coffees", "category": "social", "requirement": {"coffees_ordered": 100}, "secret": False, "tier": 2},
+        "caffeine_overload": {"name": "Caffeine Overload", "description": "Order 500 coffees", "category": "social", "requirement": {"coffees_ordered": 500}, "secret": False, "tier": 3},
+
+        # Social/Usage Achievements
+        "weatherwatcher": {"name": "Weatherwatcher", "description": "Check weather 50 times", "category": "social", "requirement": {"weather_checks": 50}, "secret": False},
+        "meteorologist": {"name": "Meteorologist", "description": "Check weather 200 times", "category": "social", "requirement": {"weather_checks": 200}, "secret": False},
+        "polite": {"name": "Polite", "description": "Send 50 courtesy messages", "category": "social", "requirement": {"courtesy_messages": 50}, "secret": False},
+        "karma_farmer": {"name": "Karma Farmer", "description": "Give 100 karma points", "category": "social", "requirement": {"karma_given": 100}, "secret": False},
+        "translator": {"name": "Translator", "description": "Use translation 25 times", "category": "social", "requirement": {"translations_used": 25}, "secret": False},
+        "scare_tactics": {"name": "Scare Tactics", "description": "Scare 25 people", "category": "fun", "requirement": {"scares_sent": 25}, "secret": False},
+        "gif_master": {"name": "GIF Master", "description": "Post 50 GIFs", "category": "fun", "requirement": {"gifs_posted": 50}, "secret": False},
+
+        # Meta Achievements
+        "achievement_hunter": {"name": "Achievement Hunter", "description": "Unlock 5 achievements", "category": "meta", "requirement": {"achievements_unlocked": 5}, "secret": False, "tier": 1},
+        "achievement_master": {"name": "Achievement Master", "description": "Unlock 15 achievements", "category": "meta", "requirement": {"achievements_unlocked": 15}, "secret": False, "tier": 2},
+        "completionist": {"name": "Completionist", "description": "Unlock 30 achievements", "category": "meta", "requirement": {"achievements_unlocked": 30}, "secret": True, "tier": 3},
+        "first_blood": {"name": "First!", "description": "Be the first to unlock any achievement globally", "category": "meta", "requirement": "special", "secret": True},
+        "trendsetter": {"name": "Trendsetter", "description": "Be the first to unlock 5 different achievements globally", "category": "meta", "requirement": "special", "secret": True},
+    }
+
+    # Get achievement data
+    achievements_data = stats.get("achievements", {})
+    user_achievements = achievements_data.get("user_achievements", {})
+    global_first_unlocks = achievements_data.get("global_first_unlocks", {})
+
+    # Calculate stats
+    total_users_tracking = len(user_achievements)
+    total_achievements_unlocked = sum(len(user_data.get("unlocked", [])) for user_data in user_achievements.values())
+
+    # Group achievements by category
+    categories = {"quest": [], "creatures": [], "social": [], "fun": [], "meta": []}
+    for ach_id, ach_data in ACHIEVEMENTS.items():
+        category = ach_data.get("category", "other")
+        if category in categories:
+            categories[category].append((ach_id, ach_data))
+
+    # Build category sections HTML
+    category_sections = ""
+    category_icons = {
+        "quest": "⚔️",
+        "creatures": "🦌",
+        "social": "👥",
+        "fun": "🎉",
+        "meta": "🏆"
+    }
+
+    for cat_name, cat_achievements in categories.items():
+        if not cat_achievements:
+            continue
+
+        icon = category_icons.get(cat_name, "🎯")
+        category_sections += f"""
+        <div class="achievement-category">
+            <h3>{icon} {cat_name.title()} Achievements</h3>
+            <div class="achievement-grid">
+        """
+
+        for ach_id, ach_data in cat_achievements:
+            tier = ach_data.get("tier", 0)
+            tier_badge = f'<span class="tier-badge tier-{tier}">Tier {tier}</span>' if tier > 0 else ''
+            secret_badge = '<span class="secret-badge">🤫 Secret</span>' if ach_data.get("secret") else ''
+
+            # Check who has this
+            unlock_count = sum(1 for user_data in user_achievements.values() if ach_id in user_data.get("unlocked", []))
+            first_unlock = global_first_unlocks.get(ach_id, {})
+            first_user = stats["users"].get(first_unlock.get("user_id", ""), {}).get("canonical_nick", "Unknown") if first_unlock else None
+
+            rarity_pct = (unlock_count / total_users_tracking * 100) if total_users_tracking > 0 else 0
+            rarity_class = "legendary" if rarity_pct < 5 else "epic" if rarity_pct < 20 else "rare" if rarity_pct < 50 else "common"
+
+            first_text = f'<div class="first-unlock">🥇 First: {escape_html(first_user)}</div>' if first_user else ''
+
+            category_sections += f"""
+            <div class="achievement-card {rarity_class}">
+                <div class="achievement-header">
+                    <h4>{escape_html(ach_data['name'])}</h4>
+                    {tier_badge}
+                    {secret_badge}
+                </div>
+                <p class="achievement-desc">{escape_html(ach_data['description'])}</p>
+                <div class="achievement-stats">
+                    <div class="unlock-count">{unlock_count} / {total_users_tracking} unlocked ({rarity_pct:.1f}%)</div>
+                    {first_text}
+                </div>
+            </div>
+            """
+
+        category_sections += """
+            </div>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeeves Achievements</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 2rem;
+        }}
+
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+        }}
+
+        header {{
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }}
+
+        header h1 {{
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }}
+
+        nav {{
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }}
+
+        nav a {{
+            color: #764ba2;
+            text-decoration: none;
+            margin: 0 1rem;
+            font-weight: 600;
+            transition: color 0.3s;
+        }}
+
+        nav a:hover {{
+            color: #667eea;
+        }}
+
+        .stats-summary {{
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }}
+
+        .stat-box {{
+            text-align: center;
+            padding: 1rem;
+        }}
+
+        .stat-box .number {{
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #764ba2;
+        }}
+
+        .stat-box .label {{
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }}
+
+        .achievement-category {{
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }}
+
+        .achievement-category h3 {{
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            color: #764ba2;
+        }}
+
+        .achievement-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }}
+
+        .achievement-card {{
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #ccc;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }}
+
+        .achievement-card:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }}
+
+        .achievement-card.legendary {{
+            border-left-color: #ff6b35;
+            background: linear-gradient(to right, #fff9f0, white);
+        }}
+
+        .achievement-card.epic {{
+            border-left-color: #9c27b0;
+            background: linear-gradient(to right, #f9f0ff, white);
+        }}
+
+        .achievement-card.rare {{
+            border-left-color: #2196f3;
+            background: linear-gradient(to right, #f0f8ff, white);
+        }}
+
+        .achievement-card.common {{
+            border-left-color: #4caf50;
+        }}
+
+        .achievement-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }}
+
+        .achievement-header h4 {{
+            font-size: 1.2rem;
+            color: #333;
+        }}
+
+        .tier-badge {{
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #333;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }}
+
+        .tier-badge.tier-2 {{ background: linear-gradient(135deg, #c0c0c0, #e8e8e8); }}
+        .tier-badge.tier-3 {{ background: linear-gradient(135deg, #cd7f32, #e9b872); }}
+        .tier-badge.tier-4 {{ background: linear-gradient(135deg, #9c27b0, #ce93d8); }}
+        .tier-badge.tier-5 {{ background: linear-gradient(135deg, #ff6b35, #ff9f80); }}
+
+        .secret-badge {{
+            background: #333;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            margin-left: 0.5rem;
+        }}
+
+        .achievement-desc {{
+            color: #666;
+            margin-bottom: 1rem;
+            font-size: 0.95rem;
+        }}
+
+        .achievement-stats {{
+            border-top: 1px solid #eee;
+            padding-top: 0.75rem;
+            font-size: 0.85rem;
+            color: #888;
+        }}
+
+        .unlock-count {{
+            font-weight: 600;
+            color: #764ba2;
+        }}
+
+        .first-unlock {{
+            margin-top: 0.5rem;
+            font-style: italic;
+            color: #ff6b35;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏆 Jeeves Achievements</h1>
+            <p>Track your progress across all Jeeves activities</p>
+        </header>
+
+        <nav>
+            <a href="/">📊 Overview</a>
+            <a href="/achievements">🏆 Achievements</a>
+        </nav>
+
+        <div class="stats-summary">
+            <div class="stat-box">
+                <div class="number">{len(ACHIEVEMENTS)}</div>
+                <div class="label">Total Achievements</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{total_users_tracking}</div>
+                <div class="label">Users Tracking</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{total_achievements_unlocked}</div>
+                <div class="label">Total Unlocks</div>
+            </div>
+        </div>
+
+        {category_sections}
+    </div>
+</body>
+</html>"""
+
+    return html

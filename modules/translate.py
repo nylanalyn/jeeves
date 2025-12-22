@@ -4,6 +4,7 @@ import re
 from typing import Optional, List, Dict, Any
 
 from .base import SimpleCommandModule, admin_required
+from . import achievement_hooks
 
 try:
     import deepl
@@ -137,6 +138,9 @@ class Translate(SimpleCommandModule):
 
             self.set_state("translations_done", self.get_state("translations_done", 0) + 1)
             self.save_state()
+
+            # Record achievement progress
+            achievement_hooks.record_translation(self.bot, username)
 
             if has_flavor:
                 self.safe_reply(connection, event, f"{self.bot.title_for(username)}, ({detected_lang} -> {normalized_lang}): \"{translated_text}\"")

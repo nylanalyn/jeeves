@@ -361,14 +361,14 @@ class ConfigValidator:
             ))
             return
 
-        # Define expected API key formats
+        # Define expected API key formats (relaxed patterns to accept various valid formats)
         key_formats = {
             "giphy": r"^[a-zA-Z0-9_-]{32}$",  # Giphy API keys are 32 chars
             "youtube": r"^AIza[0-9A-Za-z_-]{35}$",  # YouTube API keys start with AIza
-            "openai_api_key": r"^sk-[a-zA-Z0-9]{48}$",  # OpenAI API keys format
+            "openai_api_key": r"^sk-[a-zA-Z0-9_-]{40,}$",  # OpenAI API keys (sk- prefix, 40+ chars)
             "shlink_key": r"^[a-zA-Z0-9_-]{20,}$",  # Shlink keys vary in length
             "pirateweather": r"^[a-zA-Z0-9_-]{32}$",  # PirateWeather API keys
-            "deepl_api_key": r"^[a-zA-Z0-9_-]{36}$",  # DeepL API keys are 36 chars
+            "deepl_api_key": r"^[a-zA-Z0-9_:-]{32,}$",  # DeepL API keys (free/pro, varying lengths, may contain colons)
         }
 
         for key_name, key_value in api_keys.items():

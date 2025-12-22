@@ -4,6 +4,7 @@ import re
 import time
 from typing import Any, Dict, Optional
 from .base import SimpleCommandModule
+from . import achievement_hooks
 
 
 def setup(bot: Any) -> 'Karma':
@@ -110,6 +111,10 @@ class Karma(SimpleCommandModule):
         self.save_state()
 
         self.log_debug(f"Karma: {giver_nick} gave {amount} to {receiver_nick} (new total: {karma_scores[receiver_id]})")
+
+        # Record achievement progress for positive karma given
+        if amount > 0:
+            achievement_hooks.record_karma_given(self.bot, giver_nick, amount)
 
         return True
 

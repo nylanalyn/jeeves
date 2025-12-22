@@ -10,7 +10,7 @@ from typing import Tuple
 from urllib.parse import urlparse
 
 from .data_loader import JeevesStatsLoader, StatsAggregator
-from .templates import render_overview_page
+from .templates import render_overview_page, render_achievements_page
 
 
 class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -110,6 +110,8 @@ class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
         # Route to appropriate handler
         if path == "/" or path == "/index.html":
             self._handle_overview()
+        elif path == "/achievements":
+            self._handle_achievements()
         elif path == "/api/stats":
             self._handle_api_stats()
         else:
@@ -124,6 +126,16 @@ class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
             logging.error(f"Error rendering overview page: {e}")
             self._send_error_page(HTTPStatus.INTERNAL_SERVER_ERROR,
                                 "Failed to render overview page.")
+
+    def _handle_achievements(self) -> None:
+        """Handle the achievements page."""
+        try:
+            html = render_achievements_page(self.stats)
+            self._send_response(HTTPStatus.OK, html)
+        except Exception as e:
+            logging.error(f"Error rendering achievements page: {e}")
+            self._send_error_page(HTTPStatus.INTERNAL_SERVER_ERROR,
+                                "Failed to render achievements page.")
 
     def _handle_api_stats(self) -> None:
         """Handle API request for raw stats (JSON)."""

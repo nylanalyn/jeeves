@@ -4,6 +4,7 @@ Description=Jeeves IRC Butler
 
 [Service]
 WorkingDirectory=%h/CODE/jeeves
+EnvironmentFile=%h/.env
 ExecStart=/bin/sh -c 'cd %h/CODE/jeeves && source .venv/bin/activate && python jeeves.py'
 Restart=on-failure
 RestartSec=2

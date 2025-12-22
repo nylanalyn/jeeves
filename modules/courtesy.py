@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from .base import SimpleCommandModule, admin_required
+from . import achievement_hooks
 
 UTC = timezone.utc
 
@@ -70,6 +71,7 @@ class Courtesy(SimpleCommandModule):
             title = self._normalize_gender_to_title(gender)
             self._set_user_profile(user_id, title=title)
             self.safe_reply(connection, event, f"Very good, {username}. I shall address you as {self.bot.title_for(username)} henceforth.")
+            achievement_hooks.record_courtesy_message(self.bot, username)
             return True
 
         pronoun_match = self.RE_PRONOUNS_SET.search(msg)
@@ -79,11 +81,13 @@ class Courtesy(SimpleCommandModule):
             pronouns = self._normalize_pronouns(pronouns_str)
             self._set_user_profile(user_id, pronouns=pronouns)
             self.safe_reply(connection, event, f"Noted, {username}. Your pronouns are set to {pronouns}.")
+            achievement_hooks.record_courtesy_message(self.bot, username)
             return True
-            
+
         if self.RE_NO_ASSUME.search(msg):
             self._set_user_profile(user_id, title="neutral")
             self.safe_reply(connection, event, f"My apologies, {username}. I shall use neutral address for you.")
+            achievement_hooks.record_courtesy_message(self.bot, username)
             return True
         return False
 

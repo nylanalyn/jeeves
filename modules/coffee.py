@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import pytz
 from timezonefinder import TimezoneFinder
 from .base import SimpleCommandModule
+from . import achievement_hooks
 
 def setup(bot: Any) -> 'Coffee':
     return Coffee(bot)
@@ -101,10 +102,14 @@ class Coffee(SimpleCommandModule):
                 response = f"Night's getting long, {title}. {drink} will calm the jitters better than jet fuel."
 
         self.safe_reply(connection, event, response)
-        
+
         user_data["count"] += 1
         user_data["timestamp"] = time.time()
         user_counts[user_id] = user_data
         self.set_state("user_beverage_counts", user_counts)
         self.save_state()
+
+        # Record achievement progress
+        achievement_hooks.record_coffee_order(self.bot, username)
+
         return True

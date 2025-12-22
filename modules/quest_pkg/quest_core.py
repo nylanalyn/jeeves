@@ -35,6 +35,7 @@ from . import quest_utils
 from . import quest_progression
 from . import quest_combat
 from . import quest_boss_hunt
+from .. import achievement_hooks
 
 
 def load_content(quest_module) -> Dict[str, Any]:
@@ -355,6 +356,10 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     players[user_id] = player
     quest_module.set_state("players", players)
     quest_module.save_state()
+
+    # Record achievement progress for quest completion (win or loss)
+    achievement_hooks.record_quest_completion(quest_module.bot, username)
+
     quest_module.record_user_cooldown(username, "quest_solo")
     return True
 

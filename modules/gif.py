@@ -6,6 +6,7 @@ import requests
 import sys
 from typing import Optional, Dict, Any
 from .base import SimpleCommandModule, admin_required
+from . import achievement_hooks
 
 def setup(bot):
     """Initializes the Gif module."""
@@ -82,9 +83,10 @@ class Gif(SimpleCommandModule):
 
         if gif_url:
             self.safe_reply(connection, event, f"{self.bot.title_for(username)}, for '{query}': {gif_url}")
+            achievement_hooks.record_gif_posted(self.bot, username)
         else:
             self.safe_reply(connection, event, f"My apologies, {self.bot.title_for(username)}, I could not find a suitable GIF for '{query}'.")
-        
+
         return True
 
     @admin_required

@@ -271,6 +271,25 @@ class JeevesStatsLoader:
 
         return data.get("modules", {}).get("bell", {}).get("scores", {})
 
+    def load_achievements_stats(self) -> Dict[str, Any]:
+        """Load Achievements module statistics.
+
+        Returns:
+            Dict containing user achievements data and global stats
+        """
+        if not self.stats_path.exists():
+            return {"user_achievements": {}, "global_first_unlocks": {}}
+
+        with open(self.stats_path, 'r') as f:
+            data = json.load(f)
+
+        achievements_data = data.get("modules", {}).get("achievements", {})
+
+        return {
+            "user_achievements": achievements_data.get("user_achievements", {}),
+            "global_first_unlocks": achievements_data.get("global_first_unlocks", {}),
+        }
+
 
 class StatsAggregator:
     """Aggregates and calculates cross-module statistics."""
@@ -430,22 +449,3 @@ class StatsAggregator:
         # Sort by value (descending) and return top N
         sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
         return sorted_results[:limit]
-
-    def load_achievements_stats(self) -> Dict[str, Any]:
-        """Load Achievements module statistics.
-
-        Returns:
-            Dict containing user achievements data and global stats
-        """
-        if not self.stats_path.exists():
-            return {"user_achievements": {}, "global_first_unlocks": {}}
-
-        with open(self.stats_path, 'r') as f:
-            data = json.load(f)
-
-        achievements_data = data.get("modules", {}).get("achievements", {})
-
-        return {
-            "user_achievements": achievements_data.get("user_achievements", {}),
-            "global_first_unlocks": achievements_data.get("global_first_unlocks", {}),
-        }

@@ -859,16 +859,16 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
             rarity_pct = (unlock_count / total_users_tracking * 100) if total_users_tracking > 0 else 0
             rarity_class = "legendary" if rarity_pct < 5 else "epic" if rarity_pct < 20 else "rare" if rarity_pct < 50 else "common"
 
-            first_text = f'<div class="first-unlock">🥇 First: {escape_html(first_user)}</div>' if first_user else ''
+            first_text = f'<div class="first-unlock">🥇 First: {_escape_html(first_user)}</div>' if first_user else ''
 
             category_sections += f"""
             <div class="achievement-card {rarity_class}">
                 <div class="achievement-header">
-                    <h4>{escape_html(ach_data['name'])}</h4>
+                    <h4>{_escape_html(ach_data['name'])}</h4>
                     {tier_badge}
                     {secret_badge}
                 </div>
-                <p class="achievement-desc">{escape_html(ach_data['description'])}</p>
+                <p class="achievement-desc">{_escape_html(ach_data['description'])}</p>
                 <div class="achievement-stats">
                     <div class="unlock-count">{unlock_count} / {total_users_tracking} unlocked ({rarity_pct:.1f}%)</div>
                     {first_text}

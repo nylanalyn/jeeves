@@ -651,6 +651,14 @@ class Jeeves(SingleServerIRCBot):
         else:
             self.get_user_id(event.source.nick)
 
+        # Dispatch to modules that have on_join handlers
+        for name, obj in self.pm.plugins.items():
+            if hasattr(obj, "on_join"):
+                try:
+                    obj.on_join(connection, event)
+                except Exception as e:
+                    self.log_debug(f"[plugins] on_join error in {name}: {e}\n{traceback.format_exc()}")
+
     def on_part(self, connection, event):
         self.log_debug(f"[core] PART event: {event.source.nick} left {event.target}")
         if event.source.nick == self.connection.get_nickname():

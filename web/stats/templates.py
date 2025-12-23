@@ -818,6 +818,12 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
     total_users_tracking = len(user_achievements)
     total_achievements_unlocked = sum(len(user_data.get("unlocked", [])) for user_data in user_achievements.values())
 
+    # Precompute global unlock counts for each achievement ID.
+    unlock_counts: Dict[str, int] = {}
+    for user_data in user_achievements.values():
+        for ach_id in user_data.get("unlocked", []):
+            unlock_counts[ach_id] = unlock_counts.get(ach_id, 0) + 1
+
     # Group achievements by category
     categories = {"quest": [], "creatures": [], "social": [], "fun": [], "meta": []}
     for ach_id, ach_data in ACHIEVEMENTS.items():
@@ -839,29 +845,29 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
         if not cat_achievements:
             continue
 
-        icon = category_icons.get(cat_name, "🎯")
-        category_sections += f"""
-        <div class="achievement-category">
-            <h3>{icon} {cat_name.title()} Achievements</h3>
-            <div class="achievement-grid">
-        """
+        cards_html = ""
 
         for ach_id, ach_data in cat_achievements:
+            unlock_count = unlock_counts.get(ach_id, 0)
+            if unlock_count == 0:
+                # Hide undiscovered achievements (including secrets) until someone unlocks them.
+                continue
+
             tier = ach_data.get("tier", 0)
             tier_badge = f'<span class="tier-badge tier-{tier}">Tier {tier}</span>' if tier > 0 else ''
             secret_badge = '<span class="secret-badge">🤫 Secret</span>' if ach_data.get("secret") else ''
 
             # Check who has this
-            unlock_count = sum(1 for user_data in user_achievements.values() if ach_id in user_data.get("unlocked", []))
             first_unlock = global_first_unlocks.get(ach_id, {})
-            first_user = stats["users"].get(first_unlock.get("user_id", ""), {}).get("canonical_nick", "Unknown") if first_unlock else None
+            users = stats.get("users", {}) or {}
+            first_user = users.get(first_unlock.get("user_id", ""), {}).get("canonical_nick", "Unknown") if first_unlock else None
 
             rarity_pct = (unlock_count / total_users_tracking * 100) if total_users_tracking > 0 else 0
             rarity_class = "legendary" if rarity_pct < 5 else "epic" if rarity_pct < 20 else "rare" if rarity_pct < 50 else "common"
 
             first_text = f'<div class="first-unlock">🥇 First: {_escape_html(first_user)}</div>' if first_user else ''
 
-            category_sections += f"""
+            cards_html += f"""
             <div class="achievement-card {rarity_class}">
                 <div class="achievement-header">
                     <h4>{_escape_html(ach_data['name'])}</h4>
@@ -876,8 +882,21 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
             </div>
             """
 
-        category_sections += """
+        if cards_html:
+            icon = category_icons.get(cat_name, "🎯")
+            category_sections += f"""
+        <div class="achievement-category">
+            <h3>{icon} {cat_name.title()} Achievements</h3>
+            <div class="achievement-grid">
+                {cards_html}
             </div>
+        </div>
+        """
+
+    if not category_sections:
+        category_sections = """
+        <div class="achievement-category">
+            <div class="empty-state">No achievements discovered yet.</div>
         </div>
         """
 
@@ -980,6 +999,13 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
             font-size: 1.8rem;
             margin-bottom: 1.5rem;
             color: #764ba2;
+        }}
+
+        .empty-state {{
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 1rem;
         }}
 
         .achievement-grid {{

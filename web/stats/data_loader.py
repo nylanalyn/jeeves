@@ -21,8 +21,20 @@ class JeevesStatsLoader:
         self.config_path = Path(config_path)
         self.games_path = self.config_path / "games.json"
         self.stats_path = self.config_path / "stats.json"
+        self.state_path = self.config_path / "state.json"
         self.users_path = self.config_path / "users.json"
         self.absurdia_db_path = self.config_path / "absurdia.db"
+
+    @staticmethod
+    def _load_json_file(path: Path) -> Dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
 
     def load_all(self) -> Dict[str, Any]:
         """Load all stats from all modules.
@@ -280,18 +292,38 @@ class JeevesStatsLoader:
         Returns:
             Dict containing user achievements data and global stats
         """
-        if not self.stats_path.exists():
-            return {"user_achievements": {}, "global_first_unlocks": {}}
+        # Achievements state is stored under the "achievements" module. Historically this
+        # has lived in `state.json` (default bucket), but some deployments may map it to
+        # `stats.json`. Read both and merge, preferring `stats.json` when present.
+        stats_data = self._load_json_file(self.stats_path)
+        state_data = self._load_json_file(self.state_path)
 
-        with open(self.stats_path, 'r') as f:
-            data = json.load(f)
+        achievements_from_stats = (stats_data.get("modules", {}) or {}).get("achievements", {})
+        achievements_from_state = (state_data.get("modules", {}) or {}).get("achievements", {})
 
-        achievements_data = data.get("modules", {}).get("achievements", {})
+        if not isinstance(achievements_from_stats, dict):
+            achievements_from_stats = {}
+        if not isinstance(achievements_from_state, dict):
+            achievements_from_state = {}
 
-        return {
-            "user_achievements": achievements_data.get("user_achievements", {}),
-            "global_first_unlocks": achievements_data.get("global_first_unlocks", {}),
-        }
+        user_achievements: Dict[str, Any] = {}
+        global_first_unlocks: Dict[str, Any] = {}
+
+        state_user_achievements = achievements_from_state.get("user_achievements", {})
+        stats_user_achievements = achievements_from_stats.get("user_achievements", {})
+        if isinstance(state_user_achievements, dict):
+            user_achievements.update(state_user_achievements)
+        if isinstance(stats_user_achievements, dict):
+            user_achievements.update(stats_user_achievements)
+
+        state_firsts = achievements_from_state.get("global_first_unlocks", {})
+        stats_firsts = achievements_from_stats.get("global_first_unlocks", {})
+        if isinstance(state_firsts, dict):
+            global_first_unlocks.update(state_firsts)
+        if isinstance(stats_firsts, dict):
+            global_first_unlocks.update(stats_firsts)
+
+        return {"user_achievements": user_achievements, "global_first_unlocks": global_first_unlocks}
 
     def load_activity_stats(self) -> Dict[str, Any]:
         """Load Activity module statistics.

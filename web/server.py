@@ -31,10 +31,19 @@ from web.stats.templates import render_achievements_page, render_activity_page, 
 class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
     """Unified request handler for quest + stats pages."""
 
-    def __init__(self, *args, games_path: Path, content_path: Path, config_path: Path, **kwargs):
+    def __init__(
+        self,
+        *args,
+        games_path: Path,
+        content_path: Path,
+        config_path: Path,
+        debug: bool = False,
+        **kwargs,
+    ):
         self.games_path = games_path
         self.content_path = content_path
         self.config_path = config_path
+        self.debug = bool(debug)
 
         self.quest_theme_manager = ThemeManager(content_path)
         self.quest_template_engine = TemplateEngine(self.quest_theme_manager, mount_path="/quest")
@@ -58,7 +67,7 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
             self.aggregator = StatsAggregator(self.stats)
             return True
         except Exception as exc:  # pragma: no cover
-            logging.error(f"Error loading stats: {exc}")
+            logging.exception(f"Error loading stats: {exc}")
             self.stats = None
             self.aggregator = None
             return False
@@ -77,7 +86,22 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         payload = json.dumps(data, indent=2)
         self._send_response(status, payload, content_type="application/json")
 
-    def _send_error_page(self, status: HTTPStatus, message: str, home_path: str = "/") -> None:
+    def _send_error_page(
+        self,
+        status: HTTPStatus,
+        message: str,
+        home_path: str = "/",
+        debug_details: str | None = None,
+    ) -> None:
+        debug_block = ""
+        if self.debug and debug_details:
+            safe = (
+                debug_details.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+            )
+            debug_block = f"<pre style=\"text-align:left; white-space:pre-wrap; opacity:0.9;\">{safe}</pre>"
+
         html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -113,6 +137,7 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         <h1>{status.value}</h1>
         <p>{message}</p>
         <p><a href="{home_path}">Return to Home</a></p>
+        {debug_block}
     </div>
 </body>
 </html>"""
@@ -160,8 +185,15 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
 
             self._send_error_page(HTTPStatus.NOT_FOUND, "Page not found.", home_path="/")
         except Exception as exc:  # pragma: no cover
-            logging.error(f"Error handling request {path}: {exc}")
-            self._send_error_page(HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.", home_path="/")
+            import traceback
+
+            logging.exception(f"Error handling request {path}: {exc}")
+            self._send_error_page(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "Internal server error.",
+                home_path="/",
+                debug_details=traceback.format_exc(),
+            )
 
     def do_POST(self) -> None:  # noqa: N802
         parsed_url = urlparse(self.path)
@@ -172,8 +204,15 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
                 return
             self._send_error_page(HTTPStatus.NOT_FOUND, "Page not found.", home_path="/")
         except Exception as exc:  # pragma: no cover
-            logging.error(f"Error handling POST request {path}: {exc}")
-            self._send_error_page(HTTPStatus.INTERNAL_SERVER_ERROR, "Internal server error.", home_path="/")
+            import traceback
+
+            logging.exception(f"Error handling POST request {path}: {exc}")
+            self._send_error_page(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "Internal server error.",
+                home_path="/",
+                debug_details=traceback.format_exc(),
+            )
 
     # Quest handlers
     def _handle_quest_leaderboard(self, query: dict) -> None:
@@ -324,7 +363,7 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         logging.info(f"{self.address_string()} - {format % args}")
 
 
-def create_handler_class(games_path: Path, content_path: Path, config_path: Path) -> type:
+def create_handler_class(games_path: Path, content_path: Path, config_path: Path, debug: bool = False) -> type:
     def handler_init(self, *args, **kwargs):
         JeevesHTTPRequestHandler.__init__(
             self,
@@ -332,6 +371,7 @@ def create_handler_class(games_path: Path, content_path: Path, config_path: Path
             games_path=games_path,
             content_path=content_path,
             config_path=config_path,
+            debug=debug,
             **kwargs,
         )
 
@@ -352,10 +392,12 @@ class JeevesWebServer:
         games_path: Path | None = None,
         content_path: Path | None = None,
         config_path: Path | None = None,
+        debug: bool = False,
     ):
         self.host = host
         self.port = port
         self.server: HTTPServer | None = None
+        self.debug = bool(debug)
 
         repo_root = Path(__file__).resolve().parent.parent
 
@@ -389,7 +431,7 @@ class JeevesWebServer:
         sys.exit(0)
 
     def start(self) -> None:
-        handler_class = create_handler_class(self.games_path, self.content_path, self.config_path)
+        handler_class = create_handler_class(self.games_path, self.content_path, self.config_path, debug=self.debug)
 
         try:
             self.server = HTTPServer((self.host, self.port), handler_class)
@@ -449,6 +491,7 @@ Examples:
         games_path=args.games,
         content_path=args.content,
         config_path=args.config,
+        debug=args.debug,
     )
     server.start()
 

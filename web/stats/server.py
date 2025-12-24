@@ -30,6 +30,7 @@ class StatsWebServer:
 
         # Store path for handler
         self.config_path = config_path
+        self._shutdown_requested = False
 
         # Setup signal handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -38,9 +39,13 @@ class StatsWebServer:
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""
         print(f"\nReceived signal {signum}. Shutting down gracefully...", file=sys.stderr)
-        if self.server:
-            self.server.shutdown()
-        sys.exit(0)
+        self._shutdown_requested = True
+        if not self.server:
+            sys.exit(0)
+
+        import threading
+
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def start(self) -> None:
         """Start the web server."""
@@ -67,6 +72,13 @@ class StatsWebServer:
         except Exception as e:
             print(f"Error: Server encountered an error: {e}", file=sys.stderr)
             sys.exit(1)
+        finally:
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
+            if self._shutdown_requested:
+                sys.exit(0)
 
     def stop(self) -> None:
         """Stop the web server."""

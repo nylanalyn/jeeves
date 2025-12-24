@@ -398,6 +398,7 @@ class JeevesWebServer:
         self.port = port
         self.server: HTTPServer | None = None
         self.debug = bool(debug)
+        self._shutdown_requested = False
 
         repo_root = Path(__file__).resolve().parent.parent
 
@@ -426,9 +427,15 @@ class JeevesWebServer:
 
     def _signal_handler(self, signum, frame):
         print(f"\nReceived signal {signum}. Shutting down gracefully...", file=sys.stderr)
-        if self.server:
-            self.server.shutdown()
-        sys.exit(0)
+        self._shutdown_requested = True
+        if not self.server:
+            sys.exit(0)
+
+        # `HTTPServer.shutdown()` must not be called from the same thread running
+        # `serve_forever()`, otherwise it can deadlock.
+        import threading
+
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def start(self) -> None:
         handler_class = create_handler_class(self.games_path, self.content_path, self.config_path, debug=self.debug)
@@ -454,6 +461,13 @@ class JeevesWebServer:
         except Exception as exc:  # pragma: no cover
             print(f"Error: Server encountered an error: {exc}", file=sys.stderr)
             sys.exit(1)
+        finally:
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
+            if self._shutdown_requested:
+                sys.exit(0)
 
     def stop(self) -> None:
         if self.server:

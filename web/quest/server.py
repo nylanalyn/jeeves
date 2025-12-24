@@ -42,6 +42,7 @@ class QuestWebServer:
         self.games_path = games_path
         self.content_path = content_path
         self.challenge_paths = challenge_paths
+        self._shutdown_requested = False
 
         # Setup signal handler for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -50,9 +51,13 @@ class QuestWebServer:
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""
         print(f"\nReceived signal {signum}. Shutting down gracefully...", file=sys.stderr)
-        if self.server:
-            self.server.shutdown()
-        sys.exit(0)
+        self._shutdown_requested = True
+        if not self.server:
+            sys.exit(0)
+
+        import threading
+
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
     def start(self) -> None:
         """Start the web server."""
@@ -80,6 +85,13 @@ class QuestWebServer:
         except Exception as e:
             print(f"Error: Server encountered an error: {e}", file=sys.stderr)
             sys.exit(1)
+        finally:
+            try:
+                self.server.server_close()
+            except Exception:
+                pass
+            if self._shutdown_requested:
+                sys.exit(0)
 
     def stop(self) -> None:
         """Stop the web server."""

@@ -672,13 +672,13 @@ class TemplateEngine:
         content = ""
 
         # Search box
-        content += """
+        content += f"""
         <div class="search-box">
             <form method="get" action="{self.url('/')}">
-                <input type="text" name="search" placeholder="Search players..." value="{}" autofocus>
+                <input type="text" name="search" placeholder="Search players..." value="{sanitize(search_term)}" autofocus>
             </form>
         </div>
-        """.format(sanitize(search_term))
+        """
 
         # Stats overview
         total_players = len(players)

@@ -60,7 +60,7 @@ def setup(bot):
 
 class Convenience(ModuleBase):
     name = "convenience"
-    version = "1.9.1" # DuckDuckGo search integration for !g
+    version = "1.9.2" # Anti-spam: suppress repeated title announcements
     description = "Provides convenient, common search commands and URL title fetching."
 
     YOUTUBE_URL_PATTERN = re.compile(r'(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([\w\-]{11})')
@@ -70,7 +70,12 @@ class Convenience(ModuleBase):
     def __init__(self, bot):
         super().__init__(bot)
         self._register_commands()
-        
+
+        # Track recently announced titles to avoid spam (title -> list of timestamps)
+        self._recent_titles: Dict[str, list] = {}
+        self._title_max_repeats = 2  # Stop announcing after this many repeats
+        self._title_window_seconds = 300  # 5 minute window for tracking repeats
+
         # Use shared HTTP client if available, otherwise fallback
         if HTTP_CLIENT:
             self.http_session = HTTP_CLIENT.session
@@ -146,7 +151,7 @@ class Convenience(ModuleBase):
             return False
 
         url = match.group(1)
-        
+
         if "youtube.com" in url or "youtu.be" in url:
             return False
         # Use config manager if available
@@ -165,6 +170,12 @@ class Convenience(ModuleBase):
 
         if title:
             title_cleaned = " ".join(title.strip().split())
+
+            # Check if we've announced this title too many times recently
+            if self._is_title_spam(title_cleaned):
+                self.log_module_event("DEBUG", f"Suppressing repeated title announcement: \"{title_cleaned}\"")
+                return False
+
             if self.has_flavor_enabled(username):
                 response = f"Allow me to present the title of that link for you, {self.bot.title_for(username)}: \"{title_cleaned}\""
             else:
@@ -173,6 +184,38 @@ class Convenience(ModuleBase):
             return True
 
         return False
+
+    def _is_title_spam(self, title: str) -> bool:
+        """Check if a title has been announced too many times recently.
+
+        Returns True if the title should be suppressed (spam), False if it's okay to announce.
+        Also records this announcement for future spam detection.
+        """
+        now = time.time()
+        cutoff = now - self._title_window_seconds
+
+        # Clean up old entries from all tracked titles
+        titles_to_remove = []
+        for tracked_title, timestamps in self._recent_titles.items():
+            # Remove timestamps outside the window
+            self._recent_titles[tracked_title] = [t for t in timestamps if t > cutoff]
+            # Mark empty entries for removal
+            if not self._recent_titles[tracked_title]:
+                titles_to_remove.append(tracked_title)
+        for tracked_title in titles_to_remove:
+            del self._recent_titles[tracked_title]
+
+        # Check if this title has been announced too many times
+        if title in self._recent_titles:
+            if len(self._recent_titles[title]) >= self._title_max_repeats:
+                return True  # Suppress this announcement
+
+        # Record this announcement
+        if title not in self._recent_titles:
+            self._recent_titles[title] = []
+        self._recent_titles[title].append(now)
+
+        return False  # Okay to announce
 
     def _get_url_title(self, url: str) -> Optional[str]:
         headers = {'User-Agent': 'JeevesIRCBot/1.0 (URL Title Fetcher)'}

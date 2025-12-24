@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Jeeves web UI provides a web-based interface for viewing quest leaderboards, player statistics, and command references. The UI has been reorganized into a modular structure for better maintainability and extensibility.
+The Jeeves web UI provides a web-based interface for viewing quest leaderboards plus a stats dashboard (overview, achievements, activity heatmaps). The UI is organized into modular packages under `web/`.
 
 ## 📁 Directory Structure
 
@@ -20,6 +20,12 @@ web/
 │   ├── css/
 │   ├── js/
 │   └── images/
+├── stats/                     # Stats dashboard components
+│   ├── server.py              # Standalone stats server (optional)
+│   ├── handlers.py            # Stats request handlers
+│   ├── data_loader.py         # Reads games/stats/users state
+│   ├── templates.py           # Stats page rendering
+│   └── config.py              # Optional config.yaml filters
 └── README.md                  # This documentation
 ```
 
@@ -35,7 +41,7 @@ python3 quest_web.py
 python3 quest_web.py --host 0.0.0.0 --port 8080
 
 # With custom paths
-python3 quest_web.py --games /path/to/games.json --content /path/to/content
+python3 quest_web.py --games /path/to/games.json --content /path/to/content --config /path/to/config
 ```
 
 ### **Programmatic Usage**
@@ -147,12 +153,16 @@ The web UI respects the same environment variables as the main bot:
 ## 🌐 Endpoints
 
 ### **Web Pages**
-- `/` - Main leaderboard page
-- `/commands` - Command reference page
+- `/` - Stats overview
+- `/activity` - Activity heatmaps
+- `/achievements` - Achievements dashboard
+- `/quest` - Quest leaderboard
+- `/quest/commands` - Command reference page
 
 ### **API Endpoints**
-- `/api/status` - Server status and statistics
+- `/api/status` - Quest server status and statistics
 - `/api/reload` - Reload quest data (POST)
+- `/api/stats` - Summary stats (JSON)
 
 ### **Features**
 - **Search**: Search players by username

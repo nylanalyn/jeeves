@@ -239,7 +239,8 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
         </header>
 
         <nav style="text-align:center; margin-bottom: 1.5rem;">
-            <a href="/" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">📊 Overview</a>
+            <a href="/" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">📊 Stats</a>
+            <a href="/quest" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">⚔️ Quest</a>
             <a href="/activity" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">🗓️ Activity</a>
             <a href="/achievements" style="color:white; text-decoration:none; margin: 0 0.75rem; font-weight:600;">🏆 Achievements</a>
         </nav>
@@ -491,7 +492,8 @@ def render_activity_page(stats: Dict[str, Any], aggregator, channels: List[str],
         </header>
 
         <nav>
-            <a href="/">📊 Overview</a>
+            <a href="/">📊 Stats</a>
+            <a href="/quest">⚔️ Quest</a>
             <a href="/activity">🗓️ Activity</a>
             <a href="/achievements">🏆 Achievements</a>
         </nav>
@@ -1115,7 +1117,8 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
         </header>
 
         <nav>
-            <a href="/">📊 Overview</a>
+            <a href="/">📊 Stats</a>
+            <a href="/quest">⚔️ Quest</a>
             <a href="/activity">🗓️ Activity</a>
             <a href="/achievements">🏆 Achievements</a>
         </nav>

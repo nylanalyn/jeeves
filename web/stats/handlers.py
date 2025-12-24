@@ -110,13 +110,13 @@ class StatsHTTPRequestHandler(BaseHTTPRequestHandler):
             return
 
         # Route to appropriate handler
-        if path == "/" or path == "/index.html":
+        if path in ("/", "/index.html", "/stats", "/stats/", "/stats/index.html"):
             self._handle_overview()
-        elif path == "/achievements":
+        elif path in ("/achievements", "/stats/achievements"):
             self._handle_achievements()
-        elif path == "/activity":
+        elif path in ("/activity", "/stats/activity"):
             self._handle_activity(query)
-        elif path == "/api/stats":
+        elif path in ("/api/stats", "/stats/api/stats"):
             self._handle_api_stats()
         else:
             self._send_error_page(HTTPStatus.NOT_FOUND, "Page not found")

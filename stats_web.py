@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-Launcher for Jeeves stats web UI.
+Unified web UI launcher (quest + stats).
 
 Usage:
-    python stats_web.py --host 127.0.0.1 --port 8081
+    python stats_web.py --host 127.0.0.1 --port 8080
 """
 
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
+# Ensure repo root is on sys.path for `import web.*`
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Import from the web.stats structure
-from web.stats import main
+from web.server import main
 
 if __name__ == "__main__":
     main()

@@ -30,11 +30,11 @@ Jeeves is a modular IRC butler written in Python 3.11. It connects to IRC networ
    python3 jeeves.py
    ```
    The bot validates configuration at startup, connects using TLS (if enabled), and loads all non-blacklisted modules.
-4. **Run the quest web UI (optional)**
+4. **Run the web UI (optional)**
    ```bash
    python3 web/quest_web.py --host 127.0.0.1 --port 8080
    ```
-   Override `--games` or `--content` to point at alternative data locations.
+   Serves stats at `/` and quest at `/quest` (plus `/activity` and `/achievements`). Override `--games`, `--content`, or `--config` to point at alternative data locations.
 
 ## Configuration & Validation
 - Use environment variables for secrets: `${OPENAI_API_KEY}`, `${DEEPL_API_KEY}`, `${NICKSERV_PASSWORD}`, etc.

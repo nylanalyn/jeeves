@@ -789,8 +789,8 @@ Complex modules:
 - Validates YAML structure, required fields, API key formats, and checks for placeholder values
 - **Always run this before starting the bot** to catch configuration errors early
 
-### Web Quest Dashboard
-- `web/quest_web.py` - Web interface for testing quest narratives and monitoring bot state
+### Web Dashboard
+- `web/quest_web.py` - Unified web interface for quest + stats dashboards
 - Usage: `python3 web/quest_web.py --host 127.0.0.1 --port 8080`
 - Provides real-time visualization of quest progress, challenge paths, and user interactions
 - Essential for QA testing narrative changes without needing IRC access

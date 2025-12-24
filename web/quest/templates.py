@@ -14,8 +14,23 @@ import time
 class TemplateEngine:
     """HTML template engine for quest web UI."""
 
-    def __init__(self, theme_manager: ThemeManager):
+    def __init__(self, theme_manager: ThemeManager, mount_path: str = ""):
         self.theme = theme_manager
+        mount = (mount_path or "").strip()
+        mount = mount.rstrip("/")
+        if mount == "/":
+            mount = ""
+        elif mount and not mount.startswith("/"):
+            mount = "/" + mount
+        self.mount_path = mount
+
+    def url(self, path: str) -> str:
+        """Build a URL for quest routes, honoring mount_path."""
+        if not path.startswith("/"):
+            path = "/" + path
+        if path == "//":
+            path = "/"
+        return f"{self.mount_path}{path}"
 
     def render_page(self, title: str, content: str, active_section: str = "") -> str:
         """Render complete HTML page."""
@@ -631,8 +646,11 @@ class TemplateEngine:
         </div>
 
         <nav class="nav">
-            <a href="/" {'class="active"' if active_section == "leaderboard" else ''}>Leaderboard</a>
-            <a href="/commands" {'class="active"' if active_section == "commands" else ''}>Commands</a>
+            <a href="{self.url('/')}" {'class="active"' if active_section == "leaderboard" else ''}>Quest</a>
+            <a href="{self.url('/commands')}" {'class="active"' if active_section == "commands" else ''}>Commands</a>
+            <a href="/">Stats</a>
+            <a href="/activity">Activity</a>
+            <a href="/achievements">Achievements</a>
         </nav>
 
         {content}
@@ -656,7 +674,7 @@ class TemplateEngine:
         # Search box
         content += """
         <div class="search-box">
-            <form method="get" action="/">
+            <form method="get" action="{self.url('/')}">
                 <input type="text" name="search" placeholder="Search players..." value="{}" autofocus>
             </form>
         </div>
@@ -692,7 +710,7 @@ class TemplateEngine:
                 This is a read-only leaderboard. To play, connect to IRC and use <code>!quest</code> commands.
             </p>
             <p class="description" style="font-size: 0.9em; color: var(--fg-dim);">
-                See the <a href="/commands" style="color: var(--link);">Commands page</a> for full IRC command reference.
+                See the <a href="{self.url('/commands')}" style="color: var(--link);">Commands page</a> for full IRC command reference.
             </p>
         </div>
         """
@@ -856,7 +874,7 @@ class TemplateEngine:
             <tr>
                 <td>{rank_display}</td>
                 <td>
-                    <div class="player-name"><a href="/player/{sanitize(nick)}">{sanitize(nick)}</a></div>
+                    <div class="player-name"><a href="{self.url(f'/player/{sanitize(nick)}')}">{sanitize(nick)}</a></div>
                     <div class="player-info">{prestige_icons} Prestige {prestige}</div>
                 </td>
                 <td>{sanitize(player_class)}</td>
@@ -1117,7 +1135,7 @@ class TemplateEngine:
 
         content = f"""
         <div style="margin-bottom: 20px;">
-            <a href="/" style="color: var(--link); text-decoration: none;">&larr; Back to Leaderboard</a>
+            <a href="{self.url('/')}" style="color: var(--link); text-decoration: none;">&larr; Back to Leaderboard</a>
         </div>
 
         <div class="card" style="margin-bottom: 20px;">

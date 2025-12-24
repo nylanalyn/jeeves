@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 """
-Backward compatibility wrapper for quest web UI.
+Unified web UI launcher (quest + stats).
 
-This wrapper maintains compatibility with the original quest_web.py
-while directing to the new organized structure.
+This entrypoint keeps the historical `quest_web.py` command working, but it now
+serves both the quest dashboard and the stats pages from a single server.
 
 Usage:
     python quest_web.py --host 127.0.0.1 --port 8080
-
-The old arguments are still supported but internally use the new structure.
 """
 
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Ensure repo root is on sys.path for `import web.*`
+sys.path.insert(0, str(Path(__file__).parent))
 
-# Import from the new structure
-from web.quest import main
+from web.server import main
 
 if __name__ == "__main__":
     main()

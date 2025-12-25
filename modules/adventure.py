@@ -96,13 +96,13 @@ class Adventure(SimpleCommandModule):
         self.MAX_HISTORY_ENTRIES = 50
 
     def _register_commands(self):
-        self.register_command(r"^\s*!adventure\s*$", self._cmd_start, name="adventure")
-        self.register_command(r"^\s*!adventure\s+(now|status)\s*$", self._cmd_status, name="adventure status")
-        self.register_command(r"^\s*!adventure\s+(last|history)\s*$", self._cmd_last, name="adventure last")
-        self.register_command(r"^\s*!items(?:\s+(\S+))?\s*$", self._cmd_items, name="items")
-        self.register_command(r"^\s*!adventure\s+cancel\s*$", self._cmd_adv_cancel, name="adventure cancel", admin_only=True)
-        self.register_command(r"^\s*!adventure\s+shorten\s+(\d+)\s*$", self._cmd_adv_shorten, name="adventure shorten", admin_only=True)
-        self.register_command(r"^\s*!adventure\s+extend\s+(\d+)\s*$", self._cmd_adv_extend, name="adventure extend", admin_only=True)
+        self.register_command(r"^\s*!adventure\s*$", self._cmd_start, name="adventure", description="Start a new adventure")
+        self.register_command(r"^\s*!adventure\s+(now|status)\s*$", self._cmd_status, name="adventure status", description="Check adventure status")
+        self.register_command(r"^\s*!adventure\s+(last|history)\s*$", self._cmd_last, name="adventure last", description="Show last adventure results")
+        self.register_command(r"^\s*!items(?:\s+(\S+))?\s*$", self._cmd_items, name="items", description="View your items or another user's items")
+        self.register_command(r"^\s*!adventure\s+cancel\s*$", self._cmd_adv_cancel, name="adventure cancel", admin_only=True, description="[Admin] Cancel current adventure")
+        self.register_command(r"^\s*!adventure\s+shorten\s+(\d+)\s*$", self._cmd_adv_shorten, name="adventure shorten", admin_only=True, description="[Admin] Shorten adventure time")
+        self.register_command(r"^\s*!adventure\s+extend\s+(\d+)\s*$", self._cmd_adv_extend, name="adventure extend", admin_only=True, description="[Admin] Extend adventure time")
 
     def on_load(self):
         super().on_load()

@@ -26,11 +26,11 @@ class Ideas(ModuleBase):
         self._votes: Dict[str, int] = {}  # username -> option number
 
     def _register_commands(self):
-        self.register_command(r"^\s*!ideas?\s+(.+)$", self._cmd_submit_idea, name="ideas")
-        self.register_command(r"^\s*!idea-poll\s*$", self._cmd_start_poll, name="idea-poll", admin_only=True)
-        self.register_command(r"^\s*!vote\s+(\d+)\s*$", self._cmd_vote, name="vote")
-        self.register_command(r"^\s*!winners?\s*$", self._cmd_list_winners, name="winners")
-        self.register_command(r"^\s*!winners?\s+delete\s+(\S+)\s*$", self._cmd_delete_winner, name="winners-delete", admin_only=True)
+        self.register_command(r"^\s*!ideas?\s+(.+)$", self._cmd_submit_idea, name="ideas", description="Submit an idea for voting")
+        self.register_command(r"^\s*!idea-poll\s*$", self._cmd_start_poll, name="idea-poll", admin_only=True, description="[Admin] Start a poll with all pending ideas")
+        self.register_command(r"^\s*!vote\s+(\d+)\s*$", self._cmd_vote, name="vote", description="Vote for an idea in the active poll")
+        self.register_command(r"^\s*!winners?\s*$", self._cmd_list_winners, name="winners", description="List all winning ideas")
+        self.register_command(r"^\s*!winners?\s+delete\s+(\S+)\s*$", self._cmd_delete_winner, name="winners delete", admin_only=True, description="[Admin] Delete a winner by number or 'all'")
 
     def on_load(self):
         # Clear any stale poll jobs on load

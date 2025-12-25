@@ -98,12 +98,12 @@ class Convenience(ModuleBase):
                 self._record_error(f"Failed to build YouTube service: {e}")
 
     def _register_commands(self):
-        self.register_command(r"^\s*!g\s+(.+)$", self._cmd_google, name="g")
-        self.register_command(r"^\s*!dict\s+(.+)$", self._cmd_dict, name="dict")
-        self.register_command(r"^\s*!ud\s+(.+)$", self._cmd_dict, name="ud")
-        self.register_command(r"^\s*!wiki\s+(.+)$", self._cmd_wiki, name="wiki")
-        self.register_command(r"^\s*!news\s*$", self._cmd_news, name="news")
-        self.register_command(r"^\s*!yt\s+(.+)$", self._cmd_yt, name="yt")
+        self.register_command(r"^\s*!g\s+(.+)$", self._cmd_google, name="g", description="Search Google")
+        self.register_command(r"^\s*!dict\s+(.+)$", self._cmd_dict, name="dict", description="Look up a word in the dictionary")
+        self.register_command(r"^\s*!ud\s+(.+)$", self._cmd_dict, name="ud", description="Look up a word in Urban Dictionary")
+        self.register_command(r"^\s*!wiki\s+(.+)$", self._cmd_wiki, name="wiki", description="Search Wikipedia")
+        self.register_command(r"^\s*!news\s*$", self._cmd_news, name="news", description="Get top news headlines")
+        self.register_command(r"^\s*!yt\s+(.+)$", self._cmd_yt, name="yt", description="Search YouTube")
 
     def on_ambient_message(self, connection, event, msg, username):
         if not self.is_enabled(event.target): return False

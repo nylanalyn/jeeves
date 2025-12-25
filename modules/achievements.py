@@ -306,14 +306,14 @@ class Achievements(SimpleCommandModule):
         self.save_state()
 
     def _register_commands(self):
-        self.register_command(r"^\s*!achievements?\s*$", self._cmd_achievements_self, name="achievements")
-        self.register_command(r"^\s*!achievements?\s+list\s*$", self._cmd_achievements_list, name="achievements list")
-        self.register_command(r"^\s*!achievements?\s+stats\s*$", self._cmd_achievements_stats, name="achievements stats")
-        self.register_command(r"^\s*!achievements?\s+(.+)$", self._cmd_achievements_user, name="achievements user")
-        self.register_command(r"^\s*!ach\s*$", self._cmd_achievements_self, name="ach")
-        self.register_command(r"^\s*!ach\s+list\s*$", self._cmd_achievements_list, name="ach list")
-        self.register_command(r"^\s*!ach\s+stats\s*$", self._cmd_achievements_stats, name="ach stats")
-        self.register_command(r"^\s*!ach\s+(.+)$", self._cmd_achievements_user, name="ach user")
+        self.register_command(r"^\s*!achievements?\s*$", self._cmd_achievements_self, name="achievements", description="Show your achievements")
+        self.register_command(r"^\s*!achievements?\s+list\s*$", self._cmd_achievements_list, name="achievements list", description="List all available achievements")
+        self.register_command(r"^\s*!achievements?\s+stats\s*$", self._cmd_achievements_stats, name="achievements stats", description="Show achievement statistics")
+        self.register_command(r"^\s*!achievements?\s+(.+)$", self._cmd_achievements_user, name="achievements user", description="Show another user's achievements")
+        self.register_command(r"^\s*!ach\s*$", self._cmd_achievements_self, name="ach", description="Short alias for !achievements")
+        self.register_command(r"^\s*!ach\s+list\s*$", self._cmd_achievements_list, name="ach list", description="Short alias for !achievements list")
+        self.register_command(r"^\s*!ach\s+stats\s*$", self._cmd_achievements_stats, name="ach stats", description="Short alias for !achievements stats")
+        self.register_command(r"^\s*!ach\s+(.+)$", self._cmd_achievements_user, name="ach user", description="Short alias for !achievements <user>")
 
     def on_join(self, connection, event):
         """Track when users join #achievements channel."""

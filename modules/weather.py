@@ -25,14 +25,14 @@ class Weather(SimpleCommandModule):
             re.IGNORECASE)
 
     def _register_commands(self):
-        self.register_command(r"^\s*!location\s*$", self._cmd_show_location, name="location show")
-        self.register_command(r"^\s*!location\s+(.+)$", self._cmd_set_location, name="location")
-        self.register_command(r"^\s*!weather\s*$", self._cmd_weather_self, name="weather")
-        self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other, name="weather other")
-        self.register_command(r"^\s*!w\s*$", self._cmd_weather_self, name="w")
-        self.register_command(r"^\s*!w\s+(.+)$", self._cmd_weather_other, name="w other")
-        self.register_command(r"^\s*!wf\s*$", self._cmd_forecast_self, name="forecast")
-        self.register_command(r"^\s*!wf\s+(.+)$", self._cmd_forecast_other, name="forecast other")
+        self.register_command(r"^\s*!location\s*$", self._cmd_show_location, name="location show", description="Show your saved location")
+        self.register_command(r"^\s*!location\s+(.+)$", self._cmd_set_location, name="location", description="Set your default location")
+        self.register_command(r"^\s*!weather\s*$", self._cmd_weather_self, name="weather", description="Get weather for your location")
+        self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other, name="weather other", description="Get weather for a specific location")
+        self.register_command(r"^\s*!w\s*$", self._cmd_weather_self, name="w", description="Short alias for !weather")
+        self.register_command(r"^\s*!w\s+(.+)$", self._cmd_weather_other, name="w other", description="Short alias for !weather <location>")
+        self.register_command(r"^\s*!wf\s*$", self._cmd_forecast_self, name="forecast", description="Get weather forecast for your location")
+        self.register_command(r"^\s*!wf\s+(.+)$", self._cmd_forecast_other, name="forecast other", description="Get weather forecast for a location")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):

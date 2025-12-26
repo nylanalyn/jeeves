@@ -488,7 +488,26 @@ def render_activity_page(stats: Dict[str, Any], aggregator, channels: List[str],
     <div class="container">
         <header>
             <h1>🗓️ Activity</h1>
-            <p>Heatmaps and active-time summaries (UTC)</p>
+            <p>Heatmaps and active-time summaries</p>
+            <div style="margin-top: 0.5rem;">
+                <label for="timezone-select" style="color: white; margin-right: 0.5rem;">Display timezone:</label>
+                <select id="timezone-select" style="padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.9); font-size: 0.95rem;">
+                    <option value="UTC">UTC</option>
+                    <option value="local">Local Time</option>
+                    <optgroup label="Common Timezones">
+                        <option value="America/New_York">Eastern (ET)</option>
+                        <option value="America/Chicago">Central (CT)</option>
+                        <option value="America/Denver">Mountain (MT)</option>
+                        <option value="America/Los_Angeles">Pacific (PT)</option>
+                        <option value="Europe/London">London (GMT/BST)</option>
+                        <option value="Europe/Paris">Paris (CET)</option>
+                        <option value="Europe/Berlin">Berlin (CET)</option>
+                        <option value="Asia/Tokyo">Tokyo (JST)</option>
+                        <option value="Asia/Shanghai">Shanghai (CST)</option>
+                        <option value="Australia/Sydney">Sydney (AEDT)</option>
+                    </optgroup>
+                </select>
+            </div>
         </header>
 
         <nav>
@@ -527,6 +546,156 @@ def render_activity_page(stats: Dict[str, Any], aggregator, channels: List[str],
             </div>
         </div>
     </div>
+    <script>
+        // Timezone conversion functionality
+        const timezoneSelect = document.getElementById('timezone-select');
+        const heatmapTables = document.querySelectorAll('.heatmap-table');
+        
+        // Store original UTC data
+        const originalData = new Map();
+        
+        function initializeOriginalData() {{
+            heatmapTables.forEach((table, tableIndex) => {{
+                const rows = table.querySelectorAll('tbody tr');
+                const data = [];
+                rows.forEach(row => {{
+                    const cells = row.querySelectorAll('td.cell');
+                    const rowData = Array.from(cells).map(cell => {{
+                        const title = cell.getAttribute('title');
+                        if (!title) return null;
+                        // Parse "Day HH:00 — count" format
+                        const match = title.match(/^(\\w+)\\s+(\\d+):(\\d+)\\s+—\\s+(\\d+)$/);
+                        if (!match) return null;
+                        return {{
+                            day: match[1],
+                            hour: parseInt(match[2]),
+                            count: parseInt(match[4]),
+                            element: cell
+                        }};
+                    }});
+                    data.push(rowData);
+                }});
+                originalData.set(tableIndex, data);
+            }});
+        }}
+        
+        function getDayName(dayIndex) {{
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            return days[dayIndex];
+        }}
+        
+        function convertTimezone(timezone) {{
+            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            
+            heatmapTables.forEach((table, tableIndex) => {{
+                const data = originalData.get(tableIndex);
+                if (!data) return;
+                
+                // Create a new grid to hold converted data
+                const newGrid = Array(7).fill(null).map(() => Array(24).fill({{count: 0}}));
+                
+                data.forEach((row, dayIndex) => {{
+                    row.forEach(cellData => {{
+                        if (!cellData) return;
+                        
+                        // Create a date in UTC for this day/hour
+                        // Use a fixed week to ensure consistent day mapping
+                        const utcDate = new Date(Date.UTC(2024, 0, 1 + dayIndex, cellData.hour, 0, 0));
+                        
+                        let convertedDate;
+                        if (timezone === 'UTC') {{
+                            convertedDate = utcDate;
+                        }} else if (timezone === 'local') {{
+                            // Convert to local time
+                            const localOffset = -new Date().getTimezoneOffset();
+                            convertedDate = new Date(utcDate.getTime() + localOffset * 60000);
+                        }} else {{
+                            // Convert using specified timezone
+                            try {{
+                                const options = {{ timeZone: timezone, hour: 'numeric', weekday: 'short' }};
+                                const formatter = new Intl.DateTimeFormat('en-US', options);
+                                // This is approximate - we'll calculate offset
+                                const utcTime = utcDate.getTime();
+                                const tzString = utcDate.toLocaleString('en-US', {{ timeZone: timezone }});
+                                convertedDate = new Date(tzString);
+                                // Adjust for any date parsing issues
+                                const offset = (convertedDate.getTime() - utcTime) / 3600000;
+                                convertedDate = new Date(utcTime + offset * 3600000);
+                            }} catch (e) {{
+                                convertedDate = utcDate; // Fallback to UTC
+                            }}
+                        }}
+                        
+                        // Get the new day and hour
+                        let newDay = convertedDate.getUTCDay();
+                        newDay = (newDay + 6) % 7; // Convert Sunday=0 to Monday=0
+                        const newHour = convertedDate.getUTCHours();
+                        
+                        // Add count to new position
+                        newGrid[newDay][newHour] = {{
+                            count: (newGrid[newDay][newHour].count || 0) + cellData.count
+                        }};
+                    }});
+                }});
+                
+                // Find max for color scaling
+                let maxCount = 0;
+                newGrid.forEach(row => {{
+                    row.forEach(cell => {{
+                        if (cell.count > maxCount) maxCount = cell.count;
+                    }});
+                }});
+                
+                // Update the table
+                const rows = table.querySelectorAll('tbody tr');
+                rows.forEach((row, dayIndex) => {{
+                    const cells = row.querySelectorAll('td.cell');
+                    cells.forEach((cell, hourIndex) => {{
+                        const count = newGrid[dayIndex][hourIndex].count;
+                        const dayName = getDayName(dayIndex);
+                        
+                        // Update title
+                        cell.setAttribute('title', `${{dayName}} ${{hourIndex.toString().padStart(2, '0')}}:00 — ${{count}}`);
+                        
+                        // Update color
+                        let color;
+                        if (maxCount <= 0 || count <= 0) {{
+                            color = '#f1f3f5';
+                        }} else {{
+                            const ratio = count / maxCount;
+                            const alpha = 0.15 + (0.85 * ratio);
+                            color = `rgba(102, 126, 234, ${{alpha.toFixed(3)}})`;
+                        }}
+                        cell.style.background = color;
+                    }});
+                }});
+            }});
+            
+            // Update "Top Hours" display in meta sections
+            updateTopHours(timezone);
+        }}
+        
+        function updateTopHours(timezone) {{
+            // Update the label in meta boxes
+            const topHoursBoxes = document.querySelectorAll('.meta-box .title');
+            topHoursBoxes.forEach(box => {{
+                if (box.textContent.includes('Top Hours')) {{
+                    const tzLabel = timezone === 'UTC' ? 'UTC' : 
+                                   timezone === 'local' ? 'Local' : 
+                                   timezone.split('/')[1] || timezone;
+                    box.textContent = `Top Hours (${{tzLabel}})`;
+                }}
+            }});
+        }}
+        
+        // Initialize on page load
+        initializeOriginalData();
+        
+        // Handle timezone changes
+        timezoneSelect.addEventListener('change', (e) => {{
+            convertTimezone(e.target.value);
+        }});
+    </script>
 </body>
 </html>"""
 

@@ -29,7 +29,7 @@ Leveling System:
 XP awarded based on fish size/rarity
 Level thresholds determine fishing location
 Locations: Puddle (0) → Pond (1) → Lake (2) → River (3) → Ocean (4) → Deep Sea (5) → Moon (6) → Mars (7) → [Cap at your preference]
-Higher levels unlock crazier fish
+Higher levels unlock crazier fishvely
 
 
 Junk Items:

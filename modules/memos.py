@@ -8,16 +8,50 @@ from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
 
+
+def _format_relative_time(iso_timestamp: str) -> str:
+    """Format an ISO timestamp as a human-readable relative time."""
+    if not iso_timestamp:
+        return ""
+    try:
+        sent_time = datetime.fromisoformat(iso_timestamp.replace('Z', '+00:00'))
+        now = datetime.now(UTC)
+        delta = now - sent_time
+
+        seconds = int(delta.total_seconds())
+        if seconds < 0:
+            return ""
+
+        minutes = seconds // 60
+        hours = minutes // 60
+        days = hours // 24
+
+        if seconds < 60:
+            return "just now"
+        elif minutes < 60:
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        elif hours < 24:
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif days == 1:
+            return "yesterday"
+        elif days < 7:
+            return f"{days} days ago"
+        else:
+            # For older messages, show the date
+            return sent_time.strftime("%b %d")
+    except (ValueError, TypeError):
+        return ""
+
 def setup(bot):
     return Memos(bot)
 
 class Memos(SimpleCommandModule):
     name = "memos"
-    version = "3.1.0" # Added channel-specific memo delivery
+    version = "3.2.0"  # Added relative timestamps to memo delivery
     description = "Provides memo functionality for leaving messages for users."
 
     ACKS = [ "Indeed, {title}; I shall make a note of it.", "Very good, {title}. Your message is recorded.", "Quite so, {title}; I shall see that it is delivered." ]
-    DELIVER_LINES = [ "Ah, {to}! {from_} left you a message; {says}: {text}", "{to}, a note from {from_}: {text}", "Message for {to} from {from_}: {text}" ]
+    DELIVER_LINES = [ "Ah, {to}! {from_} left you a message {when}; {says}: {text}", "{to}, a note from {from_} ({when}): {text}", "Message for {to} from {from_} ({when}): {text}" ]
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -62,7 +96,7 @@ class Memos(SimpleCommandModule):
         remainder = bucket[max_deliver:]
 
         for item in to_deliver:
-            line = self._deliver_line(username, item.get("from","?"), item.get("text",""))
+            line = self._deliver_line(username, item.get("from","?"), item.get("text",""), item.get("when",""))
             self.safe_reply(connection, event, line)
 
         if remainder:
@@ -90,10 +124,11 @@ class Memos(SimpleCommandModule):
         if pron.startswith("it"): return "it says"
         return "they say"
 
-    def _deliver_line(self, to_user: str, from_user: str, text: str) -> str:
+    def _deliver_line(self, to_user: str, from_user: str, text: str, when: str = "") -> str:
         says = self._third_person_says(from_user)
+        relative_time = _format_relative_time(when) or "some time ago"
         tmpl = random.choice(self.DELIVER_LINES)
-        return tmpl.format(to=to_user, from_=from_user, text=text, says=says)
+        return tmpl.format(to=to_user, from_=from_user, text=text, says=says, when=relative_time)
 
     def _cmd_memo(self, connection, event, msg, username, match):
         to_nick, text = match.group(1), match.group(2).strip()

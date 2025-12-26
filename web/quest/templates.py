@@ -874,7 +874,7 @@ class TemplateEngine:
             <tr>
                 <td>{rank_display}</td>
                 <td>
-                    <div class="player-name"><a href="{self.url(f'/player/{sanitize(nick)}')}">{sanitize(nick)}</a></div>
+                    <div class="player-name"><a href="{self.url(f'/player/{sanitize(user_id)}')}">{sanitize(nick)}</a></div>
                     <div class="player-info">{prestige_icons} Prestige {prestige}</div>
                 </td>
                 <td>{sanitize(player_class)}</td>

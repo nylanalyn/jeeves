@@ -80,13 +80,13 @@ class Help(SimpleCommandModule):
         """Constructs the public reply, adding the reference URL if it's configured."""
         reference_url = self.get_config_value("reference_url", channel)
         if reference_url:
-            return f"{base_message} If you need more ink on the case, thumb through the public files: {reference_url}"
+            return f"{base_message} Additional documentation may be found here: {reference_url}"
         return base_message
 
     def _cmd_help_public(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Handles !help in a channel by sending a PM."""
         self._handle_help_request(username, event.source)
-        base_msg = f"Check your private wire, {self.bot.title_for(username)}—the command roster's waiting there."
+        base_msg = f"I have sent the command list to you privately, {self.bot.title_for(username)}."
         reply = self._construct_public_reply(base_msg, event.target)
         self.safe_reply(connection, event, reply)
         return True
@@ -99,11 +99,11 @@ class Help(SimpleCommandModule):
         help_lines = self._get_command_help(command, is_admin)
         if help_lines:
             self._handle_help_request(username, event.source, command)
-            base_msg = f"Details on `{command}` are on your private line, {self.bot.title_for(username)}."
+            base_msg = f"I have sent details on '{command}' to you privately, {self.bot.title_for(username)}."
             reply = self._construct_public_reply(base_msg, event.target)
             self.safe_reply(connection, event, reply)
         else:
-            self.safe_reply(connection, event, f"Can't find that command in my files, {self.bot.title_for(username)}.")
+            self.safe_reply(connection, event, f"I'm afraid I don't recognize that command, {self.bot.title_for(username)}.")
         return True
 
     def on_privmsg(self, connection: Any, event: Any) -> bool:
@@ -138,7 +138,7 @@ class Help(SimpleCommandModule):
                 for line in help_lines:
                     self.safe_privmsg(username, line)
             else:
-                self.safe_privmsg(username, f"No entry for '{command}' in the casebook.")
+                self.safe_privmsg(username, f"I'm afraid I don't have information on '{command}'.")
         else:
             all_commands = self._get_all_commands(is_admin)
             self.log_debug(f"Help request: found {len(all_commands)} commands for user {username} (admin={is_admin})")
@@ -147,7 +147,7 @@ class Help(SimpleCommandModule):
             
             # Split command list into chunks that fit IRC's 512-byte limit
             # Account for the prefix text and some safety margin
-            prefix = "Available leads: "
+            prefix = "Available commands: "
             max_length = 400  # Conservative limit to account for IRC overhead
             
             if len(prefix + cmd_list) <= max_length:
@@ -179,8 +179,8 @@ class Help(SimpleCommandModule):
                     else:
                         self.safe_privmsg(username, chunk)
             
-            note = " (commands marked with * have admin-only subcommands)" if is_admin else ""
-            self.safe_privmsg(username, f"Ask 'help <command>' for the deep dive.{note}")
+            note = " (commands marked with * are available to administrators)" if is_admin else ""
+            self.safe_privmsg(username, f"Use 'help <command>' for details on a specific command.{note}")
 
         # Record cooldown after successfully sending help
         self.record_user_cooldown(username, "help_request")

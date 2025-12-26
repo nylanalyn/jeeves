@@ -980,54 +980,9 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
     Returns:
         HTML string
     """
-    # Achievement definitions (copied from modules/achievements.py)
-    ACHIEVEMENTS = {
-        # Quest Achievements
-        "quest_novice": {"name": "Quest Novice", "description": "Complete 10 quests", "category": "quest", "requirement": {"quests_completed": 10}, "secret": False, "tier": 1},
-        "quest_adept": {"name": "Quest Adept", "description": "Complete 50 quests", "category": "quest", "requirement": {"quests_completed": 50}, "secret": False, "tier": 2},
-        "quest_master": {"name": "Quest Master", "description": "Complete 100 quests", "category": "quest", "requirement": {"quests_completed": 100}, "secret": False, "tier": 3},
-        "quest_legend": {"name": "Quest Legend", "description": "Complete 500 quests", "category": "quest", "requirement": {"quests_completed": 500}, "secret": False, "tier": 4},
-        "quest_mythic": {"name": "Quest Mythic", "description": "Complete 1000 quests", "category": "quest", "requirement": {"quests_completed": 1000}, "secret": False, "tier": 5},
-        "prestige_1": {"name": "First Prestige", "description": "Reach Prestige 1", "category": "quest", "requirement": {"prestige": 1}, "secret": False},
-        "prestige_5": {"name": "Prestige Elite", "description": "Reach Prestige 5", "category": "quest", "requirement": {"prestige": 5}, "secret": False},
-        "prestige_10": {"name": "Prestige Master", "description": "Reach Prestige 10", "category": "quest", "requirement": {"prestige": 10}, "secret": False},
-        "win_streak_5": {"name": "On a Roll", "description": "Win 5 quests in a row", "category": "quest", "requirement": {"win_streak": 5}, "secret": False},
-        "win_streak_10": {"name": "Unstoppable", "description": "Win 10 quests in a row", "category": "quest", "requirement": {"win_streak": 10}, "secret": False},
-        "win_streak_25": {"name": "Legendary Streak", "description": "Win 25 quests in a row", "category": "quest", "requirement": {"win_streak": 25}, "secret": False},
-        "unlucky": {"name": "Unlucky", "description": "Lose 10 quests in a row", "category": "quest", "requirement": {"loss_streak": 10}, "secret": True},
-
-        # Creature/Animal Achievements
-        "hunter_1": {"name": "Hunter", "description": "Hunt 10 creatures", "category": "creatures", "requirement": {"animals_hunted": 10}, "secret": False, "tier": 1},
-        "hunter_2": {"name": "Hunter II", "description": "Hunt 50 creatures", "category": "creatures", "requirement": {"animals_hunted": 50}, "secret": False, "tier": 2},
-        "hunter_3": {"name": "Hunter III", "description": "Hunt 100 creatures", "category": "creatures", "requirement": {"animals_hunted": 100}, "secret": False, "tier": 3},
-        "apex_predator": {"name": "Apex Predator", "description": "Hunt 250 creatures", "category": "creatures", "requirement": {"animals_hunted": 250}, "secret": False, "tier": 4},
-        "lover_1": {"name": "Animal Lover", "description": "Hug 10 creatures", "category": "creatures", "requirement": {"animals_hugged": 10}, "secret": False, "tier": 1},
-        "lover_2": {"name": "Animal Lover II", "description": "Hug 50 creatures", "category": "creatures", "requirement": {"animals_hugged": 50}, "secret": False, "tier": 2},
-        "lover_3": {"name": "Animal Lover III", "description": "Hug 100 creatures", "category": "creatures", "requirement": {"animals_hugged": 100}, "secret": False, "tier": 3},
-        "pacifist": {"name": "Pacifist", "description": "Hug 100 creatures without hunting any", "category": "creatures", "requirement": {"animals_hugged": 100, "animals_hunted": 0}, "secret": True},
-        "bloodthirsty": {"name": "Bloodthirsty", "description": "Hunt 100 creatures without hugging any", "category": "creatures", "requirement": {"animals_hunted": 100, "animals_hugged": 0}, "secret": True},
-
-        # Coffee Achievements
-        "coffee_drinker": {"name": "Coffee Drinker", "description": "Order 25 coffees", "category": "social", "requirement": {"coffees_ordered": 25}, "secret": False, "tier": 1},
-        "coffee_addict": {"name": "Coffee Addict", "description": "Order 100 coffees", "category": "social", "requirement": {"coffees_ordered": 100}, "secret": False, "tier": 2},
-        "caffeine_overload": {"name": "Caffeine Overload", "description": "Order 500 coffees", "category": "social", "requirement": {"coffees_ordered": 500}, "secret": False, "tier": 3},
-
-        # Social/Usage Achievements
-        "weatherwatcher": {"name": "Weatherwatcher", "description": "Check weather 50 times", "category": "social", "requirement": {"weather_checks": 50}, "secret": False},
-        "meteorologist": {"name": "Meteorologist", "description": "Check weather 200 times", "category": "social", "requirement": {"weather_checks": 200}, "secret": False},
-        "polite": {"name": "Polite", "description": "Send 50 courtesy messages", "category": "social", "requirement": {"courtesy_messages": 50}, "secret": False},
-        "karma_farmer": {"name": "Karma Farmer", "description": "Give 100 karma points", "category": "social", "requirement": {"karma_given": 100}, "secret": False},
-        "translator": {"name": "Translator", "description": "Use translation 25 times", "category": "social", "requirement": {"translations_used": 25}, "secret": False},
-        "scare_tactics": {"name": "Scare Tactics", "description": "Scare 25 people", "category": "fun", "requirement": {"scares_sent": 25}, "secret": False},
-        "gif_master": {"name": "GIF Master", "description": "Post 50 GIFs", "category": "fun", "requirement": {"gifs_posted": 50}, "secret": False},
-
-        # Meta Achievements
-        "achievement_hunter": {"name": "Achievement Hunter", "description": "Unlock 5 achievements", "category": "meta", "requirement": {"achievements_unlocked": 5}, "secret": False, "tier": 1},
-        "achievement_master": {"name": "Achievement Master", "description": "Unlock 15 achievements", "category": "meta", "requirement": {"achievements_unlocked": 15}, "secret": False, "tier": 2},
-        "completionist": {"name": "Completionist", "description": "Unlock 30 achievements", "category": "meta", "requirement": {"achievements_unlocked": 30}, "secret": True, "tier": 3},
-        "first_blood": {"name": "First!", "description": "Be the first to unlock any achievement globally", "category": "meta", "requirement": "special", "secret": True},
-        "trendsetter": {"name": "Trendsetter", "description": "Be the first to unlock 5 different achievements globally", "category": "meta", "requirement": "special", "secret": True},
-    }
+    # Import achievement definitions from the live bot module so the web UI stays
+    # in sync with new additions (e.g., fishing achievements).
+    from modules.achievements import ACHIEVEMENTS
 
     # Get achievement data
     achievements_data = stats.get("achievements", {})
@@ -1045,23 +1000,26 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
             unlock_counts[ach_id] = unlock_counts.get(ach_id, 0) + 1
 
     # Group achievements by category
-    categories = {"quest": [], "creatures": [], "social": [], "fun": [], "meta": []}
+    categories: Dict[str, List[Tuple[str, Dict[str, Any]]]] = {}
     for ach_id, ach_data in ACHIEVEMENTS.items():
         category = ach_data.get("category", "other")
-        if category in categories:
-            categories[category].append((ach_id, ach_data))
+        categories.setdefault(category, []).append((ach_id, ach_data))
 
     # Build category sections HTML
     category_sections = ""
     category_icons = {
         "quest": "⚔️",
         "creatures": "🦌",
+        "fishing": "🎣",
         "social": "👥",
         "fun": "🎉",
-        "meta": "🏆"
+        "meta": "🏆",
     }
 
-    for cat_name, cat_achievements in categories.items():
+    category_order = ["quest", "creatures", "fishing", "social", "fun", "meta", "other"]
+
+    for cat_name in sorted(categories.keys(), key=lambda name: category_order.index(name) if name in category_order else len(category_order)):
+        cat_achievements = categories.get(cat_name, [])
         if not cat_achievements:
             continue
 
@@ -1106,7 +1064,7 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
             icon = category_icons.get(cat_name, "🎯")
             category_sections += f"""
         <div class="achievement-category">
-            <h3>{icon} {cat_name.title()} Achievements</h3>
+            <h3>{icon} {cat_name.replace('_', ' ').title()} Achievements</h3>
             <div class="achievement-grid">
                 {cards_html}
             </div>

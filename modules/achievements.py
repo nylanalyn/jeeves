@@ -287,6 +287,96 @@ ACHIEVEMENTS = {
         "requirement": "special",
         "secret": True
     },
+
+    # Fishing Achievements
+    "first_catch": {
+        "name": "First Catch",
+        "description": "Catch your first fish",
+        "category": "fishing",
+        "requirement": {"fish_caught": 1},
+        "secret": False
+    },
+    "angler_10": {
+        "name": "Angler",
+        "description": "Catch 10 fish",
+        "category": "fishing",
+        "requirement": {"fish_caught": 10},
+        "secret": False,
+        "tier": 1
+    },
+    "angler_50": {
+        "name": "Angler II",
+        "description": "Catch 50 fish",
+        "category": "fishing",
+        "requirement": {"fish_caught": 50},
+        "secret": False,
+        "tier": 2
+    },
+    "angler_100": {
+        "name": "Angler III",
+        "description": "Catch 100 fish",
+        "category": "fishing",
+        "requirement": {"fish_caught": 100},
+        "secret": False,
+        "tier": 3
+    },
+    "master_angler": {
+        "name": "Master Angler",
+        "description": "Catch 500 fish",
+        "category": "fishing",
+        "requirement": {"fish_caught": 500},
+        "secret": False,
+        "tier": 4
+    },
+    "rare_catch": {
+        "name": "Rare Catch",
+        "description": "Catch a rare fish",
+        "category": "fishing",
+        "requirement": {"rare_fish_caught": 1},
+        "secret": False
+    },
+    "legendary_catch": {
+        "name": "Legendary Catch",
+        "description": "Catch a legendary fish",
+        "category": "fishing",
+        "requirement": {"legendary_fish_caught": 1},
+        "secret": False
+    },
+    "void_fisher": {
+        "name": "Void Fisher",
+        "description": "Reach fishing level 9 (The Void)",
+        "category": "fishing",
+        "requirement": {"fishing_level": 9},
+        "secret": False
+    },
+    "space_fisher": {
+        "name": "Space Fisher",
+        "description": "Reach fishing level 6 (Moon)",
+        "category": "fishing",
+        "requirement": {"fishing_level": 6},
+        "secret": False
+    },
+    "line_breaker": {
+        "name": "The One That Got Away",
+        "description": "Break 10 lines",
+        "category": "fishing",
+        "requirement": {"lines_broken": 10},
+        "secret": False
+    },
+    "environmentalist": {
+        "name": "Environmentalist",
+        "description": "Collect 25 junk items while fishing",
+        "category": "fishing",
+        "requirement": {"junk_collected": 25},
+        "secret": False
+    },
+    "patient_fisher": {
+        "name": "Patient Fisher",
+        "description": "Wait the perfect amount of time (18-24 hours) for a catch",
+        "category": "fishing",
+        "requirement": {"perfect_waits": 1},
+        "secret": True
+    },
 }
 
 

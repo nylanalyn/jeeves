@@ -21,6 +21,7 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
     top_quest = aggregator.get_leaderboard("quest", "prestige", limit=5)
     top_hunters = aggregator.get_leaderboard("hunt", "total_interactions", limit=5)
     top_duelists = aggregator.get_leaderboard("duel", "wins", limit=5)
+    top_fishers = aggregator.get_leaderboard("fishing", "total_fish", limit=5)
 
     # Get nick change leaders
     nick_changers = sorted(
@@ -60,6 +61,7 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
         list(stats["duel"].get("losses", {}).keys())
     ))
     absurdia_players = len(stats["absurdia"].get("players", {}))
+    fishing_players = len(stats.get("fishing", {}))
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -270,6 +272,10 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
                 <div class="number">{absurdia_players}</div>
                 <div class="label">Absurdia Players</div>
             </div>
+            <div class="summary-card">
+                <div class="number">{fishing_players}</div>
+                <div class="label">Fishers</div>
+            </div>
         </div>
 
         <div class="stats-grid">
@@ -319,6 +325,12 @@ def render_overview_page(stats: Dict[str, Any], aggregator) -> str:
             <div class="stat-card">
                 <h2><span class="icon">⭐</span> Karma Leaders</h2>
                 {_render_karma_leaderboard(karma_leaders, aggregator)}
+            </div>
+
+            <!-- Top Fishers -->
+            <div class="stat-card">
+                <h2><span class="icon">🎣</span> Top Fishers</h2>
+                {_render_fishing_leaderboard(top_fishers, stats, aggregator)}
             </div>
         </div>
 
@@ -899,6 +911,43 @@ def _render_karma_leaderboard(entries: List[Tuple[str, int]], aggregator) -> str
                 <span class="rank">#{i}</span>
                 <span class="username">{_escape_html(username)}</span>
                 <span class="{score_class}">{prefix}{karma}</span>
+            </li>'''
+
+    html += '</ul>'
+    return html
+
+
+def _render_fishing_leaderboard(entries: List[Tuple[str, int]], stats: Dict[str, Any], aggregator) -> str:
+    """Render fishing leaderboard with level and biggest catch info.
+
+    Args:
+        entries: List of (user_id, total_fish) tuples
+        stats: All stats
+        aggregator: StatsAggregator instance
+
+    Returns:
+        HTML string
+    """
+    if not entries:
+        return '<div class="empty-state">No fishers yet</div>'
+
+    html = '<ul class="leaderboard">'
+    for i, (user_id, total_fish) in enumerate(entries, 1):
+        username = aggregator.get_user_display_name(user_id)
+        fishing_data = stats.get("fishing", {}).get(user_id, {})
+        level = fishing_data.get("level", 0)
+        biggest = fishing_data.get("biggest_fish", 0)
+
+        if biggest > 0:
+            score_str = f"L{level} | {total_fish} fish | {biggest:.1f}lbs"
+        else:
+            score_str = f"L{level} | {total_fish} fish"
+
+        html += f'''
+            <li>
+                <span class="rank">#{i}</span>
+                <span class="username">{_escape_html(username)}</span>
+                <span class="score" style="font-size: 0.85em;">{score_str}</span>
             </li>'''
 
     html += '</ul>'

@@ -117,3 +117,45 @@ def record_loss_streak(bot, username: str, streak: int):
     current_best = progress.get("loss_streak", 0)
     if streak > current_best:
         record_achievement(bot, username, "loss_streak", streak - current_best)
+
+
+# Fishing achievements
+
+def record_fish_caught(bot, username: str, rarity: str = "common"):
+    """Record a fish catch with rarity tracking."""
+    record_achievement(bot, username, "fish_caught", 1)
+    if rarity == "rare":
+        record_achievement(bot, username, "rare_fish_caught", 1)
+    elif rarity == "legendary":
+        record_achievement(bot, username, "legendary_fish_caught", 1)
+
+
+def record_fishing_level(bot, username: str, level: int):
+    """Record fishing level reached (only updates if higher)."""
+    achievements_module = bot.pm.plugins.get("achievements")
+    if not achievements_module:
+        return
+
+    user_id = bot.get_user_id(username)
+    user_achievements = achievements_module.get_state("user_achievements", {})
+    user_data = user_achievements.get(user_id, {})
+    progress = user_data.get("progress", {})
+
+    current = progress.get("fishing_level", 0)
+    if level > current:
+        record_achievement(bot, username, "fishing_level", level - current)
+
+
+def record_line_broken(bot, username: str):
+    """Record a broken fishing line."""
+    record_achievement(bot, username, "lines_broken", 1)
+
+
+def record_junk_collected(bot, username: str):
+    """Record junk collected while fishing."""
+    record_achievement(bot, username, "junk_collected", 1)
+
+
+def record_perfect_fishing_wait(bot, username: str):
+    """Record a perfect wait time (18-24 hours)."""
+    record_achievement(bot, username, "perfect_waits", 1)

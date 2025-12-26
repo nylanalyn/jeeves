@@ -55,6 +55,7 @@ class JeevesStatsLoader:
             "bell": self.load_bell_stats(),
             "achievements": self.load_achievements_stats(),
             "activity": self.load_activity_stats(),
+            "fishing": self.load_fishing_stats(),
         }
 
     def load_users(self) -> Dict[str, Dict[str, Any]]:
@@ -351,6 +352,33 @@ class JeevesStatsLoader:
             users = {}
 
         return {"global": global_bucket, "channels": channels, "users": users}
+
+    def load_fishing_stats(self) -> Dict[str, Dict[str, Any]]:
+        """Load Fishing module statistics.
+
+        Returns:
+            Dict mapping user_id to fishing stats (level, xp, total_fish, etc.)
+        """
+        if not self.games_path.exists():
+            return {}
+
+        with open(self.games_path, 'r') as f:
+            data = json.load(f)
+
+        players = data.get("modules", {}).get("fishing", {}).get("players", {})
+
+        # Calculate some aggregate stats for each player
+        for user_id, player_data in players.items():
+            if isinstance(player_data, dict):
+                # Count rare and legendary catches
+                rare_catches = player_data.get("rare_catches", [])
+                player_data["rare_count"] = sum(1 for c in rare_catches if c.get("rarity") == "rare")
+                player_data["legendary_count"] = sum(1 for c in rare_catches if c.get("rarity") == "legendary")
+                # Count unique fish species
+                catches = player_data.get("catches", {})
+                player_data["unique_species"] = len(catches)
+
+        return players
 
 
 class StatsAggregator:

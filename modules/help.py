@@ -129,6 +129,7 @@ class Help(SimpleCommandModule):
 
         cooldown = self.get_config_value("cooldown_seconds", default=10.0)
         if not self.check_user_cooldown(username, "help_request", cooldown):
+            self.log_debug(f"Help request from {username} blocked by cooldown")
             return
 
         if command:
@@ -139,7 +140,10 @@ class Help(SimpleCommandModule):
             else:
                 self.safe_privmsg(username, f"No entry for '{command}' in the casebook.")
         else:
+            all_commands = self._get_all_commands(is_admin)
+            self.log_debug(f"Help request: found {len(all_commands)} commands for user {username} (admin={is_admin})")
             cmd_list = self._get_command_list(is_admin)
+            self.log_debug(f"Help request: command list = '{cmd_list}'")
             self.safe_privmsg(username, f"Available leads: {cmd_list}")
             note = " (commands marked with * have admin-only subcommands)" if is_admin else ""
             self.safe_privmsg(username, f"Ask 'help <command>' for the deep dive.{note}")

@@ -1089,6 +1089,9 @@ class TemplateEngine:
         losses = player.get("losses", 0)
         win_streak = player.get("win_streak", 0)
         prestige_icons = self.theme.get_prestige_icons(prestige)
+        
+        # For use in JavaScript strings - sanitize for HTML attribute
+        current_user_html = sanitize(current_user) if current_user else ""
 
         # Format legend suffix for transcendence
         legend_suffix = ""

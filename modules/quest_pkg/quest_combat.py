@@ -14,13 +14,40 @@ from . import quest_progression
 from .. import achievement_hooks
 
 
-def apply_active_effects_to_combat(player: Dict[str, Any], base_win_chance: float, base_xp: int, is_win: bool) -> Tuple[float, int, List[str]]:
+def apply_active_effects_to_combat(player: Dict[str, Any], base_win_chance: float, base_xp: int, is_win: bool, quest_module=None, channel=None) -> Tuple[float, int, List[str]]:
     """
     Apply active effects to combat, return (modified_win_chance, modified_xp, messages).
     """
     messages = []
     win_chance = base_win_chance
     xp = base_xp
+
+    # Party buffs (like Bloodlust) - check for active channel-wide buffs
+    if quest_module and channel:
+        party_buffs = quest_module.get_state("party_buffs", {})
+        channel_buffs = party_buffs.get(channel, {})
+        now = datetime.now(UTC)
+        
+        for buff_id, buff_data in list(channel_buffs.items()):
+            # Check if buff is expired
+            expires_at = datetime.fromisoformat(buff_data.get("expires_at", now.isoformat()))
+            if now >= expires_at:
+                # Remove expired buff
+                del channel_buffs[buff_id]
+                continue
+            
+            # Apply active buff
+            if buff_data.get("type") == "win_chance_boost":
+                bonus = buff_data.get("bonus", 0)
+                win_chance += bonus
+                ability_name = buff_data.get("ability", "Party Buff")
+                bonus_pct = int(bonus * 100)
+                messages.append(f"{ability_name} active! (+{bonus_pct}% win chance)")
+        
+        # Save cleaned buffs
+        if channel_buffs != party_buffs.get(channel, {}):
+            party_buffs[channel] = channel_buffs
+            quest_module.set_state("party_buffs", party_buffs)
 
     # Mythic relic - guarantee victory for remaining solo fights
     for effect in player.get("active_effects", []):

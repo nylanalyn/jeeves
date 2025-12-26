@@ -259,12 +259,12 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     )
     total_xp = buffed_xp
 
-    # Apply active effects (lucky charm, xp scroll) - pass placeholder for is_win
-    win_chance_modified, xp_modified, effect_msgs = quest_combat.apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=False)
+    # Apply active effects (lucky charm, xp scroll, party buffs) - pass placeholder for is_win
+    win_chance_modified, xp_modified, effect_msgs = quest_combat.apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=False, quest_module=quest_module, channel=event.target)
 
     # Show effect messages before combat
     for msg in effect_msgs:
-        if "lucky charm" in msg.lower():  # Only show lucky charm pre-combat
+        if "lucky charm" in msg.lower() or "active!" in msg.lower():  # Show lucky charm and party buffs pre-combat
             quest_module.safe_reply(connection, event, msg)
 
     # Determine combat result
@@ -272,7 +272,7 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     player['last_fight'] = {"monster_name": monster['name'], "monster_level": monster_level, "win": win}
 
     # Re-apply effects now that we know the outcome (for XP scroll)
-    _, total_xp, xp_effect_msgs = quest_combat.apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=win)
+    _, total_xp, xp_effect_msgs = quest_combat.apply_active_effects_to_combat(player, base_win_chance, total_xp, is_win=win, quest_module=quest_module, channel=event.target)
 
     # Check for critical hit
     crit_chance = quest_module.get_config_value("crit_chance", event.target, default=0.15)
@@ -998,9 +998,32 @@ def _execute_ability_effect(quest_module, connection, event, username, user_id, 
         return True
 
     elif effect == "party_buff_win_chance":
-        # Add a timed buff to all players
-        # This would require more complex buff tracking - placeholder for now
-        quest_module.safe_say("Party buff applied! (Full implementation pending)", event.target)
+        # Add a timed party-wide win chance buff
+        win_bonus = ability_data.get("effect_data", {}).get("win_bonus", 0.2)
+        duration_hours = ability_data.get("effect_data", {}).get("duration_hours", 1)
+        
+        # Store the party buff in module state
+        party_buffs = quest_module.get_state("party_buffs", {})
+        channel = event.target
+        
+        # Create the buff
+        expires_at = datetime.now(UTC) + timedelta(hours=duration_hours)
+        buff_id = f"bloodlust_{user_id}_{datetime.now(UTC).isoformat()}"
+        
+        if channel not in party_buffs:
+            party_buffs[channel] = {}
+        
+        party_buffs[channel][buff_id] = {
+            "type": "win_chance_boost",
+            "bonus": win_bonus,
+            "expires_at": expires_at.isoformat(),
+            "caster": username,
+            "ability": ability_data.get("name", "Unknown")
+        }
+        
+        quest_module.set_state("party_buffs", party_buffs)
+        quest_module.save_state()
+        
         return True
 
     # Unknown effect

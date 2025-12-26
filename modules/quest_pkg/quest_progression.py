@@ -1291,7 +1291,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match, skip_
 
         # Apply active effects
         base_xp = monster.get("xp_reward", 0)
-        win_chance, _, effect_msgs = apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=False)
+        win_chance, _, effect_msgs = apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=False, quest_module=quest_module, channel=channel)
         for msg_text in effect_msgs:
             if msg_text:
                 quest_module.safe_privmsg(username, msg_text)
@@ -1313,7 +1313,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match, skip_
                 quest_module.safe_privmsg(username, "Dungeon spirits refuse to grant XP when you rely on counter-item shortcuts.")
                 active_run["xp_notice_sent"] = True
 
-            _, xp_award, xp_effect_msgs = apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=True)
+            _, xp_award, xp_effect_msgs = apply_active_effects_to_combat(player, base_win_chance, base_xp, is_win=True, quest_module=quest_module, channel=channel)
             quest_module.safe_privmsg(username, f"You defeat the {monster['name']}! (Win chance: {win_chance:.0%})")
             for msg_text in xp_effect_msgs:
                 if msg_text:

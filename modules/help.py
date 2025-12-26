@@ -143,8 +143,42 @@ class Help(SimpleCommandModule):
             all_commands = self._get_all_commands(is_admin)
             self.log_debug(f"Help request: found {len(all_commands)} commands for user {username} (admin={is_admin})")
             cmd_list = self._get_command_list(is_admin)
-            self.log_debug(f"Help request: command list = '{cmd_list}'")
-            self.safe_privmsg(username, f"Available leads: {cmd_list}")
+            self.log_debug(f"Help request: command list length = {len(cmd_list)} bytes")
+            
+            # Split command list into chunks that fit IRC's 512-byte limit
+            # Account for the prefix text and some safety margin
+            prefix = "Available leads: "
+            max_length = 400  # Conservative limit to account for IRC overhead
+            
+            if len(prefix + cmd_list) <= max_length:
+                self.safe_privmsg(username, f"{prefix}{cmd_list}")
+            else:
+                # Split into multiple messages
+                commands = cmd_list.split(", ")
+                chunks = []
+                current_chunk = []
+                current_length = len(prefix)
+                
+                for cmd in commands:
+                    cmd_length = len(cmd) + 2  # +2 for ", "
+                    if current_length + cmd_length > max_length and current_chunk:
+                        chunks.append(", ".join(current_chunk))
+                        current_chunk = [cmd]
+                        current_length = len(prefix) + len(cmd)
+                    else:
+                        current_chunk.append(cmd)
+                        current_length += cmd_length
+                
+                if current_chunk:
+                    chunks.append(", ".join(current_chunk))
+                
+                # Send the chunks
+                for i, chunk in enumerate(chunks):
+                    if i == 0:
+                        self.safe_privmsg(username, f"{prefix}{chunk}")
+                    else:
+                        self.safe_privmsg(username, chunk)
+            
             note = " (commands marked with * have admin-only subcommands)" if is_admin else ""
             self.safe_privmsg(username, f"Ask 'help <command>' for the deep dive.{note}")
 

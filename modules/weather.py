@@ -140,7 +140,7 @@ class Weather(SimpleCommandModule):
                 summary = current.get('summary', 'N/A')
                 temp_str = f"{int(temp_f)}°F/{temp_c}°C" if temp_f is not None else "N/A"
                 feels_like_str = f" Feels like: {int(feels_like_f)}°F/{feels_like_c}°C." if feels_like_f is not None else ""
-                humidity_str = f" Humidititty: {humidity_pct}%." if humidity_pct is not None else ""
+                humidity_str = f" Humidity: {humidity_pct}%." if humidity_pct is not None else ""
             else:
                 # MET Norway format
                 now = data['properties']['timeseries'][0]['data']['instant']['details']
@@ -161,7 +161,7 @@ class Weather(SimpleCommandModule):
                 else:
                     feels_like_str = ""
 
-                humidity_str = f" Humidititty: {int(humidity_pct)}%." if humidity_pct is not None else ""
+                humidity_str = f" Humidity: {int(humidity_pct)}%." if humidity_pct is not None else ""
 
             report = f"{summary}. Temp: {temp_str}.{feels_like_str}{humidity_str} Wind: {wind_mph} mph / {wind_kph} kph."
 

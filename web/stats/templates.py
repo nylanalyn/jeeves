@@ -988,6 +988,7 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
     achievements_data = stats.get("achievements", {})
     user_achievements = achievements_data.get("user_achievements", {})
     global_first_unlocks = achievements_data.get("global_first_unlocks", {})
+    achievement_holders = achievements_data.get("achievement_holders", {})
 
     # Calculate stats
     total_users_tracking = len(user_achievements)
@@ -1045,8 +1046,36 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
 
             first_text = f'<div class="first-unlock">🥇 First: {_escape_html(first_user)}</div>' if first_user else ''
 
+            # Build holder list with usernames and dates
+            holders = achievement_holders.get(ach_id, [])
+            holders_data = []
+            for holder in holders:
+                user_id = holder.get("user_id")
+                username = users.get(user_id, {}).get("canonical_nick", user_id) if users.get(user_id) else user_id
+                unlock_time = holder.get("unlock_timestamp")
+                
+                # Format timestamp if available
+                if unlock_time:
+                    from datetime import datetime
+                    try:
+                        dt = datetime.fromisoformat(unlock_time.replace('Z', '+00:00'))
+                        date_str = dt.strftime("%Y-%m-%d %H:%M UTC")
+                    except (ValueError, AttributeError):
+                        date_str = "Unknown date"
+                else:
+                    date_str = "Unknown date"
+                
+                holders_data.append({
+                    "username": username,
+                    "date": date_str
+                })
+            
+            # Create JSON data for JavaScript
+            import json
+            holders_json = json.dumps(holders_data).replace('"', '&quot;')
+
             cards_html += f"""
-            <div class="achievement-card {rarity_class}">
+            <div class="achievement-card {rarity_class}" data-holders="{holders_json}">
                 <div class="achievement-header">
                     <h4>{_escape_html(ach_data['name'])}</h4>
                     {tier_badge}
@@ -1283,6 +1312,68 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
             font-style: italic;
             color: #ff6b35;
         }}
+
+        /* Tooltip/Modal for achievement holders */
+        .holders-tooltip {{
+            position: absolute;
+            background: white;
+            border: 2px solid #764ba2;
+            border-radius: 8px;
+            padding: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 250px;
+            max-width: 400px;
+            max-height: 400px;
+            overflow-y: auto;
+            display: none;
+        }}
+
+        .holders-tooltip.visible {{
+            display: block;
+        }}
+
+        .holders-tooltip h5 {{
+            margin: 0 0 0.75rem 0;
+            color: #764ba2;
+            font-size: 1.1rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 0.5rem;
+        }}
+
+        .holders-list {{
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }}
+
+        .holders-list li {{
+            padding: 0.5rem;
+            margin-bottom: 0.25rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }}
+
+        .holders-list li .username {{
+            font-weight: 600;
+            color: #333;
+        }}
+
+        .holders-list li .date {{
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }}
+
+        .achievement-card {{
+            cursor: pointer;
+        }}
+
+        .achievement-card:hover {{
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }}
     </style>
 </head>
 <body>
@@ -1315,7 +1406,129 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
         </div>
 
         {category_sections}
+
+        <!-- Tooltip for showing achievement holders -->
+        <div id="holders-tooltip" class="holders-tooltip">
+            <h5 id="tooltip-title">Achievement Holders</h5>
+            <ul id="tooltip-list" class="holders-list"></ul>
+        </div>
     </div>
+
+    <script>
+        // Achievement holders tooltip functionality
+        const tooltip = document.getElementById('holders-tooltip');
+        const tooltipTitle = document.getElementById('tooltip-title');
+        const tooltipList = document.getElementById('tooltip-list');
+        let currentCard = null;
+
+        // Function to show tooltip
+        function showTooltip(card, event) {{
+            const holdersData = card.getAttribute('data-holders');
+            if (!holdersData) return;
+
+            try {{
+                const holders = JSON.parse(holdersData);
+                if (holders.length === 0) return;
+
+                // Update tooltip content
+                const achievementName = card.querySelector('h4').textContent;
+                tooltipTitle.textContent = `${{achievementName}} - Holders`;
+                
+                tooltipList.innerHTML = '';
+                holders.forEach(holder => {{
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <div class="username">${{holder.username}}</div>
+                        <div class="date">${{holder.date}}</div>
+                    `;
+                    tooltipList.appendChild(li);
+                }});
+
+                // Position tooltip near the card
+                const rect = card.getBoundingClientRect();
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+                
+                // Position to the right of the card if there's space, otherwise to the left
+                let left = rect.right + scrollLeft + 10;
+                let top = rect.top + scrollTop;
+                
+                // Check if tooltip would go off the right edge
+                const tooltipWidth = 300; // approximate
+                if (left + tooltipWidth > window.innerWidth) {{
+                    left = rect.left + scrollLeft - tooltipWidth - 10;
+                }}
+                
+                tooltip.style.left = left + 'px';
+                tooltip.style.top = top + 'px';
+                tooltip.classList.add('visible');
+                currentCard = card;
+            }} catch (e) {{
+                console.error('Error parsing holders data:', e);
+            }}
+        }}
+
+        // Function to hide tooltip
+        function hideTooltip() {{
+            tooltip.classList.remove('visible');
+            currentCard = null;
+        }}
+
+        // Add event listeners to all achievement cards
+        document.querySelectorAll('.achievement-card').forEach(card => {{
+            // Show on hover
+            card.addEventListener('mouseenter', (e) => {{
+                showTooltip(card, e);
+            }});
+            
+            // Hide when mouse leaves both card and tooltip
+            card.addEventListener('mouseleave', (e) => {{
+                // Delay hiding to allow mouse to move to tooltip
+                setTimeout(() => {{
+                    const tooltipRect = tooltip.getBoundingClientRect();
+                    const mouseX = e.clientX;
+                    const mouseY = e.clientY;
+                    
+                    // Check if mouse is over tooltip
+                    const overTooltip = (
+                        mouseX >= tooltipRect.left &&
+                        mouseX <= tooltipRect.right &&
+                        mouseY >= tooltipRect.top &&
+                        mouseY <= tooltipRect.bottom
+                    );
+                    
+                    if (!overTooltip && currentCard === card) {{
+                        hideTooltip();
+                    }}
+                }}, 100);
+            }});
+            
+            // Also allow clicking to toggle
+            card.addEventListener('click', (e) => {{
+                if (currentCard === card) {{
+                    hideTooltip();
+                }} else {{
+                    showTooltip(card, e);
+                }}
+            }});
+        }});
+
+        // Keep tooltip visible when hovering over it
+        tooltip.addEventListener('mouseenter', () => {{
+            // Tooltip stays visible
+        }});
+
+        tooltip.addEventListener('mouseleave', () => {{
+            hideTooltip();
+        }});
+
+        // Hide tooltip when clicking outside
+        document.addEventListener('click', (e) => {{
+            if (!e.target.closest('.achievement-card') && !e.target.closest('#holders-tooltip')) {{
+                hideTooltip();
+            }}
+        }});
+    </script>
 </body>
 </html>"""
 

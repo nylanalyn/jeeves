@@ -324,7 +324,36 @@ class JeevesStatsLoader:
         if isinstance(stats_firsts, dict):
             global_first_unlocks.update(stats_firsts)
 
-        return {"user_achievements": user_achievements, "global_first_unlocks": global_first_unlocks}
+        # Build reverse mapping: achievement_id -> list of (user_id, unlock_timestamp)
+        achievement_holders: Dict[str, List[Dict[str, Any]]] = {}
+        for user_id, user_data in user_achievements.items():
+            if not isinstance(user_data, dict):
+                continue
+            unlocked = user_data.get("unlocked", [])
+            unlock_times = user_data.get("unlock_times", {})
+            
+            if isinstance(unlocked, list):
+                for ach_id in unlocked:
+                    if ach_id not in achievement_holders:
+                        achievement_holders[ach_id] = []
+                    
+                    unlock_timestamp = unlock_times.get(ach_id) if isinstance(unlock_times, dict) else None
+                    achievement_holders[ach_id].append({
+                        "user_id": user_id,
+                        "unlock_timestamp": unlock_timestamp
+                    })
+        
+        # Sort each achievement's holders by unlock timestamp
+        for ach_id in achievement_holders:
+            achievement_holders[ach_id].sort(
+                key=lambda x: x["unlock_timestamp"] if x["unlock_timestamp"] else float('inf')
+            )
+
+        return {
+            "user_achievements": user_achievements,
+            "global_first_unlocks": global_first_unlocks,
+            "achievement_holders": achievement_holders
+        }
 
     def load_activity_stats(self) -> Dict[str, Any]:
         """Load Activity module statistics.

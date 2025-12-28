@@ -16,7 +16,7 @@ def setup(bot):
 
 class Roadtrip(SimpleCommandModule):
     name = "roadtrip"
-    version = "3.3.0" # Refreshed destinations; legacy set preserved below
+    version = "3.4.0" # Expanded to 20 destinations
     description = "Schedules surprise roadtrips for channel members with delayed story reporting."
 
     EVENTS = {
@@ -45,41 +45,87 @@ class Roadtrip(SimpleCommandModule):
             "duo": ["{p1} and {p2} raced down the tarmac pretending to taxi invisible planes, complete with hand signals."],
             "group": ["{p1} and the group held a paper-plane tournament in the hangar; a rogue gust crowned an unexpected champion."]
         },
+        "the riverside park": {
+            "solo": ["{p1} enjoyed a quiet moment by the water, skipping stones across the surface."],
+            "duo": ["{p1} and {p2} had a long conversation on a park bench, watching the boats go by."],
+            "group": ["{p1} and the others started an impromptu game of frisbee that went on for hours."]
+        },
+        "the old museum": {
+            "solo": ["{p1} spent a thoughtful afternoon wandering the halls, completely losing track of time."],
+            "duo": ["{p1} and {p2} got into a surprisingly intense debate about modern art in front of a very confusing sculpture."],
+            "group": ["{p1} and the group accidentally set off a minor alarm in the dinosaur exhibit, but played it cool."]
+        },
+        "the observatory": {
+            "solo": ["{p1} looked through the grand telescope and felt a profound sense of cosmic insignificance, but in a good way."],
+            "duo": ["{p1} and {p2} stayed up late, pointing out constellations to each other, both real and imagined."],
+            "group": ["{p1} and the others watched a stunning meteor shower from the observatory dome."]
+        },
+        "the seaside pier": {
+            "solo": ["{p1} ate a truly questionable hot dog while watching the waves crash against the pylons."],
+            "duo": ["{p1} and {p2} tried their luck at the arcade games and left with a giant, impractical stuffed animal."],
+            "group": ["{p1} and the group bravely rode the rickety old Ferris wheel, offering thrilling views and mild terror."]
+        },
+        "the midnight diner": {
+            "solo": ["{p1} drank lukewarm coffee and listened to the old jukebox play forgotten songs."],
+            "duo": ["{p1} and {p2} shared a plate of questionable fries and solved all the world's problems over three hours."],
+            "group": ["{p1} and the group somehow started a friendly pancake-eating contest with the night-shift cook."]
+        },
+        "the abandoned drive-in": {
+            "solo": ["{p1} sat on the hood of the car and watched the empty screen, imagining old double features."],
+            "duo": ["{p1} and {p2} tuned the radio to static and pretended it was the original broadcast frequency."],
+            "group": ["{p1} and the others reenacted their favorite movie scenes on the cracked asphalt, to mixed reviews."]
+        },
+        "the vintage bowling alley": {
+            "solo": ["{p1} bowled three games alone, developing a deeply personal rivalry with pin seven."],
+            "duo": ["{p1} and {p2} made up increasingly absurd trick shot rules until the lane attendant asked them to stop."],
+            "group": ["{p1} and the group discovered the cosmic bowling lights and immediately declared it a dance floor."]
+        },
+        "the old lighthouse": {
+            "solo": ["{p1} climbed all 127 steps and stood in the lantern room, feeling like the last person on earth."],
+            "duo": ["{p1} and {p2} took turns pretending to spot ships on the horizon, complete with dramatic pointing."],
+            "group": ["{p1} and the others got thoroughly lost in the fog on the way back, which only added to the adventure."]
+        },
+        "the giant roadside statue": {
+            "solo": ["{p1} took seventeen photos trying to get the perfect forced-perspective shot."],
+            "duo": ["{p1} and {p2} debated the artistic merit of a 40-foot fiberglass lumberjack for longer than expected."],
+            "group": ["{p1} and the group posed for an elaborate group photo that will definitely become a holiday card."]
+        },
+        "the used bookstore": {
+            "solo": ["{p1} emerged three hours later with a stack of books and no memory of time passing."],
+            "duo": ["{p1} and {p2} challenged each other to find the weirdest title, resulting in some truly baffling discoveries."],
+            "group": ["{p1} and the others got separated in the labyrinthine stacks and had to regroup at the cat by the register."]
+        },
+        "the retro roller rink": {
+            "solo": ["{p1} skated cautiously along the wall for the first hour, then briefly achieved grace before falling."],
+            "duo": ["{p1} and {p2} attempted the couple's skate and only crashed into each other twice."],
+            "group": ["{p1} and the group formed a wobbly chain that somehow made it one full lap before spectacular collapse."]
+        },
+        "the canyon overlook": {
+            "solo": ["{p1} sat on the guardrail eating a sandwich, watching hawks ride the thermals below."],
+            "duo": ["{p1} and {p2} shouted into the canyon and timed the echoes with great scientific precision."],
+            "group": ["{p1} and the others hiked to a hidden ledge and stayed until the sunset painted everything gold."]
+        },
+        "the ghost town": {
+            "solo": ["{p1} wandered the empty main street, imagining the bustle of a hundred years past."],
+            "duo": ["{p1} and {p2} poked through the old general store and found a coin from 1887 in the floorboards."],
+            "group": ["{p1} and the group staged an impromptu western showdown, complete with exaggerated falls."]
+        },
+        "the vintage arcade": {
+            "solo": ["{p1} pumped quarters into a pinball machine until achieving a zen-like high score trance."],
+            "duo": ["{p1} and {p2} discovered an ancient co-op game and didn't leave until they beat it."],
+            "group": ["{p1} and the others held a tournament bracket that got surprisingly heated over air hockey."]
+        },
+        "the sunflower field": {
+            "solo": ["{p1} walked between the towering stalks and felt briefly like a character in a painting."],
+            "duo": ["{p1} and {p2} got absolutely lost in the maze and had to navigate by sun position."],
+            "group": ["{p1} and the group played hide and seek until someone startled a very indignant crow."]
+        },
         "fallback": {
             "solo": ["{p1} had a quiet, introspective time at {dest}."],
             "duo": ["{p1} and {p2} found a cozy corner at {dest} and chatted for hours."],
             "group": ["{p1} and the group explored {dest} and generally had a lovely time."]
         }
     }
-
-    # Legacy destinations preserved for easy restoration:
-    # LEGACY_EVENTS = {
-    #     "the riverside park": {
-    #         "solo": ["{p1} enjoyed a quiet moment by the water, skipping stones across the surface."],
-    #         "duo": ["{p1} and {p2} had a long conversation on a park bench, watching the boats go by."],
-    #         "group": ["{p1} and the others started an impromptu game of frisbee that went on for hours."]
-    #     },
-    #     "the old museum": {
-    #         "solo": ["{p1} spent a thoughtful afternoon wandering the halls, completely losing track of time."],
-    #         "duo": ["{p1} and {p2} got into a surprisingly intense debate about modern art in front of a very confusing sculpture."],
-    #         "group": ["{p1} and the group accidentally set off a minor alarm in the dinosaur exhibit, but played it cool."]
-    #     },
-    #     "the observatory": {
-    #         "solo": ["{p1} looked through the grand telescope and felt a profound sense of cosmic insignificance, but in a good way."],
-    #         "duo": ["{p1} and {p2} stayed up late, pointing out constellations to each other, both real and imagined."],
-    #         "group": ["{p1} and the others watched a stunning meteor shower from the observatory dome."]
-    #     },
-    #     "the seaside pier": {
-    #         "solo": ["{p1} ate a truly questionable hot dog while watching the waves crash against the pylons."],
-    #         "duo": ["{p1} and {p2} tried their luck at the arcade games and left with a giant, impractical stuffed animal."],
-    #         "group": ["{p1} and the group bravely rode the rickety old Ferris wheel, offering thrilling views and mild terror."]
-    #     },
-    #     "the midnight diner": {
-    #         "solo": ["{p1} drank lukewarm coffee and listened to the old jukebox play forgotten songs."],
-    #         "duo": ["{p1} and {p2} shared a plate of questionable fries and solved all the world's problems over three hours."],
-    #         "group": ["{p1} and the group somehow started a friendly pancake-eating contest with the night-shift cook."]
-    #     },
-    # }
 
     LOCATIONS = list(set(EVENTS.keys()) - {"fallback"})
 

@@ -805,7 +805,7 @@ class Fishing(SimpleCommandModule):
 
         response = (
             f"{self.bot.title_for(username)} reels in {rarity_prefix}{fish['name']} "
-            f"weighing {weight:.2f} lbs! (+{xp_gain} XP)"
+            f"weighing {weight:.2f} lbs after waiting {wait_hours:.1f} hours! (+{xp_gain} XP)"
         )
 
         if new_level:

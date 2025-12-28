@@ -322,10 +322,10 @@ class Fishing(SimpleCommandModule):
 
     def _register_commands(self) -> None:
         self.register_command(
-            r'^\s*!cast\s*$',
+            r'^\s*!cast(?:\s+(.+))?\s*$',
             self._cmd_cast,
             name="cast",
-            description="Cast your fishing line"
+            description="Cast your fishing line (optionally specify location)"
         )
         self.register_command(
             r'^\s*!reel\s*$',
@@ -400,6 +400,22 @@ class Fishing(SimpleCommandModule):
             if loc["level"] <= level:
                 return loc
         return LOCATIONS[0]
+
+    def _find_location_by_name(self, location_query: str) -> Optional[Dict[str, Any]]:
+        """Find a location by name (case-insensitive, supports partial matches)."""
+        query = location_query.strip().lower()
+        
+        # Try exact match first
+        for loc in LOCATIONS:
+            if loc["name"].lower() == query:
+                return loc
+        
+        # Try partial match
+        for loc in LOCATIONS:
+            if query in loc["name"].lower():
+                return loc
+        
+        return None
 
     def _get_xp_for_level(self, level: int) -> int:
         """Calculate XP needed for a level."""
@@ -580,7 +596,37 @@ class Fishing(SimpleCommandModule):
             return True
 
         player = self._get_player(user_id)
-        location = self._get_location_for_level(player["level"])
+        
+        # Check if location argument was provided
+        location_arg = match.group(1)
+        if location_arg:
+            # Try to find the requested location
+            requested_location = self._find_location_by_name(location_arg)
+            
+            if not requested_location:
+                # List all available locations
+                available_locs = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)}, location '{location_arg}' not found. "
+                    f"Available locations: {', '.join(available_locs)}"
+                )
+                return True
+            
+            # Check if player has unlocked this location
+            if requested_location["level"] > player["level"]:
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)}, you haven't unlocked {requested_location['name']} yet! "
+                    f"You need to be level {requested_location['level']} (currently level {player['level']})."
+                )
+                return True
+            
+            location = requested_location
+        else:
+            # No location specified, use current level's default location
+            location = self._get_location_for_level(player["level"])
+        
         distance = self._get_cast_distance(player["level"], location)
 
         # Record the cast
@@ -972,12 +1018,15 @@ class Fishing(SimpleCommandModule):
 
         help_lines = [
             "Fishing Commands:",
-            "!cast - Cast your line (wait 1-24 hours for best results)",
-            "!reel - Reel in your catch",
+            "!cast - Cast your line at your current level's location",
+            "!cast <location> - Cast at a specific unlocked location (e.g., !cast pond)",
+            "!reel - Reel in your catch (wait 1-24 hours for best results)",
             "!fishing - Show your stats",
             "!fishing top - Leaderboards",
             "!fishing location - Current location and level progress",
             "!aquarium - View your rare/legendary catches",
+            "",
+            "Tips: You can travel back to previous locations to hunt for rare fish you missed!",
         ]
 
         for line in help_lines:

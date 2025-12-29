@@ -352,6 +352,12 @@ class Fishing(SimpleCommandModule):
             description="Show your current fishing location"
         )
         self.register_command(
+            r'^\s*!fishinfo(?:\s+(.+))?\s*$',
+            self._cmd_fishinfo,
+            name="fishinfo",
+            description="Show fish caught in a specific location"
+        )
+        self.register_command(
             r'^\s*!aquarium\s*$',
             self._cmd_aquarium,
             name="aquarium",
@@ -379,6 +385,7 @@ class Fishing(SimpleCommandModule):
                 "lines_broken": 0,
                 "junk_collected": 0,
                 "catches": {},
+                "catches_by_location": {},  # {"location_name": {"fish_name": count}}
                 "rare_catches": [],
                 "locations_fished": [],
             }
@@ -790,10 +797,17 @@ class Fishing(SimpleCommandModule):
             player["biggest_fish"] = weight
             player["biggest_fish_name"] = fish["name"]
 
-        # Track catches
+        # Track catches (global)
         catches = player.get("catches", {})
         catches[fish["name"]] = catches.get(fish["name"], 0) + 1
         player["catches"] = catches
+
+        # Track catches by location
+        catches_by_location = player.get("catches_by_location", {})
+        if location_name not in catches_by_location:
+            catches_by_location[location_name] = {}
+        catches_by_location[location_name][fish["name"]] = catches_by_location[location_name].get(fish["name"], 0) + 1
+        player["catches_by_location"] = catches_by_location
 
         # Track location
         if location_name not in player.get("locations_fished", []):
@@ -1012,6 +1026,96 @@ class Fishing(SimpleCommandModule):
         self.safe_reply(connection, event, " | ".join(response_parts))
         return True
 
+    def _cmd_fishinfo(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+        
+        # Get location argument
+        location_arg = match.group(1)
+        
+        if not location_arg:
+            # No location specified - show available locations
+            locations_fished = player.get("locations_fished", [])
+            if not locations_fished:
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)}, you haven't caught any fish yet! "
+                    "Use !cast and !reel to start fishing."
+                )
+                return True
+            
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, locations you've fished: {', '.join(locations_fished)}. "
+                "Use !fishinfo <location> to see fish caught there."
+            )
+            return True
+        
+        # Find the location
+        location = self._find_location_by_name(location_arg)
+        if not location:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, location '{location_arg}' not found."
+            )
+            return True
+        
+        location_name = location["name"]
+        
+        # Get catches for this location
+        catches_by_location = player.get("catches_by_location", {})
+        location_catches = catches_by_location.get(location_name, {})
+        
+        if not location_catches:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, you haven't caught any fish at {location_name} yet!"
+            )
+            return True
+        
+        # Get all fish available at this location for completion stats
+        all_fish = FISH_DATABASE.get(location_name, [])
+        total_species = len(all_fish)
+        caught_species = len(location_catches)
+        
+        # Group by rarity
+        caught_by_rarity = {"common": [], "uncommon": [], "rare": [], "legendary": []}
+        for fish_name, count in location_catches.items():
+            # Find the fish in the database to get its rarity
+            fish_data = next((f for f in all_fish if f["name"] == fish_name), None)
+            if fish_data:
+                rarity = fish_data["rarity"]
+                caught_by_rarity[rarity].append(f"{fish_name} ({count})")
+        
+        # Build response
+        total_caught = sum(location_catches.values())
+        response_parts = [
+            f"{self.bot.title_for(username)}'s {location_name} catches: "
+            f"{total_caught} fish, {caught_species}/{total_species} species"
+        ]
+        
+        # Add fish by rarity
+        for rarity in ["legendary", "rare", "uncommon", "common"]:
+            if caught_by_rarity[rarity]:
+                rarity_label = rarity.upper() if rarity in ["legendary", "rare"] else rarity.capitalize()
+                fish_list = ", ".join(caught_by_rarity[rarity])
+                response_parts.append(f"{rarity_label}: {fish_list}")
+        
+        # Send as multiple messages if too long
+        full_response = " | ".join(response_parts)
+        if len(full_response) > 400:
+            # Send in parts
+            self.safe_reply(connection, event, response_parts[0])
+            for part in response_parts[1:]:
+                self.safe_say(part, target=event.target)
+        else:
+            self.safe_reply(connection, event, full_response)
+        
+        return True
+
     def _cmd_fishing_help(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
@@ -1024,6 +1128,8 @@ class Fishing(SimpleCommandModule):
             "!fishing - Show your stats",
             "!fishing top - Leaderboards",
             "!fishing location - Current location and level progress",
+            "!fishinfo - List locations you've fished",
+            "!fishinfo <location> - Show fish caught at a specific location (e.g., !fishinfo pond)",
             "!aquarium - View your rare/legendary catches",
             "",
             "Tips: You can travel back to previous locations to hunt for rare fish you missed!",

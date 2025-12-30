@@ -931,7 +931,23 @@ def _render_fishing_leaderboard(entries: List[Tuple[str, int]], stats: Dict[str,
     if not entries:
         return '<div class="empty-state">No fishers yet</div>'
 
-    html = '<ul class="leaderboard">'
+    # Find the longest cast across all fishers
+    fishing_data = stats.get("fishing", {})
+    longest_cast_user = None
+    longest_cast_distance = 0.0
+    for user_id, player_data in fishing_data.items():
+        if isinstance(player_data, dict):
+            furthest = player_data.get("furthest_cast", 0.0)
+            if furthest > longest_cast_distance:
+                longest_cast_distance = furthest
+                longest_cast_user = user_id
+
+    html = ''
+    if longest_cast_user and longest_cast_distance > 0:
+        cast_username = aggregator.get_user_display_name(longest_cast_user)
+        html += f'<div class="highlight">{_escape_html(cast_username)} has the longest cast: {longest_cast_distance:.1f}m!</div>'
+
+    html += '<ul class="leaderboard">'
     for i, (user_id, total_fish) in enumerate(entries, 1):
         username = aggregator.get_user_display_name(user_id)
         fishing_data = stats.get("fishing", {}).get(user_id, {})

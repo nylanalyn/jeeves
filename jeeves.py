@@ -692,10 +692,17 @@ class Jeeves(SingleServerIRCBot):
                 profile = courtesy._get_user_profile(user_id)
                 if profile and "title" in profile:
                     title = profile.get("title")
+                    if isinstance(title, str):
+                        title = title.strip().lower()
+                    else:
+                        title = None
+
                     if title == "sir":
                         base_title = "Sir"
                     elif title == "madam":
                         base_title = "Madam"
+                    elif title and title != "neutral":
+                        base_title = title.capitalize()
         except Exception:
             pass
 

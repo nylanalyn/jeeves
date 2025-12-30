@@ -369,6 +369,12 @@ class Fishing(SimpleCommandModule):
             name="fishing help",
             description="Show fishing help"
         )
+        self.register_command(
+            r'^\s*!water\s*$',
+            self._cmd_water,
+            name="water",
+            description="Celebrate finishing a water bottle (boosts rare fish chances)"
+        )
 
     def _get_player(self, user_id: str) -> Dict[str, Any]:
         """Get or create a player record."""
@@ -388,6 +394,8 @@ class Fishing(SimpleCommandModule):
                 "catches_by_location": {},  # {"location_name": {"fish_name": count}}
                 "rare_catches": [],
                 "locations_fished": [],
+                "water_today": 0,  # Number of water bottles consumed today
+                "water_date": None,  # Date of last water consumption (for daily reset)
             }
             self.set_state("players", players)
             self.save_state()
@@ -461,8 +469,8 @@ class Fishing(SimpleCommandModule):
         base_max = max_dist * (0.7 + level_bonus)
         return round(random.uniform(min_dist, base_max), 1)
 
-    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None) -> str:
-        """Select a rarity tier based on wait time and active events."""
+    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, water_boost: float = 0.0) -> str:
+        """Select a rarity tier based on wait time, active events, and hydration boost."""
         weights = RARITY_WEIGHTS.copy()
 
         # Adjust weights based on wait time
@@ -486,6 +494,16 @@ class Fishing(SimpleCommandModule):
         if event and event.get("effect") == "rare_boost":
             weights["rare"] = int(weights["rare"] * event.get("multiplier", 1))
             weights["legendary"] = int(weights["legendary"] * event.get("multiplier", 1))
+
+        # Apply water boost (increases rare and legendary chances)
+        if water_boost > 0:
+            # Reduce common weight by the boost percentage
+            common_reduction = weights["common"] * water_boost
+            weights["common"] = max(1, int(weights["common"] - common_reduction))
+            
+            # Distribute the reduction to rare and legendary
+            weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
+            weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
 
         # Weighted random selection
         total = sum(weights.values())
@@ -581,6 +599,20 @@ class Fishing(SimpleCommandModule):
             return None
 
         return event
+
+    def _get_water_boost(self, player: Dict[str, Any]) -> float:
+        """Get the current water boost percentage (0.0 to 0.4 for 0% to 40%)."""
+        # Check if we need to reset daily counter
+        today = datetime.now(UTC).date().isoformat()
+        water_date = player.get("water_date")
+        
+        if water_date != today:
+            # New day, reset counter
+            return 0.0
+        
+        # Each water bottle adds 10% boost, max 4 bottles = 40%
+        water_count = player.get("water_today", 0)
+        return min(water_count * 0.10, 0.40)
 
     def _cmd_cast(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
@@ -768,7 +800,8 @@ class Fishing(SimpleCommandModule):
             return True
 
         # Successful catch!
-        rarity = self._select_rarity(effective_wait, active_event)
+        water_boost = self._get_water_boost(player)
+        rarity = self._select_rarity(effective_wait, active_event, water_boost)
         fish = self._select_fish(location_name, rarity)
 
         if not fish:
@@ -1131,8 +1164,10 @@ class Fishing(SimpleCommandModule):
             "!fishinfo - List locations you've fished",
             "!fishinfo <location> - Show fish caught at a specific location (e.g., !fishinfo pond)",
             "!aquarium - View your rare/legendary catches",
+            "!water - Celebrate finishing a water bottle (boosts rare fish, max 4/day)",
             "",
             "Tips: You can travel back to previous locations to hunt for rare fish you missed!",
+            "Stay hydrated! Each bottle of water increases rare fish chances by 10% (up to 40%).",
         ]
 
         for line in help_lines:
@@ -1142,4 +1177,66 @@ class Fishing(SimpleCommandModule):
             connection, event,
             f"{self.bot.title_for(username)}, I've sent you the fishing guide."
         )
+        return True
+
+    def _cmd_water(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+
+        # Get today's date
+        today = datetime.now(UTC).date().isoformat()
+        water_date = player.get("water_date")
+        water_count = player.get("water_today", 0)
+
+        # Reset counter if it's a new day
+        if water_date != today:
+            water_count = 0
+            water_date = today
+
+        # Check if they've already had 4 bottles today
+        if water_count >= 4:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, you have already consumed your four bottles of water today! "
+                "Most commendable dedication to hydration. Do return tomorrow for further encouragement."
+            )
+            return True
+
+        # Increment the counter
+        water_count += 1
+        player["water_today"] = water_count
+        player["water_date"] = today
+        self._save_player(user_id, player)
+
+        # Calculate new boost percentage
+        boost_percentage = water_count * 10
+
+        # Build response based on how many they've had
+        if water_count == 1:
+            response = (
+                f"Splendid! {self.bot.title_for(username)}, I am delighted to see you tending to your hydration. "
+                f"Three more bottles to go! Your commitment to wellness grants you a {boost_percentage}% boost "
+                "to catching rare and legendary fish today."
+            )
+        elif water_count == 2:
+            response = (
+                f"Excellent progress, {self.bot.title_for(username)}! Two bottles down, two more to go! "
+                f"Your dedication is most admirable. You now have a {boost_percentage}% boost to rare catches."
+            )
+        elif water_count == 3:
+            response = (
+                f"Marvelous! {self.bot.title_for(username)}, just one more bottle remains! "
+                f"You are nearly at peak hydration. Current boost: {boost_percentage}% to rare and legendary fish."
+            )
+        else:  # water_count == 4
+            response = (
+                f"Outstanding! {self.bot.title_for(username)}, you have completed your daily hydration goal! "
+                f"I am exceedingly proud of your commitment to health. You now enjoy a magnificent {boost_percentage}% "
+                "boost to catching rare and legendary fish for the remainder of the day!"
+            )
+
+        self.safe_reply(connection, event, response)
         return True

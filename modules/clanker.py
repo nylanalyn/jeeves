@@ -26,7 +26,7 @@ class Clanker(ModuleBase):
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
         self._pattern: Pattern[str] = re.compile(r"\bclankers?\b", re.IGNORECASE)
-        self._response_url = "https://s.nylan.cat/RURlD"
+        self._response_url = "https://s.nylan.cat/YIqVt"
 
     def _can_respond(self, channel: str) -> bool:
         """Check if enough time has passed since last response."""

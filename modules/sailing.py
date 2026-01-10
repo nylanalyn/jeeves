@@ -16,7 +16,7 @@ class Sailing(SimpleCommandModule):
     description = "Responds to the 'SAIL' trigger from a specific user with nautical lore."
 
     NAUTICAL_RESPONSES: List[str] = [
-        "Aye, {title}! The wind's fair and the tide's turning - time to splice the mainbrace!",
+#        "Aye, {title}! The wind's fair and the tide's turning - time to splice the mainbrace!",
         "Steady as she goes, {title}! Mind the mizzen and watch for squalls off the starboard bow.",
         "Heave away, {title}! The bosun's pipe calls and the capstan awaits your shanty.",
         "By the beard of Neptune, {title}! The sea's singing her siren song once more.",
@@ -44,7 +44,7 @@ class Sailing(SimpleCommandModule):
         "Dead reckoning time, {title}! Trust your sextant, trust your chronometer, trust the stars.",
         "Scuttle the rumor, {title} - mermaids are real, but they're terrible at keeping secrets!",
         "The crow's nest calls out, {title}! Land ho? Nay, just another wandering iceberg dressed as an island.",
-        "Splice the mainbrace again, {title}! If we're going down, at least we'll go down singing!",
+#        "Splice the mainbrace again, {title}! If we're going down, at least we'll go down singing!",
         "Chart a new course, {title}! The Sargasso Sea won't navigate itself out of your way.",
     ]
 

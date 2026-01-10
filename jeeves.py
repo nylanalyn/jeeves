@@ -21,7 +21,12 @@ from pathlib import Path
 from datetime import datetime, timezone
 from irc.bot import SingleServerIRCBot
 from irc.connection import Factory
+from jaraco.stream import buffer as stream_buffer
 import schedule
+
+# Configure IRC buffer to handle encoding errors gracefully (replace invalid bytes)
+# This prevents crashes from non-UTF-8 characters in IRC messages (e.g., degree symbols)
+stream_buffer.DecodingLineBuffer.errors = 'replace'
 from file_lock import FileLock
 import bcrypt
 
@@ -624,6 +629,14 @@ class Jeeves(SingleServerIRCBot):
         return False
 
     # --- IRC Event Handlers ---
+
+    def on_connect(self, connection, event):
+        """Called when connection is established, before welcome."""
+        # Configure buffer to handle encoding errors gracefully (replace invalid bytes)
+        # This prevents crashes from non-UTF-8 characters in IRC messages
+        if hasattr(connection, 'buffer'):
+            connection.buffer.errors = 'replace'
+            self.log_debug("[core] Set buffer encoding errors to 'replace' mode")
 
     def on_welcome(self, connection, event):
         self.log_debug("[core] on_welcome received, identifying and joining channels...")

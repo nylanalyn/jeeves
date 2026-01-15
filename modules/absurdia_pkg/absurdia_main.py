@@ -768,8 +768,9 @@ For full command list: !absurdia help"""
 
             success_rate = hand_catch_config.get('success_rate', 0.05)
             stat_penalty = hand_catch_config.get('stat_penalty', 0.6)
+            rarity_weights = hand_catch_config.get('rarity_weights', None)
 
-            result = self.generator.hand_catch_attempt(success_rate, stat_penalty)
+            result = self.generator.hand_catch_attempt(success_rate, stat_penalty, rarity_weights)
 
             if not result:
                 # Failed - get random failure message

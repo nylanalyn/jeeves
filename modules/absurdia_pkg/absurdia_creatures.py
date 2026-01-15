@@ -108,21 +108,49 @@ class CreatureGenerator:
 
         return creature_name, rarity, creature_type, hp, attack, defense, speed, template
 
-    def hand_catch_attempt(self, success_rate: float, stat_penalty: float) -> Optional[Tuple[str, str, str, int, int, int, int, Dict[str, Any]]]:
+    # Default rarity weights for hand-catching (Common only by default)
+    HAND_CATCH_RARITY_WEIGHTS = {
+        'Common': 100,
+        'Uncommon': 0,
+        'Rare': 0,
+        'Legendary': 0
+    }
+
+    def hand_catch_attempt(self, success_rate: float, stat_penalty: float, rarity_weights: Optional[Dict[str, float]] = None) -> Optional[Tuple[str, str, str, int, int, int, int, Dict[str, Any]]]:
         """
         Attempt hand-catching.
         Returns creature data if successful, None if failed.
+
+        Args:
+            success_rate: Base chance of catching anything (0.0 to 1.0)
+            stat_penalty: Multiplier for stats (e.g., 0.6 = 60% of normal)
+            rarity_weights: Optional dict of rarity -> weight for determining
+                           which rarity to catch. Higher weights = more likely.
+                           Defaults to Common only.
         """
         # Check success
         if random.random() > success_rate:
             return None
 
-        # Only Common creatures can be hand-caught
-        available = self.by_rarity.get('Common', [])
-        if not available:
+        # Use provided weights or defaults
+        weights = rarity_weights if rarity_weights else self.HAND_CATCH_RARITY_WEIGHTS
+
+        # Filter to rarities that have weight > 0 and creatures available
+        valid_rarities = []
+        valid_weights = []
+        for rarity, weight in weights.items():
+            if weight > 0 and self.by_rarity.get(rarity, []):
+                valid_rarities.append(rarity)
+                valid_weights.append(weight)
+
+        if not valid_rarities:
             return None
 
-        # Pick random Common creature
+        # Roll for rarity using weights
+        chosen_rarity = random.choices(valid_rarities, weights=valid_weights, k=1)[0]
+        available = self.by_rarity.get(chosen_rarity, [])
+
+        # Pick random creature of that rarity
         creature_name = random.choice(available)
         template = self.templates[creature_name]
 
@@ -142,7 +170,8 @@ class CreatureGenerator:
         speed = max(1, speed)
 
         creature_type = template['type']
-        rarity = "Feral"  # Special rarity for hand-caught
+        # Mark as Feral with actual rarity (e.g., "Feral Common", "Feral Legendary")
+        rarity = f"Feral {chosen_rarity}"
 
         return creature_name, rarity, creature_type, hp, attack, defense, speed, template
 

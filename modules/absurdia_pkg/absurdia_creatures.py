@@ -136,8 +136,8 @@ class CreatureGenerator:
         weights = rarity_weights if rarity_weights else self.HAND_CATCH_RARITY_WEIGHTS
 
         # DEBUG: Log weight selection
-        logger.info(f"[HAND_CATCH DEBUG] Using weights: {weights} (from config: {rarity_weights is not None})")
-        logger.info(f"[HAND_CATCH DEBUG] Available by_rarity: {[(r, len(c)) for r, c in self.by_rarity.items()]}")
+        print(f"[HAND_CATCH DEBUG] Using weights: {weights} (from config: {rarity_weights is not None})")
+        print(f"[HAND_CATCH DEBUG] Available by_rarity: {[(r, len(c)) for r, c in self.by_rarity.items()]}")
 
         # Filter to rarities that have weight > 0 and creatures available
         valid_rarities = []
@@ -147,7 +147,7 @@ class CreatureGenerator:
                 valid_rarities.append(rarity)
                 valid_weights.append(weight)
 
-        logger.info(f"[HAND_CATCH DEBUG] Valid rarities after filter: {list(zip(valid_rarities, valid_weights))}")
+        print(f"[HAND_CATCH DEBUG] Valid rarities after filter: {list(zip(valid_rarities, valid_weights))}")
 
         if not valid_rarities:
             return None

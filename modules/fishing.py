@@ -454,7 +454,7 @@ class Fishing(SimpleCommandModule):
             player["xp"] = xp
             self._save_player(user_id, player)
             # Record achievement progress
-            achievement_hooks.record_achievement(self.bot, username, "fishing_level", current_level)
+            achievement_hooks.record_fishing_level(self.bot, username, current_level)
             return current_level
 
         player["xp"] = xp

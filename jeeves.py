@@ -408,6 +408,8 @@ class Jeeves(SingleServerIRCBot):
         """Redact sensitive information from log messages."""
         # Patterns for sensitive data
         patterns = [
+            (r'(super_admin_password_hash["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+            (r'(password_hash["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
             (r'(password["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
             (r'(api_key["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
             (r'(token["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
@@ -594,7 +596,9 @@ class Jeeves(SingleServerIRCBot):
 
         # Get password hash from config
         password_hash = self.config.get("core", {}).get("super_admin_password_hash", "")
-        self.log_debug(f"[core] DEBUG: password_hash = {repr(password_hash)}, length = {len(password_hash) if password_hash else 0}")
+        has_password_hash = bool(password_hash and password_hash.strip())
+        hash_length = len(password_hash) if password_hash else 0
+        self.log_debug(f"[core] DEBUG: super_admin_password_hash present={has_password_hash}, length={hash_length}")
         if not password_hash or not password_hash.strip():
             self.log_debug(f"[core] Super admin auth failed: no password hash configured")
             return False

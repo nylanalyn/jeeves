@@ -2,6 +2,7 @@
 # HTML template generation for quest web UI
 
 from typing import Dict, Any, List, Optional
+import logging
 from .utils import (
     sanitize, get_rank_suffix, get_medal_emoji, format_xp, calculate_win_rate,
     format_streak, calculate_level_progress, get_player_display_name,
@@ -10,6 +11,7 @@ from .utils import (
 from .themes import ThemeManager
 import time
 
+logger = logging.getLogger(__name__)
 
 class TemplateEngine:
     """HTML template engine for quest web UI."""
@@ -756,8 +758,8 @@ class TemplateEngine:
                                     Enemies -{level_red} levels | XP x{xp_mult} | {days}d {hours}h remaining
                                 </div>
                                 """
-                    except:
-                        pass
+                    except (ValueError, TypeError):
+                        logger.exception("Failed to render boss hunt buff timer")
 
                 total_defeated = stats.get("total_bosses_defeated", 0)
                 total_clues = stats.get("total_clues_found", 0)

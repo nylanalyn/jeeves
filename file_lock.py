@@ -2,10 +2,12 @@
 # Cross-process file locking utility for safe concurrent access to state files
 
 import fcntl
+import logging
 import time
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger(__name__)
 
 class FileLock:
     """Context manager for advisory file locking using fcntl.
@@ -68,7 +70,7 @@ class FileLock:
                 fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
                 self.lock_file.close()
             except Exception:
-                pass
+                logger.exception("Failed to release file lock for %s", self.path)
             finally:
                 self.lock_file = None
         return False

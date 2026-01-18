@@ -872,7 +872,8 @@ class Quest(SimpleCommandModule):
                     expires_at = datetime.fromisoformat(expires_str)
                     time_left = quest_utils.format_timedelta(expires_at)
                     injury_details.append(f"{injury['name']} (expires in {time_left})")
-                except:
+                except (ValueError, TypeError) as exc:
+                    self.log_debug(f"[quest] Failed to parse injury expiry for {target_nick}: {exc}")
                     injury_details.append(injury['name'])
             else:
                 injury_details.append(injury['name'])

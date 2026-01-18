@@ -1,6 +1,10 @@
 # modules/achievement_hooks.py
 # Helper functions for recording achievement progress from other modules
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def record_achievement(bot, username: str, metric: str, amount: int = 1):
     """
     Record progress toward an achievement for a user.
@@ -15,9 +19,12 @@ def record_achievement(bot, username: str, metric: str, amount: int = 1):
     if achievements_module and hasattr(achievements_module, "record_progress"):
         try:
             achievements_module.record_progress(username, metric, amount)
-        except Exception:
-            # Silently fail if achievements module has issues
-            pass
+        except Exception as exc:
+            # Avoid breaking callers if achievements are unavailable.
+            if hasattr(bot, "log_debug"):
+                bot.log_debug(f"[achievements] record_progress failed for {username}/{metric}: {exc}")
+            else:
+                logger.exception("record_progress failed for %s/%s", username, metric)
 
 
 # Convenience functions for common achievements
@@ -84,7 +91,18 @@ def record_gif_posted(bot, username: str):
 
 def record_prestige_level(bot, username: str, prestige: int):
     """Record prestige level reached."""
-    record_achievement(bot, username, "prestige", prestige - record_achievement(bot, username, "prestige", 0))
+    achievements_module = bot.pm.plugins.get("achievements")
+    if not achievements_module:
+        return
+
+    user_id = bot.get_user_id(username)
+    user_achievements = achievements_module.get_state("user_achievements", {})
+    user_data = user_achievements.get(user_id, {})
+    progress = user_data.get("progress", {})
+
+    current_best = progress.get("prestige", 0)
+    if prestige > current_best:
+        record_achievement(bot, username, "prestige", prestige - current_best)
 
 
 def record_win_streak(bot, username: str, streak: int):

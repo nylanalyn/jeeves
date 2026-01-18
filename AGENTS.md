@@ -14,11 +14,16 @@ This guide was written specifically for LLMs to quickly understand Jeeves withou
 
 ---
 
+## Working agreements
+- Ask clarifying questions when scope is unclear.
+- Keep changes small and reviewable.
+- Run tests before finishing.
+
 ## Project Structure & Module Organization
 `jeeves.py` is the entry point; it boots the IRC bot, loads feature modules from `modules/`, and writes shared JSON state under `config/`. Web-facing quest surfaces live in `web/` (`quest_web.py` plus static assets under `web/static/` and templates under `web/quest/`). Runtime data sits in `quest_content.json` and `challenge_paths.json`, while CLI helpers (password hashing, config validation) live in the repo root. Operational notes belong in `docs/`.
 
 ## Build, Test, and Development Commands
-- `python3 -m venv .venv && source .venv/bin/activate`: create an isolated Python toolchain.
+- `python3 -m venv venv && source venv/bin/activate.fish`: create an isolated Python toolchain.
 - `pip install -r requirements.txt`: install bot, web, and validator dependencies.
 - `python3 config_validator.py config/config.yaml`: confirm YAML structure, env substitutions, and required secrets before running.
 - `python3 jeeves.py`: launch Jeeves against the active config; expects IRC credentials in `config/config.yaml`.

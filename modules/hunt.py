@@ -392,8 +392,8 @@ class Hunt(SimpleCommandModule):
                 count = min(max(count, intervals_elapsed), self.MAX_REMINDERS)
                 time_into_interval = elapsed % interval
                 delay_seconds = max(interval - time_into_interval, 1)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.log_debug(f"[hunt] Failed to restore reminder timing: {exc}")
 
         self._schedule_reminder(count=count, delay_seconds=delay_seconds, channels=channels)
 

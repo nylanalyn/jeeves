@@ -770,11 +770,6 @@ For full command list: !absurdia help"""
             stat_penalty = hand_catch_config.get('stat_penalty', 0.6)
             rarity_weights = hand_catch_config.get('rarity_weights', None)
 
-            # DEBUG: Log what config values we're actually getting
-            self.log_debug(f"[HAND_CATCH] hand_catch_config: {hand_catch_config}")
-            self.log_debug(f"[HAND_CATCH] rarity_weights from config: {rarity_weights} (type: {type(rarity_weights).__name__})")
-            self.log_debug(f"[HAND_CATCH] success_rate: {success_rate}, stat_penalty: {stat_penalty}")
-
             result = self.generator.hand_catch_attempt(success_rate, stat_penalty, rarity_weights)
 
             if not result:

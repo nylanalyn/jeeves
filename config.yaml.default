@@ -180,14 +180,34 @@ hunt:
           ascii_art: "<quack>"
           hug_message: "{username} gently embraces the Duck. It seems content."
           hunt_message: "{username} deftly catches the Duck. A fine specimen."
+          escape_mishap_message: "The ducks peck at you and flap straight out the window!"
         - name: "Cat"
           ascii_art: "=^..^="
           hug_message: "{username} gives the Cat a gentle scratch behind the ears. It purrs."
           hunt_message: "{username} manages to wrangle the Cat into a carrier. It seems displeased."
+          escape_mishap_message: "The cats scratch your hands and sprint for the door!"
         - name: "Puppy"
           ascii_art: ".'`'-.'`'-. "
           hug_message: "{username} is immediately covered in happy puppy licks."
           hunt_message: "{username} scoops up the puppy. It seems to think this is a new game."
+          escape_mishap_message: "The puppies nip at your heels and tumble out the door!"
+    # Optional: themed animal sets (override `animals` when enabled).
+    # animal_theme: "default"
+    # animal_themes:
+    #     default:
+    #         animals:
+    #             - name: "Duck"
+    #               ascii_art: "<quack>"
+    #               hug_message: "{username} gently embraces the Duck. It seems content."
+    #               hunt_message: "{username} deftly catches the Duck. A fine specimen."
+    #               escape_mishap_message: "The ducks peck at you and flap straight out the window!"
+    #     christmas:
+    #         animals:
+    #             - name: "Elf"
+    #               ascii_art: "\\o/"
+    #               hug_message: "{username} shares cocoa with the Elf."
+    #               hunt_message: "{username} corrals the Elf back into the workshop."
+    #               escape_mishap_message: "The elves dart away, leaving a trail of jingle bells."
 
 memos:
     cooldown_seconds: 5

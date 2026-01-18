@@ -105,20 +105,15 @@ class Hunt(SimpleCommandModule):
     def _normalize_species_filter(self, raw: Optional[str]) -> str:
         if not raw:
             return "all"
-        mapping = {
-            "duck": "duck",
-            "ducks": "duck",
-            "cat": "cat",
-            "cats": "cat",
-            "puppy": "puppy",
-            "puppies": "puppy",
-            "all": "all",
-        }
-        return mapping.get(raw.lower(), "")
+        if raw.lower() == "all":
+            return "all"
+        normalized = self._normalize_animal_key(raw)
+        known_species = self._get_species_keys()
+        return normalized if normalized in known_species else ""
 
     def _aggregate_user_animals(self, user_scores: Dict[str, int]) -> Dict[str, int]:
-        """Return counts of tracked animals (duck/cat/puppy) for a user."""
-        totals = {"duck": 0, "cat": 0, "puppy": 0}
+        """Return counts of tracked animals for a user."""
+        totals = {species: 0 for species in self._get_species_keys()}
         for key, value in user_scores.items():
             for species in totals:
                 if key.startswith(f"{species}_"):
@@ -691,7 +686,7 @@ class Hunt(SimpleCommandModule):
             return self._cmd_admin_add(connection, event, "", username, args[1:])
         elif admin_subcommand == "event":
             if len(args) not in (2, 3):
-                self.safe_reply(connection, event, "Usage: !hunt admin event <user> [cats|ducks|puppies|all]")
+                self.safe_reply(connection, event, f"Usage: !hunt admin event <user> [{self._species_filter_usage()}]")
                 return True
             return self._cmd_admin_event(connection, event, "", username, args[1:])
         else:
@@ -699,6 +694,16 @@ class Hunt(SimpleCommandModule):
             return True
 
     def _get_animals_config(self) -> List[Dict[str, Any]]:
+        themes = self.get_config_value("animal_themes", default={}) or {}
+        active_theme = self.get_config_value("animal_theme", default="") or ""
+        if active_theme and isinstance(themes, dict):
+            theme_entry = themes.get(active_theme)
+            if isinstance(theme_entry, dict):
+                theme_animals = theme_entry.get("animals")
+            else:
+                theme_animals = theme_entry
+            if isinstance(theme_animals, list):
+                return theme_animals
         return self.get_config_value("animals", default=[]) or []
 
     def _get_animal_score_name(self, animal: Dict[str, Any]) -> str:
@@ -706,6 +711,12 @@ class Hunt(SimpleCommandModule):
 
     def _get_animal_display_name(self, animal: Dict[str, Any]) -> str:
         return animal.get("display_name") or animal.get("name", "Animal")
+
+    def _get_species_keys(self) -> List[str]:
+        return sorted({
+            key for key in (self._get_animal_score_name(animal) for animal in self._get_animals_config())
+            if key
+        })
 
     def _lookup_display_name(self, score_name: str) -> str:
         score = str(score_name).lower()
@@ -732,6 +743,18 @@ class Hunt(SimpleCommandModule):
         display = self._lookup_display_name(base)
         return f"{display} {action.capitalize()}"
 
+    def _species_filter_usage(self) -> str:
+        options = self._get_species_keys()
+        if not options:
+            return "all"
+        return f"{'|'.join(options)}|all"
+
+    def _species_filter_options_text(self) -> str:
+        options = self._get_species_keys()
+        if not options:
+            return "all"
+        return f"{', '.join(options)}, or all"
+
     def _handle_admin_spawn(self, connection: Any, event: Any, username: str) -> bool:
         if not self.bot.is_admin(event.source): return True
         return self._cmd_admin_spawn(connection, event, "", username, None)
@@ -739,7 +762,12 @@ class Hunt(SimpleCommandModule):
     def _handle_help(self, connection: Any, event: Any, username: str) -> bool:
         help_lines = [ "!hunt - Hunt the currently active animal.", "!hug - Befriend the currently active animal.", "!consent - Approve the last hug request aimed at you.", "!release <hunt|hug> - Release a captured animal.", "!hunt score [user] - Check your score.", "!hunt top - Show the leaderboard.", "!hunt help - Show this message." ]
         if self.bot.is_admin(event.source):
-            help_lines.extend(["Admin:", "!hunt spawn - Force an animal to appear.", "!hunt admin add <user> <animal> <hunted|hugged> <amount> - Add to a score.", "!hunt admin event <user> [cats|ducks|puppies|all] - Release a user's animals back into the channel over time."])
+            help_lines.extend([
+                "Admin:",
+                "!hunt spawn - Force an animal to appear.",
+                "!hunt admin add <user> <animal> <hunted|hugged> <amount> - Add to a score.",
+                f"!hunt admin event <user> [{self._species_filter_usage()}] - Release a user's animals back into the channel over time.",
+            ])
 
         for line in help_lines:
             self.safe_privmsg(username, line)
@@ -1123,12 +1151,8 @@ class Hunt(SimpleCommandModule):
         first_animal = active_animals[0]
         species = self._get_animal_score_name(first_animal)
         display_name = self._get_animal_display_name(first_animal)
-        mishap_messages = {
-            "duck": "The ducks peck at you and flap straight out the window!",
-            "cat": "The cats scratch your hands and sprint for the door!",
-            "puppy": "The puppies nip at your heels and tumble out the door!",
-        }
-        mishap_msg = mishap_messages.get(species, f"The {display_name.lower()} wriggles free and bolts for the exit!")
+        display_group = self._pluralize(display_name, 2)
+        mishap_msg = first_animal.get("escape_mishap_message") or f"The {display_group} wriggle free and bolt for the exit!"
 
         happiness_before = self._get_animal_happiness(user_id)
         new_happiness = max(0, happiness_before - 1)
@@ -1268,7 +1292,7 @@ class Hunt(SimpleCommandModule):
         species_filter = self._normalize_species_filter(filter_arg)
 
         if not species_filter:
-            self.safe_reply(connection, event, "Invalid animal group. Use cats, ducks, puppies, or all.")
+            self.safe_reply(connection, event, f"Invalid animal group. Use {self._species_filter_options_text()}.")
             return True
 
         if self._event_is_active():

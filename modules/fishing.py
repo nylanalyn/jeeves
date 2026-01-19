@@ -388,6 +388,13 @@ class Fishing(SimpleCommandModule):
             description="Show fishing help"
         )
         self.register_command(
+            r'^\s*!fish(?:ing)?\s+bless\s+(\S+)\s*$',
+            self._cmd_fishing_bless,
+            name="fishing bless",
+            admin_only=True,
+            description="[Admin] Guarantee a user's next catch is rare or legendary"
+        )
+        self.register_command(
             r'^\s*!water\s*$',
             self._cmd_water,
             name="water",
@@ -415,6 +422,7 @@ class Fishing(SimpleCommandModule):
                 "water_today": 0,  # Number of water bottles consumed today
                 "water_date": None,  # Date of last water consumption (for daily reset)
                 "xp_boost_catches": 0,
+                "force_rare_legendary": False,
             }
             self.set_state("players", players)
             self.save_state()
@@ -539,6 +547,7 @@ class Fishing(SimpleCommandModule):
         location: str,
         rarity: str,
         eligible_locations: Optional[List[str]] = None,
+        allow_fallback: bool = True,
     ) -> Optional[Dict[str, Any]]:
         """Select a fish from the eligible location pools matching the rarity."""
         if eligible_locations:
@@ -548,7 +557,7 @@ class Fishing(SimpleCommandModule):
         else:
             fish_pool = FISH_DATABASE.get(location, [])
         matching = [f for f in fish_pool if f["rarity"] == rarity]
-        if not matching:
+        if not matching and allow_fallback:
             # Fall back to common if no fish of that rarity
             matching = [f for f in fish_pool if f["rarity"] == "common"]
         if not matching:
@@ -756,6 +765,7 @@ class Fishing(SimpleCommandModule):
         location_name = cast["location"]
         location = next((l for l in LOCATIONS if l["name"] == location_name), LOCATIONS[0])
         player = self._get_player(user_id)
+        forced_rare_flag = player.get("force_rare_legendary", False)
 
         # Remove the cast
         del active_casts[user_id]
@@ -776,7 +786,7 @@ class Fishing(SimpleCommandModule):
             return True
 
         # Danger zone - chance of bad outcome
-        if wait_hours > self.DANGER_THRESHOLD_HOURS:
+        if wait_hours > self.DANGER_THRESHOLD_HOURS and not forced_rare_flag:
             hours_over = wait_hours - self.DANGER_THRESHOLD_HOURS
             bad_chance = min(0.1 + (hours_over * 0.05), 0.9)
 
@@ -810,24 +820,25 @@ class Fishing(SimpleCommandModule):
                 return True
 
         # Junk check (base chance, boosted by murky waters)
-        junk_chance = 0.10
-        if active_event and active_event.get("effect") == "junk_boost":
-            junk_chance *= active_event.get("multiplier", 1.0)
+        if not forced_rare_flag:
+            junk_chance = 0.10
+            if active_event and active_event.get("effect") == "junk_boost":
+                junk_chance *= active_event.get("multiplier", 1.0)
 
-        if random.random() < junk_chance:
-            junk = self._get_junk(location["type"])
-            player["junk_collected"] += 1
-            self._save_player(user_id, player)
-            achievement_hooks.record_achievement(self.bot, username, "junk_collected", 1)
-            xp_gain = 5  # Small XP for junk
-            player["xp"] += xp_gain
-            self._save_player(user_id, player)
-            self.safe_reply(
-                connection, event,
-                f"{self.bot.title_for(username)} reels in... {junk}. "
-                f"Well, at least you're cleaning up! (+{xp_gain} XP)"
-            )
-            return True
+            if random.random() < junk_chance:
+                junk = self._get_junk(location["type"])
+                player["junk_collected"] += 1
+                self._save_player(user_id, player)
+                achievement_hooks.record_achievement(self.bot, username, "junk_collected", 1)
+                xp_gain = 5  # Small XP for junk
+                player["xp"] += xp_gain
+                self._save_player(user_id, player)
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)} reels in... {junk}. "
+                    f"Well, at least you're cleaning up! (+{xp_gain} XP)"
+                )
+                return True
 
         # Successful catch!
         water_boost = self._get_water_boost(player)
@@ -835,7 +846,26 @@ class Fishing(SimpleCommandModule):
         eligible_locations = None
         if cast.get("allow_lower_fish"):
             eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
-        fish = self._select_fish(location_name, rarity, eligible_locations)
+        fish = None
+        forced_rare = player.get("force_rare_legendary", False)
+        forced_rare_applied = False
+        if forced_rare:
+            forced_rarities = ["rare", "legendary"]
+            random.shuffle(forced_rarities)
+            for forced in forced_rarities:
+                fish = self._select_fish(
+                    location_name,
+                    forced,
+                    eligible_locations,
+                    allow_fallback=False,
+                )
+                if fish:
+                    rarity = forced
+                    forced_rare_applied = True
+                    break
+
+        if not fish:
+            fish = self._select_fish(location_name, rarity, eligible_locations)
 
         if not fish:
             # Fallback - shouldn't happen
@@ -845,23 +875,27 @@ class Fishing(SimpleCommandModule):
         weight = self._calculate_weight(fish, effective_wait)
 
         # Line break check - bigger fish = higher chance
-        break_chance = 0.02 + (weight / 1000) * 0.15
-        if random.random() < break_chance:
-            player["lines_broken"] += 1
-            self._save_player(user_id, player)
-            achievement_hooks.record_achievement(self.bot, username, "lines_broken", 1)
-            self.safe_reply(
-                connection, event,
-                f"You feel a massive tug - it's a {fish['name']}! But the weight is too much... "
-                f"SNAP! The line breaks! It got away..."
-            )
-            return True
+        if not forced_rare_applied:
+            break_chance = 0.02 + (weight / 1000) * 0.15
+            if random.random() < break_chance:
+                player["lines_broken"] += 1
+                self._save_player(user_id, player)
+                achievement_hooks.record_achievement(self.bot, username, "lines_broken", 1)
+                self.safe_reply(
+                    connection, event,
+                    f"You feel a massive tug - it's a {fish['name']}! But the weight is too much... "
+                    f"SNAP! The line breaks! It got away..."
+                )
+                return True
 
         # Successful catch!
         player["total_fish"] += 1
         if weight > player["biggest_fish"]:
             player["biggest_fish"] = weight
             player["biggest_fish_name"] = fish["name"]
+
+        if forced_rare_applied:
+            player["force_rare_legendary"] = False
 
         # Track catches (global)
         catches = player.get("catches", {})
@@ -961,12 +995,31 @@ class Fishing(SimpleCommandModule):
         )
         if bonus_messages:
             response += " " + " ".join(bonus_messages)
+        if forced_rare_applied:
+            response += " A rare blessing guides your catch."
 
         if new_level:
             new_location = self._get_location_for_level(new_level)
             response += f" LEVEL UP! You're now level {new_level} and can fish at {new_location['name']}!"
 
         self.safe_reply(connection, event, response)
+        return True
+
+    def _cmd_fishing_bless(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        target = match.group(1).strip()
+        target_id = self.bot.get_user_id(target)
+        player = self._get_player(target_id)
+        player["force_rare_legendary"] = True
+        self._save_player(target_id, player)
+
+        self.safe_reply(
+            connection,
+            event,
+            f"{self.bot.title_for(target)}, your next catch will be rare or legendary."
+        )
         return True
 
     def _cmd_fishing_stats(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

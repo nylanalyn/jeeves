@@ -195,12 +195,21 @@ JUNK_ITEMS: Dict[str, List[str]] = {
         "Broken Sunglasses", "Waterlogged Book", "Deflated Beach Ball", "Lost Flip-Flop",
         "Shopping Cart Wheel", "Plastic Bottle", "Tire", "Underwear", "License Plate",
         "Broken Umbrella", "Moldy Wallet", "Damp Cigarette Pack", "Fishing Bobber",
+        "Knitting Needle", "Crochet Hook", "Tangled Yarn Ball", "Stitch Marker",
+        "Frayed Crochet Bag", "Half-Finished Scarf", "Pattern Printout",
+        "Game Controller", "Pixelated Cartridge", "Arcade Token", "Headset Mic",
+        "Trophy Cup", "Resistance Band", "Kettlebell", "Gym Towel",
+        "Protein Shaker", "Yoga Mat", "Jump Rope",
     ],
     "space": [
         "Space Debris", "Frozen Oxygen Chunk", "Abandoned Satellite", "Lost Astronaut Glove",
         "Alien Artifact", "Meteor Fragment", "Cosmic Dust Bunny", "Derelict Probe",
         "Ancient Star Map", "Fossilized Moonrock", "Mysterious Orb", "Quantum Fluctuation",
         "Void Crystal", "Broken Warp Core", "Lost Space Buoy", "Crystallized Stardust",
+        "Zero-G Yarn Ball", "Starlight Crochet Hook", "Orbital Knitting Needle",
+        "Cosmic Game Controller", "Nebula Cartridge", "Warped Arcade Token",
+        "Anti-Gravity Kettlebell", "Meteorite Dumbbell", "Vacuum-Sealed Gym Towel",
+        "Protein Paste Packet", "Quantum Jump Rope",
     ],
 }
 
@@ -515,9 +524,19 @@ class Fishing(SimpleCommandModule):
                 return rarity
         return "common"
 
-    def _select_fish(self, location: str, rarity: str) -> Optional[Dict[str, Any]]:
-        """Select a fish from the location's pool matching the rarity."""
-        fish_pool = FISH_DATABASE.get(location, [])
+    def _select_fish(
+        self,
+        location: str,
+        rarity: str,
+        eligible_locations: Optional[List[str]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Select a fish from the eligible location pools matching the rarity."""
+        if eligible_locations:
+            fish_pool = []
+            for loc_name in eligible_locations:
+                fish_pool.extend(FISH_DATABASE.get(loc_name, []))
+        else:
+            fish_pool = FISH_DATABASE.get(location, [])
         matching = [f for f in fish_pool if f["rarity"] == rarity]
         if not matching:
             # Fall back to common if no fish of that rarity
@@ -674,6 +693,7 @@ class Fishing(SimpleCommandModule):
             "distance": distance,
             "location": location["name"],
             "channel": event.target,
+            "allow_lower_fish": not location_arg,
         }
         self.set_state("active_casts", active_casts)
 
@@ -802,7 +822,10 @@ class Fishing(SimpleCommandModule):
         # Successful catch!
         water_boost = self._get_water_boost(player)
         rarity = self._select_rarity(effective_wait, active_event, water_boost)
-        fish = self._select_fish(location_name, rarity)
+        eligible_locations = None
+        if cast.get("allow_lower_fish"):
+            eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
+        fish = self._select_fish(location_name, rarity, eligible_locations)
 
         if not fish:
             # Fallback - shouldn't happen
@@ -1155,7 +1178,7 @@ class Fishing(SimpleCommandModule):
 
         help_lines = [
             "Fishing Commands:",
-            "!cast - Cast your line at your current level's location",
+            "!cast - Cast at your current level (can catch fish from any unlocked lower levels)",
             "!cast <location> - Cast at a specific unlocked location (e.g., !cast pond)",
             "!reel - Reel in your catch (wait 1-24 hours for best results)",
             "!fishing - Show your stats",
@@ -1166,7 +1189,8 @@ class Fishing(SimpleCommandModule):
             "!aquarium - View your rare/legendary catches",
             "!water - Celebrate finishing a water bottle (boosts rare fish, max 4/day)",
             "",
-            "Tips: You can travel back to previous locations to hunt for rare fish you missed!",
+            "Tips: !cast pulls fish from your current level and any lower unlocked levels.",
+            "You can also travel back to previous locations to hunt for rare fish you missed!",
             "Stay hydrated! Each bottle of water increases rare fish chances by 10% (up to 40%).",
         ]
 

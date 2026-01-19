@@ -204,6 +204,7 @@ hunt:
     #     christmas:
     #         animals:
     #             - name: "Elf"
+    #               score_key: "duck"
     #               ascii_art: "\\o/"
     #               hug_message: "{username} shares cocoa with the Elf."
     #               hunt_message: "{username} corrals the Elf back into the workshop."

@@ -269,6 +269,15 @@ RARITY_XP_MULTIPLIER = {
     "legendary": 20,
 }
 
+# XP bonus chances (per successful catch)
+XP_BONUS_SMALL_CHANCE = 0.04
+XP_BONUS_LARGE_CHANCE = 0.01
+XP_BOOST_ROD_CHANCE = 0.007
+XP_BOOST_ROD_CATCHES = 5
+XP_BOOST_MULTIPLIER = 2
+XP_BONUS_SMALL_RANGE = (8, 20)
+XP_BONUS_LARGE_RANGE = (40, 90)
+
 # Cast flavor messages
 CAST_MESSAGES = [
     "You cast your line, it goes {distance}m and floats quietly...",
@@ -405,6 +414,7 @@ class Fishing(SimpleCommandModule):
                 "locations_fished": [],
                 "water_today": 0,  # Number of water bottles consumed today
                 "water_date": None,  # Date of last water consumption (for daily reset)
+                "xp_boost_catches": 0,
             }
             self.set_state("players", players)
             self.save_state()
@@ -891,7 +901,33 @@ class Fishing(SimpleCommandModule):
         if active_event and active_event.get("effect") == "xp_boost":
             xp_gain = int(xp_gain * active_event.get("multiplier", 1.0))
 
-        player["xp"] += xp_gain
+        bonus_messages = []
+        boost_catches = player.get("xp_boost_catches", 0)
+        if boost_catches > 0:
+            xp_gain = int(xp_gain * XP_BOOST_MULTIPLIER)
+            boost_catches -= 1
+            player["xp_boost_catches"] = boost_catches
+            bonus_messages.append(f"Rod boost! x{XP_BOOST_MULTIPLIER} XP.")
+            if boost_catches == 0:
+                bonus_messages.append("The rod's glow fades.")
+
+        extra_xp = 0
+        roll = random.random()
+        if roll < XP_BONUS_LARGE_CHANCE:
+            extra_xp = random.randint(*XP_BONUS_LARGE_RANGE)
+            bonus_messages.append(f"Treasure haul! +{extra_xp} XP.")
+        elif roll < XP_BONUS_LARGE_CHANCE + XP_BONUS_SMALL_CHANCE:
+            extra_xp = random.randint(*XP_BONUS_SMALL_RANGE)
+            bonus_messages.append(f"Lucky find! +{extra_xp} XP.")
+
+        if player.get("xp_boost_catches", 0) == 0 and random.random() < XP_BOOST_ROD_CHANCE:
+            player["xp_boost_catches"] = XP_BOOST_ROD_CATCHES
+            bonus_messages.append(
+                f"You found a better rod! Next {XP_BOOST_ROD_CATCHES} catches give double XP."
+            )
+
+        total_xp = xp_gain + extra_xp
+        player["xp"] += total_xp
         self._save_player(user_id, player)
 
         # Record achievements
@@ -921,8 +957,10 @@ class Fishing(SimpleCommandModule):
 
         response = (
             f"{self.bot.title_for(username)} reels in {rarity_prefix}{fish['name']} "
-            f"weighing {weight:.2f} lbs after waiting {wait_hours:.1f} hours! (+{xp_gain} XP)"
+            f"weighing {weight:.2f} lbs after waiting {wait_hours:.1f} hours! (+{total_xp} XP)"
         )
+        if bonus_messages:
+            response += " " + " ".join(bonus_messages)
 
         if new_level:
             new_location = self._get_location_for_level(new_level)

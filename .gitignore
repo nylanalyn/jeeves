@@ -48,6 +48,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.vagrant/
+Vagrantfile
 
 # PyInstaller
 # Usually these files are in a .spec file relating to the project.

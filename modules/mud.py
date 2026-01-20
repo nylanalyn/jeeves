@@ -247,45 +247,17 @@ class Mud(SimpleCommandModule):
         self.save_state()
 
     def _check_queue_cooldown(self, channel: str, username: str, command: str) -> Optional[str]:
-        """Check if command can execute. Returns None if OK, or message if queued/cooldown."""
+        """Check if command can execute. Returns None if OK, or message if on cooldown."""
         queue = self._get_command_queue(channel)
         now = time.time()
-
-        # Clean expired commands
-        queue["pending"] = [
-            cmd for cmd in queue["pending"]
-            if now - cmd["timestamp"] < COMMAND_EXPIRE
-        ]
 
         # Check cooldown
         time_since_last = now - queue["last_action_time"]
         if time_since_last < COMMAND_COOLDOWN:
-            # Add to queue
-            queue["pending"].append({
-                "user": username,
-                "command": command,
-                "timestamp": now,
-            })
-            self._save_command_queue(channel, queue)
-            position = len(queue["pending"])
-            wait_time = COMMAND_COOLDOWN - time_since_last + (position - 1) * COMMAND_COOLDOWN
-            return f"Command queued (position {position}). Wait ~{wait_time:.1f}s."
+            wait_time = COMMAND_COOLDOWN - time_since_last
+            return f"Cooldown! Wait {wait_time:.1f}s before the next action."
 
-        # Check if we're next in queue (or queue is empty)
-        if queue["pending"]:
-            next_cmd = queue["pending"][0]
-            if next_cmd["user"] != username or next_cmd["command"] != command:
-                queue["pending"].append({
-                    "user": username,
-                    "command": command,
-                    "timestamp": now,
-                })
-                self._save_command_queue(channel, queue)
-                position = len(queue["pending"])
-                return f"Command queued (position {position})."
-            # Pop ourselves from queue
-            queue["pending"].pop(0)
-
+        # Cooldown passed, allow command
         queue["last_action_time"] = now
         self._save_command_queue(channel, queue)
         return None

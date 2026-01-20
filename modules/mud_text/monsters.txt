@@ -1,0 +1,21 @@
+# Monster definitions for MUD combat
+# Format: name|hp|ac|attack_bonus|damage_dice|xp|loot_chance|loot_type
+# loot_type: gold, weapon, item
+
+# Easy monsters (for early game)
+Irritated Rat|8|8|1|1d4|10|30|gold
+Giant Spider|12|10|2|1d6|20|40|gold
+Sewer Bat|6|12|1|1d3|8|20|gold
+Angry Toad|10|9|1|1d4|12|25|item
+
+# Medium monsters
+Skeleton Guard|20|13|3|1d8|50|50|weapon
+Goblin Scout|15|12|2|1d6|35|45|gold
+Cave Lurker|18|11|3|1d6|40|40|item
+Mushroom Fiend|16|10|2|1d6+1|45|35|item
+
+# Hard monsters
+Cave Troll|40|14|5|2d6|120|60|weapon
+Armored Beetle|30|16|4|1d8+2|80|55|item
+Shadow Wraith|25|13|4|1d10|100|65|weapon
+Dungeon Guardian|35|15|5|1d10+2|150|70|weapon

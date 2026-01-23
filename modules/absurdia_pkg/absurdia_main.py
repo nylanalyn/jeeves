@@ -37,6 +37,9 @@ class Absurdia(SimpleCommandModule):
 
         super().__init__(bot)
 
+        # Clear any existing schedules from previous loads
+        schedule.clear(self.name)
+
         # Schedule hourly arena tournaments
         schedule.every().hour.at(":00").do(self._run_hourly_arena).tag(self.name)
 
@@ -44,6 +47,11 @@ class Absurdia(SimpleCommandModule):
         schedule.every(15).minutes.do(self._check_auto_collect_traps).tag(self.name)
 
         self.log_debug("Absurdia initialized successfully")
+
+    def on_unload(self) -> None:
+        """Clean up scheduled tasks when module is unloaded"""
+        super().on_unload()
+        schedule.clear(self.name)
 
     def _register_commands(self) -> None:
         """Register all Absurdia commands"""

@@ -55,5 +55,5 @@ class Turtle(SimpleCommandModule):
 
     def _cmd_turtle(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         activity = random.choice(self.TURTLE_ACTIVITIES)
-        self.safe_reply(connection, event, f"🐢 Turtle {activity}")
+        self.safe_reply(connection, event, f"🐢 Turtle {activity} https://www.twitch.tv/coilycoil")
         return True

@@ -1,8 +1,9 @@
 # modules/courtesy.py
 # Courtesy ledger for user profiles, pronouns, and ignore list management.
+import os
 import re
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Set
 
 from .base import SimpleCommandModule, admin_required
 from . import achievement_hooks
@@ -32,11 +33,13 @@ class Courtesy(SimpleCommandModule):
 
     def __init__(self, bot):
         super().__init__(bot)
-        
+
         self.set_state("profiles", self.get_state("profiles", {}))
         self.set_state("ignored_users", self.get_state("ignored_users", []))
         self.set_state("admin_hostnames", self.get_state("admin_hostnames", {}))
         self.save_state()
+
+        self._blocked_titles = self._load_blocked_titles()
 
         name_pat = self.bot.JEEVES_NAME_RE
         self.RE_GENDER_SET = re.compile(
@@ -58,6 +61,7 @@ class Courtesy(SimpleCommandModule):
         self.register_command(r"^\s*!setgender\s+(\S+)\s+(.+)\s*$", self._cmd_set_gender, name="setgender", admin_only=True, description="[Admin] Set a user's gender/title.")
         self.register_command(r"^\s*!setpronouns\s+(\S+)\s+(.+)\s*$", self._cmd_set_pronouns, name="setpronouns", admin_only=True, description="[Admin] Set a user's pronouns.")
         self.register_command(r"^\s*!settitle\s+(\S+)\s+(.+)\s*$", self._cmd_set_title, name="settitle", admin_only=True, description="[Admin] Set a user's custom title.")
+        self.register_command(r"^\s*!reloadtitles\s*$", self._cmd_reload_titles, name="reloadtitles", admin_only=True, description="[Admin] Reload the blocked titles list.")
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
@@ -150,10 +154,11 @@ class Courtesy(SimpleCommandModule):
     def _cmd_title(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         title_str = match.group(1).strip()
-        title = self._validate_title(title_str)
-        if title is None:
-            self.safe_reply(connection, event, f"{username}, that title is not acceptable. Please use a simple word (20 characters or less).")
+        rejection = self._validate_title_reason(title_str)
+        if rejection:
+            self.safe_reply(connection, event, f"{username}, {rejection}")
             return True
+        title = self._validate_title(title_str)
         self._set_user_profile(user_id, title=title)
         self.safe_reply(connection, event, f"{username}, recorded: {self.bot.title_for(username)}.")
         return True
@@ -180,12 +185,19 @@ class Courtesy(SimpleCommandModule):
     def _cmd_set_title(self, connection, event, msg, username, match):
         target_user, title_str = match.groups()
         user_id = self.bot.get_user_id(target_user)
-        title = self._validate_title(title_str.strip())
-        if title is None:
-            self.safe_reply(connection, event, f"{username}, that title is not acceptable. Please use a simple word (20 characters or less).")
+        rejection = self._validate_title_reason(title_str.strip())
+        if rejection:
+            self.safe_reply(connection, event, f"{username}, {rejection}")
             return True
+        title = self._validate_title(title_str.strip())
         self._set_user_profile(user_id, title=title)
         self.safe_reply(connection, event, f"Very good. {target_user}'s title has been set to {self.bot.title_for(target_user)}.")
+        return True
+
+    @admin_required
+    def _cmd_reload_titles(self, connection, event, msg, username, match):
+        self._blocked_titles = self._load_blocked_titles()
+        self.safe_reply(connection, event, f"Blocked titles list reloaded ({len(self._blocked_titles)} entries).")
         return True
 
     def _cmd_whoami(self, connection, event, msg, username, match):
@@ -236,12 +248,51 @@ class Courtesy(SimpleCommandModule):
     def _normalize_gender_to_title(self, gender: str) -> str:
         return self.GENDER_MAP.get(gender.lower().strip(), "neutral")
 
+    def _load_blocked_titles(self) -> Set[str]:
+        """Load blocked title words from config/blocked_titles.txt."""
+        blocked: Set[str] = set()
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "blocked_titles.txt")
+        try:
+            with open(path, "r") as f:
+                for line in f:
+                    word = line.strip().lower()
+                    if word and not word.startswith("#"):
+                        blocked.add(word)
+        except FileNotFoundError:
+            pass
+        return blocked
+
+    def _is_known_nick(self, title: str) -> bool:
+        """Check if a title matches a known user nickname."""
+        users_module = self.bot.pm.plugins.get("users")
+        if users_module:
+            nick_map = users_module.get_state("nick_map", {})
+            return title.lower() in nick_map
+        return False
+
+    def _validate_title_reason(self, title: str) -> Optional[str]:
+        """Return a rejection reason string, or None if the title is acceptable."""
+        t = title.strip().lower()
+        if len(t) == 0 or len(t) > 20:
+            return "that title is not acceptable. Please use a simple word (20 characters or less)."
+        if not re.match(r"^[a-zA-Z]+$", t):
+            return "that title is not acceptable. Please use a simple word (20 characters or less)."
+        if t in self._blocked_titles:
+            return "that title is not permitted."
+        if self._is_known_nick(t):
+            return "that title matches another user's name. Please choose a different one."
+        return None
+
     def _validate_title(self, title: str) -> Optional[str]:
         """Validate and normalize a custom title. Returns None if invalid."""
         title = title.strip().lower()
         if len(title) == 0 or len(title) > 20:
             return None
         if not re.match(r"^[a-zA-Z]+$", title):
+            return None
+        if title in self._blocked_titles:
+            return None
+        if self._is_known_nick(title):
             return None
         return title
         

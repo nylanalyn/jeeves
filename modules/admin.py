@@ -32,6 +32,8 @@ class Admin(SimpleCommandModule):
                               name="emergency quit", admin_only=True, description="Emergency shutdown.")
         self.register_command(r"^\s*!pass\s+(.+)$", self._cmd_authenticate,
                               name="pass", admin_only=True, description="Authenticate as super admin (IM only).")
+        self.register_command(r"^\s*!kill\s*$", self._cmd_kill,
+                              name="kill", admin_only=True, description="Shutdown bot without restart.")
 
     # --- Private Message Handler ---
 
@@ -248,6 +250,10 @@ class Admin(SimpleCommandModule):
         self.bot.connection.quit(match.group(1) or "Emergency quit.")
         return True
 
+    def _cmd_kill(self, connection, event, msg, username, match):
+        self.bot.connection.quit("Killed by admin.")
+        sys.exit(42)
+
     def _cmd_help(self, connection, event, username):
         # Check if super admin auth is enabled
         password_hash = self.bot.config.get("core", {}).get("super_admin_password_hash", "")
@@ -280,6 +286,7 @@ class Admin(SimpleCommandModule):
             "!say [#channel] <message> - Make the bot speak.",
             "!admin debug <on|off> - Toggle verbose file logging.",
             "!admin debug <module_name> <on|off> - Toggle debug for specific module.",
+            "!kill - Shutdown bot without auto-restart.",
             "",
             "NOTE: Configuration is now read from config.yaml only.",
             "To change settings, edit config.yaml and use !admin config reload."

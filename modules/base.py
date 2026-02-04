@@ -404,9 +404,10 @@ class ModuleBase(ABC):
             match = cmd_info["pattern"].match(msg)
             if match:
                 self.log_debug(f"Command '{cmd_info['name']}' matched by user {username} with pattern: {cmd_info['pattern'].pattern}")
-                if cmd_info["admin_only"] and not self.bot.is_admin(event.source): 
+                if cmd_info["admin_only"] and not self.bot.is_admin(event.source):
                     self.log_debug(f"Denying admin command '{cmd_info['name']}' for non-admin {username}")
-                    continue
+                    self.safe_reply(connection, event, f"I'm terribly sorry, {username}, but that command is reserved for the master of the house.")
+                    return True
                 
                 # Cooldown is now fetched dynamically
                 cooldown_val = self.get_config_value("cooldown_seconds", event.target, cmd_info["cooldown"])

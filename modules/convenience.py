@@ -162,6 +162,10 @@ class Convenience(ModuleBase):
         if shlink_config and shlink_config in url:
             return False
 
+        skip_domains = self.get_config_value("titles_skip_domains", event.target, default=[])
+        if any(domain in url for domain in skip_domains):
+            return False
+
         cooldown = self.get_config_value("titles_cooldown_seconds", event.target, default=5.0)
         if not self.check_rate_limit("url_title", cooldown):
             return False

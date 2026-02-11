@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "3c22fd08e343",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "config.yaml.default",
+    "jeeves.py",
+    "modules/admin.py",
+    "modules/base.py",
+    "modules/sed.py",
+    "modules/state_manager.py",
+    "modules/users.py",
+    "modules/weather.py",
+    "web/quest/templates.py",
+    "web/server.py",
+    "web/stats/templates.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3c/22fd08e343/0/metadata.json",
+      "transcript": "/3c/22fd08e343/0/full.jsonl",
+      "context": "/3c/22fd08e343/0/context.md",
+      "content_hash": "/3c/22fd08e343/0/content_hash.txt",
+      "prompt": "/3c/22fd08e343/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 90,
+    "cache_creation_tokens": 111491,
+    "cache_read_tokens": 7229808,
+    "output_tokens": 12204,
+    "api_call_count": 74
+  }
+}

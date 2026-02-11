@@ -1,0 +1,1051 @@
+With the update to opus 4.6, and the clearly improved coding ability and structure, I would like you to review this code, give it a thorough check, make sure it meets all required security and functionality standards, and let me know if anything needs to be improved, fixed, or changed.
+
+---
+
+<task-notification>
+<task-id>abd76f8</task-id>
+<status>completed</status>
+<summary>Agent "Review jeeves.py main bot" completed</summary>
+<result>Now here is my detailed security and code quality review of `/home/nylan/code/jeeves/jeeves.py`:
+
+---
+
+## Security Review Report: `/home/nylan/code/jeeves/jeeves.py`
+
+### 1. IRC Connection Security (SSL/TLS)
+
+**Issue: SSL only enabled based on port number, not explicit configuration (line 345-350)**
+
+```python
+if port == 6697:
+    ssl_context = ssl.create_default_context()
+    wrapper = functools.partial(ssl_context.wrap_socket, server_hostname=server)
+    connect_factory = Factory(wrapper=wrapper)
+else:
+    connect_factory = Factory()
+```
+
+- **Severity: Medium.** SSL is determined solely by whether the port is 6697. If an operator configures a non-standard SSL port (e.g., 7000 with TLS), the connection will be unencrypted. A dedicated `ssl: true/false` config key would be more reliable.
+- **Positive note:** `ssl.create_default_context()` is used correctly, which verifies certificates by default. This is good -- no certificate verification is being disabled.
+
+### 2. State Management Safety (Race Conditions, Data Corruption)
+
+**Issue 2a: `get_module_state` returns a mutable reference to internal state (lines 205-211)**
+
+```python
+def get_module_state(self, name):
+    file_type = self._get_file_type_for_module(name)
+    with self._locks[file_type]:
+        self._ensure_latest(file_type)
+        mods = self._states[file_type].setdefault("modules", {})
+        return mods.setdefault(name, {})
+```
+
+- **Severity: High.** This returns a direct reference to the internal dictionary. Any caller can mutate it without holding the lock, causing race conditions. Compare with `get_state()` (line 196) which correctly returns a deep copy via `json.loads(json.dumps(...))`. `get_module_state` should do the same, or callers must be aware they are mutating shared state directly.
+
+**Issue 2b: `update_module_state` replaces the entire module dict (line 219)**
+
+```python
+mods[name] = updates
+```
+
+- **Severity: Medium.** This replaces the module's state entirely rather than merging. If a module calls `get_module_state`, modifies a field, and another module/thread does the same concurrently, one update will silently overwrite the other. Combined with Issue 2a (mutable reference), this creates a read-modify-write race.
+
+**Issue 2c: `_mark_dirty` timer race condition (lines 222-229)**
+
+```python
+def _mark_dirty(self, file_type):
+    self._dirty[file_type] = True
+    if self._save_timers[file_type]:
+        self._save_timers[file_type].cancel()
+    self._save_timers[file_type] = threading.Timer(0.5, lambda: self._save_now(file_type))
+    self._save_timers[file_type].daemon = True
+    self._save_timers[file_type].start()
+```
+
+- **Severity: Low-Medium.** `_mark_dirty` is called within the lock held by `update_module_state`, but the timer callback `_save_now` acquires the lock independently. If `_mark_dirty` is called rapidly, the old timer is cancelled and a new one created. There is a minor race if `cancel()` is called after the timer has already fired but before the `_save_now` lock acquisition completes -- the timer object's `cancel()` may not prevent execution. This is mostly mitigated by the `_dirty` flag check inside `_save_now`.
+
+**Issue 2d: `joined_channels` is a plain `set` mutated from multiple threads (lines 668, 685, 693)**
+
+```python
+self.joined_channels.add(event.target)      # line 668
+self.joined_channels.remove(event.target)    # line 685
+self.joined_channels.remove(event.target)    # line 693
+```
+
+- **Severity: Low-Medium.** While Python's GIL makes individual set operations atomic at the CPython level, the `remove` on lines 685 and 693 can raise `KeyError` if the channel was already removed. Line 684 checks `if event.target in self.joined_channels` before removing, but this is a TOCTOU race -- another thread could remove it between the check and the `remove` call. Using `discard()` instead of `remove()` would be safer.
+
+### 3. Input Validation and Sanitization
+
+**Issue 3a: No validation on channel names from persisted state (lines 368-376)**
+
+```python
+persisted_channels = set(core_state.get("joined_channels", []))
+all_channels = config_channels | persisted_channels
+```
+
+- **Severity: Medium.** Channel names loaded from `state.json` are joined without validation. If the state file is corrupted or tampered with, arbitrary strings (including those with IRC protocol injection potential) could be sent as JOIN targets.
+
+**Issue 3b: NickServ password sent in plaintext over IRC PRIVMSG (line 648)**
+
+```python
+connection.privmsg("NickServ", f"IDENTIFY {self.nickserv_pass}")
+```
+
+- **Severity: Low** (standard IRC practice). This is how IRC bots typically identify, but the password is visible to anyone who can intercept traffic between the bot and the IRC server. Since SSL is used on port 6697, this is acceptable when SSL is active. However, if the bot connects without SSL (any non-6697 port), the NickServ password goes over plaintext.
+
+**Issue 3c: No message length validation before sending to IRC (line 539)**
+
+```python
+self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
+```
+
+- **Severity: Low.** IRC messages have a 512-byte limit. The hostname is user-controlled data. While unlikely to exceed the limit in this specific case, the codebase has no general guard against sending oversized messages.
+
+### 4. Error Handling Completeness
+
+**Issue 4a: Broad exception silencing in `title_for` and `pronouns_for` (lines 723, 746)**
+
+```python
+except Exception:
+    pass
+```
+
+- **Severity: Low-Medium.** These bare `except Exception: pass` blocks hide all errors, including programming errors, attribute errors, and state corruption. At minimum, these should log the exception.
+
+**Issue 4b: `load_config` returns empty dict on failure (lines 48-57)**
+
+```python
+def load_config():
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"[boot] error loading config.yaml: {e}", file=sys.stderr)
+        return {}
+```
+
+- **Severity: Low.** This function is not actually used in `main()` (which uses `load_and_validate_config` instead), but if called elsewhere, a corrupted config silently becomes an empty dict. Note: `yaml.safe_load` can return `None` for empty files, which would be returned as-is rather than `{}`.
+
+**Issue 4c: No reconnection logic (line 908)**
+
+```python
+bot.start()
+```
+
+- **Severity: Medium.** If the IRC connection drops, `SingleServerIRCBot.start()` will exit. There is no reconnection wrapper. The `SingleServerIRCBot` base class does have some built-in reconnect behavior, but the code does not configure reconnect intervals or maximum retry attempts.
+
+### 5. Admin Authentication Security
+
+**Issue 5a: `is_admin` auto-registers any hostname for an admin nick (lines 512-541)**
+
+```python
+def is_admin(self, event_source: str) -> bool:
+    ...
+    if not stored_host or stored_host.lower() != host.lower():
+        self.log_debug(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}")
+        ...
+```
+
+- **Severity: High.** The `is_admin` method checks if the nick is in the admin list, then **automatically updates** the stored hostname to whatever the current hostname is. This means anyone who can use an admin nick (e.g., if the admin is offline and the nick is not registered/enforced on the IRC network) gets automatically trusted AND their hostname gets stored as the legitimate admin hostname. The hostname check provides zero security because it auto-updates on mismatch.
+
+The method should either: (a) reject connections from unrecognized hostnames, or (b) require out-of-band hostname registration. As written, the hostname tracking is purely informational and provides no actual security.
+
+**Issue 5b: Super admin sessions stored in state file (lines 620-623)**
+
+```python
+super_admin_sessions[nick.lower()] = expiry_time
+self.update_module_state("core", {"super_admin_sessions": super_admin_sessions})
+```
+
+- **Severity: Medium.** Session expiry times are persisted to disk in `state.json`. This means sessions survive bot restarts, which may be unexpected. More importantly, anyone with write access to `state.json` can inject arbitrary super admin sessions. Sessions should ideally be in-memory only.
+
+**Issue 5c: `is_super_admin` only checks nick, not full hostmask (line 543)**
+
+```python
+def is_super_admin(self, nick: str) -> bool:
+```
+
+- **Severity: Medium.** This method takes only a nick string, not the full `event.source`. It checks against `super_admin_sessions` keyed by `nick.lower()`. If someone takes over an admin's nick (e.g., after disconnect), they inherit the super admin session. This should verify the full hostmask or at minimum cross-reference with `is_admin` which does check the source.
+
+### 6. Hardcoded Secrets or Credentials
+
+- **No hardcoded secrets found.** The NickServ password comes from config. The super admin password is stored as a bcrypt hash. API keys are referenced from config. This is good.
+- **Minor note:** Line 601 logs the hash length, which is minor information leakage:
+  ```python
+  self.log_debug(f"[core] DEBUG: super_admin_password_hash present={has_password_hash}, length={hash_length}")
+  ```
+
+### 7. Resource Leaks
+
+**Issue 7a: `_ensure_scheduler_thread` creates a new thread on every `on_welcome` (lines 663, 792-798)**
+
+```python
+def on_welcome(self, connection, event):
+    ...
+    self._ensure_scheduler_thread()
+```
+
+```python
+def _ensure_scheduler_thread(self):
+    def loop():
+        while True:
+            schedule.run_pending()
+            time.sleep(1)
+    t = threading.Thread(target=loop, daemon=True, name="jeeves-scheduler")
+    t.start()
+```
+
+- **Severity: Medium.** If the bot reconnects (which triggers `on_welcome` again), a new scheduler thread is spawned every time. The old thread keeps running. Over multiple reconnects, this accumulates zombie daemon threads. The method name says "ensure" but it does not check if one already exists. It should track the thread and only start a new one if the previous one is dead.
+
+**Issue 7b: Modules loaded again on every `on_welcome` without unloading (line 654)**
+
+```python
+loaded_modules = self.pm.load_all()
+```
+
+- **Severity: Low.** `load_all` calls `unload_all` first (line 270), so this is actually handled. No leak here.
+
+**Issue 7c: `FileLock` lock files are never cleaned up**
+
+- **Severity: Low.** The `FileLock` class creates `.lock` files (e.g., `state.json.lock`) that are never deleted. They accumulate but are small and harmless.
+
+### 8. Logic Bugs and Edge Cases
+
+**Issue 8a: `update_module_state` replaces instead of merging (line 576)**
+
+```python
+self.update_module_state("core", {"super_admin_sessions": updated_sessions})
+```
+
+- **Severity: High.** On line 219, `update_module_state` does `mods[name] = updates`. This means calling `update_module_state("core", {"super_admin_sessions": ...})` replaces the ENTIRE core module state with just `{"super_admin_sessions": ...}`, destroying all other core state (like `joined_channels`). The same pattern appears on line 510, 538, and 623. Every call to `update_module_state` wipes all keys except the one being updated.
+
+  Wait -- let me re-read line 219: `mods[name] = updates`. Yes, this is a full replacement. So lines 576 and 623 which pass only `{"super_admin_sessions": updated_sessions}` or `{"joined_channels": [...]}` will destroy each other's data.
+
+  **Actually**, looking more carefully at the callers: line 510 passes `{"joined_channels": list(self.joined_channels)}`, and line 623 passes `{"super_admin_sessions": super_admin_sessions}`. These would overwrite each other. This is a critical data loss bug.
+
+**Issue 8b: `on_kick` accesses `event.arguments[0]` without bounds check (line 689)**
+
+```python
+kicked_nick = event.arguments[0]
+```
+
+- **Severity: Low.** Per IRC protocol, KICK always has arguments, but a malformed server message could cause an IndexError. A try/except would be defensive.
+
+**Issue 8c: `is_admin` host parsing fragile (lines 514-515)**
+
+```python
+nick = event_source.split('!')[0]
+host = event_source.split('@')[1]
+```
+
+- **Severity: Low.** If `event_source` contains `@` but no content after it, `host` would be an empty string, which would then be stored as the admin hostname. The IndexError handling on line 516 catches the case where `@` is missing entirely.
+
+**Issue 8d: `_redact_sensitive_data` pattern for `key` is overly broad (line 417)**
+
+```python
+(r'(key["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
+```
+
+- **Severity: Low.** This matches any string containing "key" as a substring (e.g., "keyboard", "monkey") followed by an assignment. It could redact non-sensitive data in debug logs, making debugging harder.
+
+---
+
+### Summary of Findings by Severity
+
+**High:**
+1. `get_module_state` returns mutable internal reference (line 211) -- enables unsynchronized mutation
+2. `is_admin` auto-trusts any hostname for admin nicks (lines 512-541) -- hostname check is security theater
+3. `update_module_state` full-replacement semantics causes cross-key data loss (line 219) -- `joined_channels` and `super_admin_sessions` overwrite each other
+
+**Medium:**
+4. SSL determined by port number alone (line 345)
+5. `joined_channels` set mutated without synchronization; `remove()` can raise KeyError (lines 685, 693)
+6. No channel name validation from persisted state (line 368)
+7. Super admin sessions persisted to disk and keyed only by nick (lines 620-623, 566)
+8. Scheduler thread leak on reconnect (line 663)
+9. No reconnection logic (line 908)
+10. `is_super_admin` checks only nick, not hostmask (line 543)
+
+**Low:**
+11. Broad `except Exception: pass` silencing (lines 723, 746)
+12. `yaml.safe_load` can return None (line 54)
+13. No IRC message length validation
+14. Lock files never cleaned up
+15. Overly broad `key` redaction pattern (line 417)
+16. Hash length logged in debug (line 601)</result>
+<usage>total_tokens: 36045
+tool_uses: 6
+duration_ms: 92950</usage>
+</task-notification>
+Full transcript available at: /tmp/claude-1000/-home-nylan-code-jeeves/tasks/abd76f8.output
+
+---
+
+<task-notification>
+<task-id>a5cb21c</task-id>
+<status>completed</status>
+<summary>Agent "Review web server security" completed</summary>
+<result>Here is the detailed security review of all 13 web-related files.
+
+---
+
+# Security Audit Report: Jeeves Web Application
+
+---
+
+## 1. CRITICAL: Unauthenticated Reload/State-Mutation Endpoint
+
+**Files:**
+- `/home/nylan/code/jeeves/web/server.py` (lines 182-184, 198-205, 289-294)
+- `/home/nylan/code/jeeves/web/quest/handlers.py` (lines 61-62, 69-79, 164-170)
+
+**Description:** The `/api/reload` endpoint is accessible via both GET and POST with zero authentication or authorization. Any user (or automated scanner) can trigger a state reload at will by hitting this endpoint.
+
+**Risk:** Denial of Service. An attacker can repeatedly hit `/api/reload` to force the server to re-read and re-parse `games.json` and all related files on every request, causing disk I/O pressure and CPU load. Because the handler reloads state synchronously in the request-handling thread, rapid requests can stall the server.
+
+**Recommendation:** Remove the GET handler for `/api/reload` (reload should never be idempotent/safe). Add authentication (e.g., a shared secret token in a header) and rate-limiting to the POST handler.
+
+---
+
+## 2. HIGH: Information Leakage via Debug Tracebacks
+
+**File:** `/home/nylan/code/jeeves/web/server.py` (lines 187-196, 206-215)
+
+**Description:** When `--debug` is enabled, full Python tracebacks (including file paths, local variable names, and internal state) are rendered directly into the HTML error page returned to the client (line 195: `debug_details=traceback.format_exc()`). The debug block is sanitized for HTML entities (lines 98-103), but the content itself is highly sensitive.
+
+**Risk:** An attacker who can trigger an exception (e.g., via malformed queries or by inducing file-system errors) will receive internal file paths, library versions, and code structure, enabling targeted attacks.
+
+**Recommendation:** Never expose tracebacks to end users. Log them server-side only. Ensure `--debug` is never used in production, or guard the output behind an authenticated admin check.
+
+---
+
+## 3. HIGH: DOM-Based XSS in Achievement Holders Tooltip
+
+**File:** `/home/nylan/code/jeeves/web/stats/templates.py` (lines 1453-1459)
+
+**Description:** The achievement holders tooltip uses `innerHTML` to inject holder data:
+```javascript
+li.innerHTML = `
+    <div class="username">${holder.username}</div>
+    <div class="date">${holder.date}</div>
+`;
+```
+The `holders` data is parsed from a JSON string embedded in a `data-holders` HTML attribute (line 1446). While the JSON is HTML-entity-escaped when embedded (line 1091: `holders_json.replace('"', '&quot;')`), after `JSON.parse`, the raw string values are available. If a username contains HTML/JavaScript (e.g., `<img src=x onerror=alert(1)>`), the `innerHTML` assignment will execute it.
+
+The username data originates from `canonical_nick` in `users.json` which comes from IRC nicks. IRC nicks are constrained, but the `canonical_nick` field could be manually edited or come from a compromised data source.
+
+**Risk:** Stored XSS. A malicious username could execute arbitrary JavaScript in every visitor's browser.
+
+**Recommendation:** Replace `innerHTML` with `textContent` for the username and date elements, or use DOM creation methods:
+```javascript
+const usernameDiv = document.createElement('div');
+usernameDiv.className = 'username';
+usernameDiv.textContent = holder.username;
+```
+
+---
+
+## 4. MEDIUM: Missing Security Headers on All Responses
+
+**Files:**
+- `/home/nylan/code/jeeves/web/server.py` (lines 75-80)
+- `/home/nylan/code/jeeves/web/quest/handlers.py` (lines 172-178, 180-190)
+- `/home/nylan/code/jeeves/web/stats/handlers.py` (lines 40-52)
+
+**Description:** No security-related HTTP headers are set on any response. The following headers are missing across all response methods:
+
+- `X-Content-Type-Options: nosniff` -- prevents MIME-type sniffing
+- `X-Frame-Options: DENY` -- prevents clickjacking
+- `Content-Security-Policy` -- prevents inline script injection
+- `X-XSS-Protection: 1; mode=block` -- legacy XSS filter
+- `Referrer-Policy: no-referrer` -- prevents referer leakage
+- `Cache-Control: no-store` -- prevents caching of potentially sensitive data
+
+**Risk:** Without `X-Frame-Options`, the application can be embedded in an attacker's iframe for clickjacking. Without `Content-Security-Policy`, injected scripts have no restrictions. Without `X-Content-Type-Options`, responses could be reinterpreted.
+
+**Recommendation:** Add a helper that sets all security headers on every response. At minimum:
+```python
+self.send_header("X-Content-Type-Options", "nosniff")
+self.send_header("X-Frame-Options", "DENY")
+self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'")
+```
+
+---
+
+## 5. MEDIUM: No CSRF Protection on State-Mutating Endpoints
+
+**Files:**
+- `/home/nylan/code/jeeves/web/server.py` (lines 198-215)
+- `/home/nylan/code/jeeves/web/quest/handlers.py` (lines 69-79)
+
+**Description:** The POST `/api/reload` endpoint has no CSRF token validation. Any website visited by an admin could include a form or `fetch()` call that triggers a reload on the Jeeves server (if the server is accessible from the user's network).
+
+**Risk:** Cross-Site Request Forgery. An attacker's web page can force state reloads, potentially timed to disrupt the application during critical operations.
+
+**Recommendation:** Implement CSRF tokens for all state-mutating endpoints, or require a custom header (e.g., `X-Requested-With`) that cannot be sent cross-origin without CORS preflight.
+
+---
+
+## 6. MEDIUM: Potential Denial of Service via Unbounded Data Loading
+
+**Files:**
+- `/home/nylan/code/jeeves/web/server.py` (lines 64-73, 297-306)
+- `/home/nylan/code/jeeves/web/stats/handlers.py` (lines 30-38, 98-122)
+- `/home/nylan/code/jeeves/web/stats/data_loader.py` (lines 39-59)
+
+**Description:** Every single request to any stats page triggers a full reload of all stats from disk (line 106 in `stats/handlers.py`: `self._load_stats()`). The `load_all()` method in `data_loader.py` reads multiple JSON files and an SQLite database on every request. Similarly, the unified server re-reads all JSON data for quest pages (each handler creates a new handler instance that reads files in `__init__`).
+
+**Risk:** Under load, the server performs excessive I/O. An attacker sending concurrent requests can exhaust file descriptors, saturate disk I/O, and cause the single-threaded server to queue up. There is no caching, rate limiting, or request throttling.
+
+**Recommendation:**
+- Cache loaded data with a TTL (e.g., 30 seconds) so repeated requests do not re-read files.
+- Add request rate limiting.
+- Consider using `ThreadingHTTPServer` instead of `HTTPServer` to avoid complete blocking.
+
+---
+
+## 7. MEDIUM: Inline JavaScript with User-Controlled Data
+
+**File:** `/home/nylan/code/jeeves/web/quest/templates.py` (lines 1248-1283)
+
+**Description:** The player detail inventory section embeds user-controlled values into inline JavaScript event handlers:
+```python
+onmouseover="if({medkits} > 0 && '{current_user_html}') ..."
+```
+While `current_user_html` is sanitized via `sanitize()` (HTML entity encoding), the value is placed inside a JavaScript string within an HTML attribute. HTML entity encoding does not prevent JavaScript injection in this context. For example, a `current_user` value containing `');alert('xss` would break out of the string context after HTML decoding by the browser.
+
+Currently `current_user` is always `None` (passed as `None` from the handlers), so this is not actively exploitable, but the code pattern is dangerous and could become a vulnerability if `current_user` is ever populated.
+
+**Risk:** Potential XSS if `current_user` is ever set to a user-controlled value.
+
+**Recommendation:** Remove the inline JavaScript event handlers entirely, or ensure JavaScript-context escaping (not just HTML escaping) is applied. Better yet, attach event handlers via `addEventListener` in the script block.
+
+---
+
+## 8. MEDIUM: Client-Side JavaScript References Removed API Endpoints
+
+**File:** `/home/nylan/code/jeeves/web/quest/templates.py` (lines 1409-1534)
+
+**Description:** The player detail page includes JavaScript that references `/api/link/claim`, `/api/quest/solo`, and `/api/item/use` endpoints with POST requests. These endpoints do not exist in the server routing (the handlers were removed for "security" per comments). However, the JavaScript remains in the rendered HTML.
+
+**Risk:**
+- **Information leakage**: The JavaScript reveals the existence of removed API endpoints and their expected request/response formats, which could be useful for an attacker if these endpoints are re-enabled.
+- **Confusion/maintenance risk**: Dead code that references non-existent endpoints.
+
+**Recommendation:** Remove the dead JavaScript code that references non-existent API endpoints.
+
+---
+
+## 9. LOW: Double-Sanitization of Search Terms
+
+**File:** `/home/nylan/code/jeeves/web/quest/utils.py` (lines 196-203)
+
+**Description:** The `validate_search_term` function calls `sanitize()` (which does `html.escape()`) on the search term at line 201. Then, the sanitized term is used to filter players at `/home/nylan/code/jeeves/web/server.py` line 223:
+```python
+if search_term.lower() in player.get("username", "").lower()
+```
+Since the search term is already HTML-escaped (e.g., `&` becomes `&amp;`), a user searching for `A&B` would actually search for `A&amp;B`, which would never match a username containing `A&B`.
+
+Then the term is escaped again when rendered in the search box input value at `templates.py` line 680:
+```python
+value="{sanitize(search_term)}"
+```
+This double-escaping means `&` becomes `&amp;amp;` in the displayed value.
+
+**Risk:** Functional bug more than security, but it demonstrates a sanitization confusion that could mask real issues.
+
+**Recommendation:** Separate validation (length/character restrictions) from HTML output encoding. Store the raw search term internally and only HTML-escape at the point of rendering.
+
+---
+
+## 10. LOW: Player Identifier Used Directly in URL Path Without Validation
+
+**Files:**
+- `/home/nylan/code/jeeves/web/server.py` (lines 251-252)
+- `/home/nylan/code/jeeves/web/quest/handlers.py` (lines 125-130)
+
+**Description:** The player identifier is extracted from the URL path via string splitting:
+```python
+player_identifier = path.split("/", 2)[2].split("?")[0]
+```
+There is no validation that this identifier contains only expected characters. While it is only used as a dictionary lookup key (not for file system access), unusual characters could cause unexpected behavior.
+
+**Risk:** Low. The identifier is matched against dictionary keys and never used for file operations, so path traversal is not possible. However, the lack of validation is a defense-in-depth gap.
+
+**Recommendation:** Validate the player identifier against an expected pattern (e.g., alphanumeric + hyphens).
+
+---
+
+## 11. LOW: SQLite Database Read Without Connection Timeout
+
+**File:** `/home/nylan/code/jeeves/web/stats/data_loader.py` (lines 188-243)
+
+**Description:** The `load_absurdia_stats` method opens an SQLite database with no timeout:
+```python
+conn = sqlite3.connect(self.absurdia_db_path)
+```
+If another process holds a write lock on the database, this connection will block indefinitely (the default timeout is 5 seconds, but under contention it can still cause delays).
+
+Additionally, the connection is not wrapped in a `try/finally` or context manager for the cursor operations -- if an exception occurs between `connect` and `close`, the connection leaks.
+
+**Risk:** Server thread can block waiting for database access. Connection leaks under error conditions.
+
+**Recommendation:** Use a context manager (`with sqlite3.connect(...) as conn:`) and set an explicit timeout: `sqlite3.connect(path, timeout=2)`.
+
+---
+
+## 12. LOW: Error Messages in JSON API Expose Internal Details
+
+**File:** `/home/nylan/code/jeeves/web/server.py` (line 294), `/home/nylan/code/jeeves/web/quest/handlers.py` (line 170)
+
+**Description:** Exception messages are returned directly in JSON API responses:
+```python
+self._send_json({"success": False, "error": str(exc)})
+```
+Python exception strings can contain file paths, module names, and other internal details.
+
+**Risk:** Information leakage to API consumers.
+
+**Recommendation:** Return generic error messages to clients and log the full exception server-side.
+
+---
+
+## 13. LOW: No Request Size Limits on POST Bodies
+
+**Files:**
+- `/home/nylan/code/jeeves/web/server.py` (lines 198-215)
+- `/home/nylan/code/jeeves/web/quest/handlers.py` (lines 69-79)
+
+**Description:** The POST handler does not read or validate the request body size. While the current POST endpoint (`/api/reload`) does not read the body, if POST body reading is added in the future, there is no size limit enforcement to prevent memory exhaustion.
+
+**Risk:** Low currently (no body reading), but a defense-in-depth gap.
+
+**Recommendation:** Set `max_content_length` or check `Content-Length` header before reading any POST body.
+
+---
+
+## Summary Table
+
+| # | Severity | Category | File | Lines |
+|---|----------|----------|------|-------|
+| 1 | CRITICAL | Auth/DoS | `web/server.py`, `web/quest/handlers.py` | 182-184, 289-294, 61-62, 164-170 |
+| 2 | HIGH | Info Leak | `web/server.py` | 187-196 |
+| 3 | HIGH | XSS (DOM) | `web/stats/templates.py` | 1453-1459 |
+| 4 | MEDIUM | Headers | `web/server.py`, `web/quest/handlers.py`, `web/stats/handlers.py` | all response methods |
+| 5 | MEDIUM | CSRF | `web/server.py`, `web/quest/handlers.py` | 198-215, 69-79 |
+| 6 | MEDIUM | DoS | `web/stats/handlers.py`, `web/stats/data_loader.py` | 30-38, 39-59 |
+| 7 | MEDIUM | XSS | `web/quest/templates.py` | 1248-1283 |
+| 8 | MEDIUM | Info Leak | `web/quest/templates.py` | 1409-1534 |
+| 9 | LOW | Logic Bug | `web/quest/utils.py` | 196-203 |
+| 10 | LOW | Input Val | `web/server.py`, `web/quest/handlers.py` | 251-252, 125-130 |
+| 11 | LOW | Resource | `web/stats/data_loader.py` | 188-243 |
+| 12 | LOW | Info Leak | `web/server.py`, `web/quest/handlers.py` | 294, 170 |
+| 13 | LOW | DoS | `web/server.py`, `web/quest/handlers.py` | POST handlers |
+
+**Positive observations:** The codebase does a good job with HTML output encoding in most places -- the `sanitize()` function in `web/quest/utils.py`, the `_escape_html()` function in `web/stats/templates.py`, and the comprehensive CSS sanitization in `web/quest/themes.py` (`sanitize_css_value`, `sanitize_css_identifier`, `sanitize_html_text`) are all well-implemented. Theme data from JSON files is properly sanitized before insertion into CSS and HTML contexts. The `yaml.safe_load` usage for YAML parsing is correct.</result>
+<usage>total_tokens: 96363
+tool_uses: 13
+duration_ms: 90654</usage>
+</task-notification>
+Full transcript available at: /tmp/claude-1000/-home-nylan-code-jeeves/tasks/a5cb21c.output
+
+---
+
+<task-notification>
+<task-id>a53e80a</task-id>
+<status>completed</status>
+<summary>Agent "Review admin and auth modules" completed</summary>
+<result>Now I have a thorough understanding of all the files. Here is my detailed security review.
+
+---
+
+# Security and Code Quality Review
+
+## CRITICAL ISSUES
+
+### 1. `is_admin` Auto-Trusts and Auto-Registers Any Hostname (Authentication Bypass)
+**File:** `/home/nylan/code/jeeves/jeeves.py`, lines 512-541
+
+The `is_admin` method checks if a nickname is in the admin list, then retrieves the stored hostname. If the hostname does not match (or no hostname is stored yet), it **automatically updates the stored hostname to the new one and returns `True` anyway**. This means any user who can set their IRC nick to an admin nick will be accepted as admin on first use, and their new hostname is recorded as trusted. There is no verification that the user connecting with the admin nick is actually the legitimate admin. IRC nickname spoofing is trivial on networks without strict services enforcement.
+
+**Impact:** Complete admin authentication bypass. Any user who registers or uses an admin nick name can execute all admin commands.
+
+**Recommendation:** The hostname check should **reject** connections from unrecognized hostnames rather than silently updating. Require an explicit re-verification step (e.g., NickServ account status or manual hostname whitelisting) before granting admin access from a new host.
+
+### 2. `_cmd_kill` Lacks Super Admin Check (Privilege Escalation)
+**File:** `/home/nylan/code/jeeves/modules/admin.py`, lines 253-255
+
+```python
+def _cmd_kill(self, connection, event, msg, username, match):
+    self.bot.connection.quit("Killed by admin.")
+    sys.exit(42)
+```
+
+The `_cmd_kill` method is registered with `admin_only=True` (line 35-36), but it does **not** call `_require_super_admin()`. Compare this with `_cmd_emergency_quit` (line 247-251) and `_cmd_reload` (line 170-175), which both require super admin. This means any regular admin can permanently kill the bot process with exit code 42 (which appears to signal "no restart"), bypassing the super admin tier entirely.
+
+**Impact:** Any regular admin can permanently shut down the bot, bypassing the super admin protection layer that guards `!emergency quit`.
+
+**Recommendation:** Add `if not self._require_super_admin(connection, event, username): return True` at the start of `_cmd_kill`.
+
+### 3. Rate Limiting Keyed by Nickname Only (Rate Limit Bypass)
+**File:** `/home/nylan/code/jeeves/modules/admin.py`, lines 126-166
+
+The authentication rate limiter uses `nick.lower()` as the key:
+```python
+nick_lower = nick.lower()
+```
+
+On IRC, nicknames can be changed freely. An attacker can cycle through different nicknames to bypass the 5-attempt-per-5-minute rate limit. Each new nick gets its own counter.
+
+**Impact:** The rate limit on password brute-forcing is trivially bypassable, allowing unlimited authentication attempts.
+
+**Recommendation:** Key rate limiting by the user's hostname (`event.source.split('@')[1]`) rather than nickname, since hostnames are harder to change.
+
+### 4. `_cmd_authenticate` Private Message Detection is Fragile
+**File:** `/home/nylan/code/jeeves/modules/admin.py`, lines 118-121
+
+```python
+if not event.target.startswith(self.bot.connection.get_nickname()):
+    return True
+```
+
+This check compares `event.target` with the bot's current nickname using `startswith`. If the bot's nick is "J", any channel starting with "J" would pass this check. More importantly, the logic silently accepts and processes the password if the check passes -- meaning a misconfigured or edge-case scenario could cause passwords to be processed in contexts other than true private messages.
+
+**Impact:** Potential exposure of cleartext passwords in non-private contexts if the bot's nickname is a prefix of a channel name, or if the IRC library provides unexpected target values.
+
+**Recommendation:** Use a strict equality check or check `event.type == "privmsg"` combined with verifying the target is exactly the bot's nickname (case-insensitive).
+
+## HIGH SEVERITY ISSUES
+
+### 5. State Corruption: `update_state` Has No File Locking
+**File:** `/home/nylan/code/jeeves/modules/state_manager.py`, lines 106-137
+
+The `StateManager.update_state` method performs a read-modify-write cycle (load, update dict, write) with no file locking:
+```python
+current_state = self._load_state_internal(filename, {})
+current_state.update(updates)
+# ... write to file
+```
+
+The project has a `FileLock` utility (`/home/nylan/code/jeeves/file_lock.py`) but `StateManager` never uses it. If the IRC bot and the web server (mentioned in FileLock's docstring) access state files concurrently, one process can overwrite the other's changes.
+
+**Impact:** State data loss or corruption under concurrent access.
+
+**Recommendation:** Integrate `FileLock` into all `StateManager` read/write operations, or use the existing `FileLock` as a wrapper around the JSON file I/O.
+
+### 6. `save_state` / `update_state` Non-Atomic on Some Filesystems
+**File:** `/home/nylan/code/jeeves/modules/state_manager.py`, lines 87-98 and 119-130
+
+The pattern writes to a `.tmp` file, then uses `temp_path.replace(file_path)`. While `replace` is atomic on most POSIX filesystems, the code does not call `f.flush()` and `os.fsync(f.fileno())` before the rename. On system crash or power loss, the `.tmp` file could contain incomplete data, which would then replace the valid state file.
+
+**Impact:** On unexpected shutdown, state files could be corrupted.
+
+**Recommendation:** Add `f.flush()` and `os.fsync(f.fileno())` after `json.dump()` and before closing the temp file.
+
+### 7. Shared Global HTTP Client Mutation Risk
+**File:** `/home/nylan/code/jeeves/modules/http_utils.py`, lines 221-227
+
+```python
+_http_client = HTTPClient()
+
+def get_http_client() -> HTTPClient:
+    return _http_client
+```
+
+A single global `HTTPClient` instance (and thus a single `requests.Session`) is shared across all modules. If any module calls `close()` on this client, all other modules will get `RuntimeError` on subsequent requests. Additionally, `requests.Session` is not documented as thread-safe, and modules may issue concurrent requests from different threads.
+
+**Impact:** One module closing the shared client breaks all HTTP for every module. Thread safety is not guaranteed.
+
+**Recommendation:** Either make the session per-module (using `create_http_client()`), add thread-safety wrappers, or prevent `close()` from being called on the shared instance.
+
+### 8. `_cmd_say` Allows Arbitrary Message Injection
+**File:** `/home/nylan/code/jeeves/modules/admin.py`, lines 222-228
+
+```python
+def _cmd_say(self, connection, event, username, target, message):
+    self.bot.connection.privmsg(target, message)
+    return True
+```
+
+Any admin can make the bot send arbitrary messages to any target (channel or user), including IRC protocol injection if the message contains `\r\n`. The `safe_reply` method sanitizes `\r` but `_cmd_say` bypasses it entirely by calling `connection.privmsg` directly.
+
+**Impact:** An admin could impersonate the bot to send malicious messages, or inject raw IRC protocol commands if the IRC library does not sanitize newlines.
+
+**Recommendation:** Route through `safe_reply` or `safe_say`, or at minimum sanitize `\r` and `\n` from the message before sending. Also validate that `target` is a valid channel/nick.
+
+## MEDIUM SEVERITY ISSUES
+
+### 9. `safe_file_operation` Decorator Swallows Errors Silently
+**File:** `/home/nylan/code/jeeves/modules/exception_utils.py`, lines 248-271 and `/home/nylan/code/jeeves/modules/state_manager.py`, line 66
+
+The `safe_file_operation` decorator catches `IOError, OSError, PermissionError, FileNotFoundError` and returns `(None, user_message)`. However, `StateManager.save_state` (line 80) is decorated with `@safe_file_operation()`, meaning if a write fails (e.g., disk full), the caller receives `(None, "Unable to process...")` instead of an exception. The callers in `ModuleBase.save_state` (base.py line 224) call `self.bot.update_module_state()` directly and do not check for this tuple return, so write failures are silently lost.
+
+**Impact:** State writes can fail silently, and the module believes state was saved when it was not.
+
+**Recommendation:** Either have `save_state` raise on failure so callers can handle it, or have callers check the return value.
+
+### 10. Authentication Attempts Persisted to Disk
+**File:** `/home/nylan/code/jeeves/modules/admin.py`, lines 147-148, 159-160
+
+```python
+self.set_state("auth_attempts", auth_attempts)
+self.save_state()
+```
+
+Failed authentication attempt counts and timestamps are saved to the module's persistent state on disk. This is unnecessary for ephemeral rate-limit data and has two downsides: (a) it persists across bot restarts, meaning a user could be locked out after a restart even though the 5-minute window should have expired naturally, and (b) it writes to disk on every authentication attempt, creating unnecessary I/O.
+
+**Impact:** Minor -- unnecessary disk I/O and potential for stale lockout state after restarts.
+
+**Recommendation:** Keep rate-limit data in memory only (it already resets via the 5-minute cleanup logic, so persistence adds no security value).
+
+### 11. Debug Logging May Expose Sensitive Details
+**File:** `/home/nylan/code/jeeves/jeeves.py`, lines 600-601
+
+```python
+has_password_hash = bool(password_hash and password_hash.strip())
+hash_length = len(password_hash) if password_hash else 0
+self.log_debug(f"[core] DEBUG: super_admin_password_hash present={has_password_hash}, length={hash_length}")
+```
+
+While the hash itself is not logged, the hash length is logged. This gives an attacker information about the bcrypt configuration. More concerning, throughout the codebase, `log_debug` calls in error handlers (e.g., line 612: `bcrypt error: {e}`) may include exception messages that reveal internal state.
+
+**Impact:** Information leakage through debug logs that could aid targeted attacks.
+
+**Recommendation:** Avoid logging hash metadata. Ensure debug logs are not accessible to non-admin users.
+
+### 12. `fallback` Import Silently Disables Security Features
+**File:** `/home/nylan/code/jeeves/modules/base.py`, lines 16-47
+
+```python
+try:
+    from .exception_utils import (...)
+except ImportError:
+    def handle_exceptions(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+```
+
+If `exception_utils` fails to import, the fallback stubs completely disable exception handling decorators, security event logging, and input validation. The bot would continue running with no error handling and no security logging, and no warning is emitted.
+
+**Impact:** A packaging error or missing file silently disables all standardized error handling and security logging.
+
+**Recommendation:** At minimum, log a prominent warning when falling back. Consider making this a fatal error since `exception_utils` is a core dependency.
+
+### 13. `_cmd_join` Has No Channel Name Validation
+**File:** `/home/nylan/code/jeeves/modules/admin.py`, lines 209-212
+
+```python
+def _cmd_join(self, connection, event, username, room):
+    self.bot.connection.join(room)
+```
+
+The `room` argument is taken directly from user input with no validation. While the regex `len(args) > 1` ensures it is non-empty, there is no check that it starts with `#` or is a valid IRC channel name. Depending on the IRC library, passing malformed input could cause unexpected behavior.
+
+**Impact:** Low -- likely causes IRC protocol errors rather than exploitation, but could be used to make the bot join unintended targets.
+
+**Recommendation:** Validate that `room` matches a valid IRC channel pattern (starts with `#`, `&`, `+`, or `!`).
+
+## LOW SEVERITY / CODE QUALITY ISSUES
+
+### 14. `FileLock` Leaves Stale Lock Files on Disk
+**File:** `/home/nylan/code/jeeves/file_lock.py`, lines 66-76
+
+The `__exit__` method releases the `flock` advisory lock and closes the file handle, but never deletes the `.lock` file from disk. Over time, stale `.lock` files accumulate.
+
+**Recommendation:** Delete the lock file in `__exit__` after releasing the lock, or document that stale lock files are expected.
+
+### 15. `config_validator.py` Prints Partial API Keys in Validation Reports
+**File:** `/home/nylan/code/jeeves/config_validator.py`, lines 401, 414
+
+```python
+key_value[:10] + "...",
+```
+
+When API keys fail validation, the first 10 characters are included in the validation output. For some API key formats, 10 characters is a significant portion of the key.
+
+**Recommendation:** Reduce to 4 characters or simply report the key name without any partial value.
+
+### 16. Environment Variable Substitution Replaces Unset Vars with Empty String
+**File:** `/home/nylan/code/jeeves/config_validator.py`, lines 131-151
+
+When an environment variable is not set and the field is not detected as "sensitive," the substitution silently replaces `$VAR` with an empty string (line 151: `return ""`). This could cause subtle configuration errors -- for example, a server address of `""` would fail later with a confusing error.
+
+**Recommendation:** Consider leaving the original `$VAR` string intact when the variable is unset, so validation catches the obviously-wrong value.
+
+### 17. `generate_password_hash.py` -- Minor: No Password Complexity Enforcement
+**File:** `/home/nylan/code/jeeves/generate_password_hash.py`, lines 24-25
+
+Only a minimum length of 8 characters is enforced. There is no check for complexity (mixed case, numbers, special characters).
+
+**Recommendation:** Consider adding basic complexity requirements or at least a warning about weak passwords.
+
+---
+
+## Summary of Findings by Severity
+
+| Severity | Count | Key Issues |
+|----------|-------|------------|
+| **Critical** | 4 | Auto-trusting hostnames (auth bypass), `!kill` missing super admin check, rate limit bypass by nick change, fragile PM detection for passwords |
+| **High** | 4 | No file locking in StateManager, non-atomic writes, shared HTTP client risks, `!say` message injection |
+| **Medium** | 5 | Silent error swallowing, persisted rate limits, debug info leakage, security fallback stubs, no channel validation |
+| **Low** | 4 | Stale lock files, partial API key exposure, empty env var substitution, weak password policy |
+
+The most urgent fixes are items 1 (hostname auto-trust), 2 (`!kill` privilege escalation), and 3 (rate limit bypass), as these directly affect the bot's authentication and authorization boundaries.</result>
+<usage>total_tokens: 47193
+tool_uses: 10
+duration_ms: 95748</usage>
+</task-notification>
+Full transcript available at: /tmp/claude-1000/-home-nylan-code-jeeves/tasks/a53e80a.output
+
+---
+
+<task-notification>
+<task-id>a4d4259</task-id>
+<status>completed</status>
+<summary>Agent "Review game modules security" completed</summary>
+<result>No `eval`/`exec` usage -- it's a safe recursive descent parser. Now I have all the information needed for a comprehensive review.
+
+---
+
+# Security and Code Quality Review Report
+
+## 1. ReDoS (Regular Expression Denial of Service)
+
+### 1.1 sed.py -- Incomplete ReDoS Protection
+**File:** `/home/nylan/code/jeeves/modules/sed.py`, lines 93-113
+
+The `_is_safe_regex()` method attempts to block dangerous patterns but its heuristics are incomplete. The "dangerous_patterns" it checks for are themselves checked using `re.search()`, meaning they can have false positives/negatives. More critically:
+
+- The pattern `r'\+.*\+'` matches any string containing two `+` characters anywhere with anything between them (e.g., the innocent `a+b+c`), while missing actual ReDoS vectors like `(a+)+` where the `+` is inside a captured group quantified again.
+- The `_safe_regex_subn()` method (lines 115-150) uses `signal.SIGALRM` for a 1-second timeout, which is a reasonable defense-in-depth measure. However, `SIGALRM` only works on the main thread. If this code ever runs in a non-main thread, the signal-based protection silently degrades to no protection at all (the `except (AttributeError, ValueError)` fallback on line 145 just runs the regex without any timeout).
+
+**Severity:** Medium. The signal-based timeout is a reasonable mitigation but is thread-dependent.
+
+**Recommendation:** Consider using Python's `re2` binding or a dedicated timeout via a thread with `threading.Timer` rather than relying on signals.
+
+### 1.2 chatter.py -- Compiled Regex Patterns Are Safe
+**File:** `/home/nylan/code/jeeves/modules/chatter.py`, lines 24-28
+
+All patterns are pre-compiled with simple word-boundary alternations using `\b(?:...|...)\b`. These are safe from ReDoS. No issue here.
+
+---
+
+## 2. API Key Exposure
+
+### 2.1 weather.py -- API Key Embedded in URL
+**File:** `/home/nylan/code/jeeves/modules/weather.py`, line 77
+
+```python
+weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
+```
+
+And again at line 223. The PirateWeather API key is embedded directly in the URL path. If any HTTP logging, error tracing, or exception message includes the URL, the API key will be leaked into logs. The same pattern appears in `_get_pirate_forecast()`.
+
+**Severity:** Medium. The key is read from config (not hardcoded), but URL-embedded keys are fragile against log exposure.
+
+**Recommendation:** If the API supports it, pass the key as a header instead. If not, ensure error handlers redact URLs containing the key before logging.
+
+### 2.2 shorten.py -- API Key Properly Handled
+**File:** `/home/nylan/code/jeeves/modules/shorten.py`, line 105
+
+```python
+headers = {"X-Api-Key": self.SHLINK_API_KEY, "Content-Type": "application/json"}
+```
+
+The Shlink API key is sent as a header, which is the correct approach. However, the key is stored as an instance attribute (`self.SHLINK_API_KEY`, line 31) which could be inspected at runtime, but this is a minor concern typical of any Python application.
+
+### 2.3 translate.py -- API Key Passed to Library
+**File:** `/home/nylan/code/jeeves/modules/translate.py`, line 34
+
+The DeepL API key is passed to `deepl.Translator(api_key)`. This is fine -- the library handles authentication internally.
+
+---
+
+## 3. Data Validation Gaps
+
+### 3.1 quest_core.py -- User-Controlled Format String
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_core.py`, line 207
+
+```python
+story = f"{random.choice(story_beats.get('openers',[]))} {action_text}".format(user=username, monster=monster_name_with_level)
+```
+
+The `story_beats` values come from a JSON file (`quest_content.json`), and `action_text` comes from `quest_utils.get_action_text()`. The `.format()` call uses `user=username` and `monster=monster_name_with_level`. If a story beat template contained something like `{user.__class__}` or other attribute access, Python's `str.format()` could leak internal object information. Since the templates come from a JSON file controlled by the bot administrator (not by IRC users), this is low risk -- but it is worth noting.
+
+**Severity:** Low. Only exploitable if the JSON file is modified maliciously.
+
+**Recommendation:** Use a safe formatting function that disallows attribute/index access (e.g., `string.Template` or a custom formatter that only allows simple field names).
+
+### 3.2 quest_core.py -- Announcement Format String
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_core.py`, lines 950-951
+
+```python
+announcement = ability_data.get("announcement", "{user} uses {ability}!")
+announcement = announcement.format(user=quest_module.bot.title_for(username), ability=ability_data.get("name"))
+```
+
+Same issue as 3.1 -- the announcement template comes from the challenge_paths JSON config. Low risk but same recommendation.
+
+### 3.3 quest_core.py -- No Input Length Validation on Search Count
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_core.py`, lines 517-524
+
+```python
+num_searches = int(args[0])
+if num_searches < 1:
+    ...
+if num_searches > 20:
+    ...
+```
+
+This is properly bounded (1-20), which is good. No issue.
+
+### 3.4 weather.py -- Missing Validation of lat/lon Before API Call
+**File:** `/home/nylan/code/jeeves/modules/weather.py`, lines 77, 91
+
+The `lat` and `lon` values from stored user locations are interpolated directly into API URLs:
+
+```python
+weather_url = f"https://api.pirateweather.net/forecast/{api_key}/{lat},{lon}?units=us"
+weather_url = f"https://api.met.no/weatherapi/locationforecast/2.0/complete?lat={lat}&lon={lon}"
+```
+
+If `lat` or `lon` somehow contained URL-special characters (e.g., from corrupted state), this could cause malformed requests. This is unlikely because the values come from a geocoding API, but there is no explicit sanitization.
+
+**Severity:** Low.
+
+---
+
+## 4. State Corruption Possibilities
+
+### 4.1 quest_combat.py -- Race Condition in Mob Encounter Resolution
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_combat.py`, lines 365-567
+
+The `close_mob_window()` function holds `quest_module.mob_lock` for a very long time -- it performs combat resolution, XP distribution, injury processing, and state saving all while locked. More importantly, at line 564 it sets `active_mob` to `None` and at line 557 it saves state, but these operations happen under the lock held since line 367. The `time.sleep(1.5)` at line 440 happens while the lock is held, blocking all other mob-related operations for 1.5 seconds.
+
+**Severity:** Low-Medium. The lock prevents data corruption, but the `time.sleep()` inside the lock is a design issue that could cause unresponsiveness.
+
+### 4.2 quest_pkg/__init__.py -- TOCTOU in State Management
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/__init__.py`, lines 54-74
+
+The `_refresh_state_cache()`, `get_state()`, `set_state()`, and `update_state()` methods each call `_refresh_state_cache()` before the parent method. Since the state can be externally modified between the refresh and the actual get/set, there is a time-of-check-time-of-use (TOCTOU) window. However, `_state_lock` is used internally to mitigate this.
+
+**Severity:** Low.
+
+### 4.3 quest_progression.py -- Player Data Stale Reference
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_progression.py`, `get_player()` function (line 105)
+
+The `get_player()` function retrieves the player dict from state and modifies it in-place (via `setdefault`). However, it does NOT save the state back. This means the defaults are only set on the in-memory copy. If the caller forgets to save after calling `get_player()`, those defaults are lost. Most callers do save, but this is error-prone.
+
+**Severity:** Low. Callers generally save state after modifications.
+
+---
+
+## 5. Privacy Concerns
+
+### 5.1 users.py -- Permanent Nick History
+**File:** `/home/nylan/code/jeeves/modules/users.py`, lines 48-53, 84-85, 98-99
+
+The `seen_nicks` list grows indefinitely, accumulating every nickname a user has ever used. There is no mechanism to prune old nicknames, no way for users to delete their data, and no visibility into what nicknames are stored.
+
+**Severity:** Medium (privacy). Users may not expect their full nickname history to be permanently recorded.
+
+**Recommendation:** Add a mechanism for users to view and clear their nickname history. Consider a cap on `seen_nicks` length.
+
+### 5.2 weather.py -- Location Data Storage
+**File:** `/home/nylan/code/jeeves/modules/weather.py`, lines 378-386
+
+User locations (including exact lat/lon coordinates and user input) are stored persistently. Users can set locations but there is no command to delete their stored location.
+
+**Severity:** Low-Medium (privacy). Exact coordinates tied to user IDs are sensitive personal data.
+
+**Recommendation:** Add a `!location clear` command to allow users to delete their stored location.
+
+### 5.3 translate.py -- Message Tracking
+**File:** `/home/nylan/code/jeeves/modules/translate.py`, lines 86-93
+
+Recent messages are stored in memory (up to 50 per channel) for the "translate last message" feature. This is in-memory only (not persisted), and the buffer is capped, so the risk is minimal.
+
+**Severity:** Low.
+
+---
+
+## 6. Command Injection
+
+No instances of shell command injection were found. There are no uses of `subprocess`, `os.system`, `os.popen`, `eval()`, or `exec()` with user-controlled input anywhere in the reviewed files.
+
+---
+
+## 7. Unsafe eval/exec Usage
+
+No instances found. The `safe_calculate()` function in `quest_utils.py` explicitly avoids `eval()` in favor of a recursive descent parser, which is correct.
+
+---
+
+## 8. Additional Code Quality Issues
+
+### 8.1 shorten.py -- Using `requests` Directly Instead of Shared HTTP Client
+**File:** `/home/nylan/code/jeeves/modules/shorten.py`, lines 6, 109
+
+This module imports `requests` directly and creates its own session (`self.requests_retry_session()`), while other modules (like weather) use `self.http` (a shared HTTP client). This inconsistency is minor but could mean different timeout/retry behavior.
+
+### 8.2 quest_progression.py -- Import Inside Function
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_progression.py`, line 269
+
+```python
+import random
+```
+
+The `random` module is already imported at the top of the file (line 4), so this inner import is redundant.
+
+### 8.3 quest_combat.py -- Potential KeyError on Effect Dict
+**File:** `/home/nylan/code/jeeves/modules/quest_pkg/quest_combat.py`, lines 63, 71, 91
+
+```python
+if effect["type"] == "lucky_charm"
+```
+
+These lines access `effect["type"]` with bracket notation, which will raise `KeyError` if an effect dict somehow lacks a `"type"` key. Using `effect.get("type")` would be safer, consistent with how other effect fields are accessed in the same code.
+
+### 8.4 sed.py -- History Stores sed Commands
+**File:** `/home/nylan/code/jeeves/modules/sed.py`, line 61
+
+```python
+self._add_to_history(event.target, username, msg)
+```
+
+The sed command itself is added to history BEFORE checking whether it's a match. This means `s/foo/bar/` is stored in history, and a subsequent `s/s\//X/` could match and replace it. While this is arguably by design, it could lead to unexpected behavior chains.
+
+---
+
+## Summary of Findings by Severity
+
+| Severity | Finding | File | Lines |
+|----------|---------|------|-------|
+| Medium | Incomplete ReDoS protection; signal-based timeout fails in non-main threads | `sed.py` | 93-150 |
+| Medium | API key embedded in URL, risk of log exposure | `weather.py` | 77, 223 |
+| Medium | Permanent, uncapped nickname history with no user deletion mechanism | `users.py` | 48-53, 84-99 |
+| Low-Medium | User location data stored with no delete command | `weather.py` | 378-386 |
+| Low-Medium | `time.sleep(1.5)` called while holding lock | `quest_combat.py` | 440 |
+| Low | Format string from config file could allow attribute access | `quest_core.py` | 207, 950-951 |
+| Low | `lat`/`lon` not sanitized before URL interpolation | `weather.py` | 77, 91 |
+| Low | Redundant `import random` inside function | `quest_progression.py` | 269 |
+| Low | Bare `effect["type"]` access could KeyError | `quest_combat.py` | 63, 71, 91 |
+| None | No command injection vectors found | All files | -- |
+| None | No eval/exec with user input found | All files | -- |</result>
+<usage>total_tokens: 106496
+tool_uses: 14
+duration_ms: 92627</usage>
+</task-notification>
+Full transcript available at: /tmp/claude-1000/-home-nylan-code-jeeves/tasks/a4d4259.output
+
+---
+
+Yes, fix all of the critical and high severity issues except the !kill command, I like that one being admin without super admin only. It does no serious damage if it gets triggered by a non valid admin, and it makes it so if it breaks or goes haywire it doesn't need me to fix it. Leave that one alone, but the rest I would appreciate fixing.
+
+---
+
+Alright, so that's all the critical things fixed, We should move on to the less important but still needed bugs I think.

@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "3c22fd08e343",
+  "session_id": "838fc04b-888f-4141-bd02-4778d5db8779",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-11T13:07:25.895338985Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "config.yaml.default",
+    "jeeves.py",
+    "modules/admin.py",
+    "modules/base.py",
+    "modules/sed.py",
+    "modules/state_manager.py",
+    "modules/users.py",
+    "modules/weather.py",
+    "web/quest/templates.py",
+    "web/server.py",
+    "web/stats/templates.py"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "ff528cd2-9f3d-4301-bbbf-6c5131ae1c5c",
+  "token_usage": {
+    "input_tokens": 90,
+    "cache_creation_tokens": 111491,
+    "cache_read_tokens": 7229808,
+    "output_tokens": 12204,
+    "api_call_count": 74
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-11T13:07:25.677022144Z",
+    "agent_lines": 201,
+    "human_added": 150,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 351,
+    "agent_percentage": 57.26495726495726
+  }
+}

@@ -204,7 +204,10 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
     monster_name_with_level = f"{monster_prefix}Level {monster_level} {monster['name']}"
     action_text = quest_utils.get_action_text(quest_module, user_id)
 
-    story = f"{random.choice(story_beats.get('openers',[]))} {action_text}".format(user=username, monster=monster_name_with_level)
+    # Use string.Template to prevent attribute access in config-sourced templates
+    from string import Template
+    story_template = f"{random.choice(story_beats.get('openers',[]))} {action_text}"
+    story = Template(story_template.replace("{user}", "$user").replace("{monster}", "$monster")).safe_substitute(user=username, monster=monster_name_with_level)
     quest_module.safe_reply(connection, event, story)
 
     if is_rare:
@@ -947,8 +950,9 @@ def use_ability(quest_module, connection, event, username, user_id, player, abil
         quest_module.save_state()
 
         # Announce to channel
-        announcement = ability_data.get("announcement", "{user} uses {ability}!")
-        announcement = announcement.format(user=quest_module.bot.title_for(username), ability=ability_data.get("name"))
+        from string import Template
+        announcement_template = ability_data.get("announcement", "{user} uses {ability}!")
+        announcement = Template(announcement_template.replace("{user}", "$user").replace("{ability}", "$ability")).safe_substitute(user=quest_module.bot.title_for(username), ability=ability_data.get("name"))
         quest_module.safe_say(announcement, event.target)
 
     return True

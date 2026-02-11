@@ -266,7 +266,6 @@ def calculate_hardcore_damage(monster_level: int, player_level: int, is_win: boo
     base_damage = int(base_damage * prestige_mult)
 
     # Add some randomness (+/- 20%)
-    import random
     variance = int(base_damage * 0.2)
     damage = base_damage + random.randint(-variance, variance)
 

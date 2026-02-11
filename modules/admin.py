@@ -115,8 +115,8 @@ class Admin(SimpleCommandModule):
 
     def _cmd_authenticate(self, connection, event, msg, username, match):
         """Handle !pass <password> command for super admin authentication."""
-        # Only allow in private message
-        if not event.target.startswith(self.bot.connection.get_nickname()):
+        # Only allow in private message (target must be exactly the bot's nick)
+        if event.target.lower() != self.bot.connection.get_nickname().lower():
             # Quietly ignore in public channels for security
             return True
 

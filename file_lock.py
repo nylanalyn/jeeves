@@ -64,7 +64,7 @@ class FileLock:
                 time.sleep(0.01)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Release the lock."""
+        """Release the lock and clean up lock file."""
         if self.lock_file:
             try:
                 fcntl.flock(self.lock_file.fileno(), fcntl.LOCK_UN)
@@ -73,4 +73,9 @@ class FileLock:
                 logger.exception("Failed to release file lock for %s", self.path)
             finally:
                 self.lock_file = None
+            # Best-effort cleanup of lock file
+            try:
+                self.lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         return False

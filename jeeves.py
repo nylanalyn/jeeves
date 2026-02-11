@@ -239,7 +239,10 @@ class MultiFileStateManager:
                 # Acquire file lock for the entire write operation
                 with FileLock(path):
                     tmp = path.with_suffix(".tmp")
-                    tmp.write_text(json.dumps(self._states[file_type], indent=4))
+                    with open(tmp, 'w') as f:
+                        f.write(json.dumps(self._states[file_type], indent=4))
+                        f.flush()
+                        os.fsync(f.fileno())
                     tmp.replace(path)
                     self._update_mtime(file_type)
                 self._dirty[file_type] = False
@@ -367,9 +370,10 @@ class Jeeves(SingleServerIRCBot):
         if additional_channels:
             config_channels.update(additional_channels)
 
-        # Merge with persisted channels from state
+        # Merge with persisted channels from state (validate channel names)
         core_state = state_manager.get_module_state("core")
-        persisted_channels = set(core_state.get("joined_channels", []))
+        raw_persisted = core_state.get("joined_channels", [])
+        persisted_channels = {ch for ch in raw_persisted if isinstance(ch, str) and ch.startswith(("#", "&", "+", "!"))}
         print(f"[core] Loaded persisted channels from state: {persisted_channels}", file=sys.stderr)
 
         # Combine config channels with persisted channels
@@ -690,17 +694,15 @@ class Jeeves(SingleServerIRCBot):
     def on_part(self, connection, event):
         self.log_debug(f"[core] PART event: {event.source.nick} left {event.target}")
         if event.source.nick == self.connection.get_nickname():
-            if event.target in self.joined_channels:
-                self.joined_channels.remove(event.target)
-                self._update_joined_channels_state()
+            self.joined_channels.discard(event.target)
+            self._update_joined_channels_state()
 
     def on_kick(self, connection, event):
         kicked_nick = event.arguments[0]
         self.log_debug(f"[core] KICK event: {kicked_nick} was kicked from {event.target} by {event.source.nick}")
         if kicked_nick == self.connection.get_nickname():
-            if event.target in self.joined_channels:
-                self.joined_channels.remove(event.target)
-                self._update_joined_channels_state()
+            self.joined_channels.discard(event.target)
+            self._update_joined_channels_state()
 
     def on_nick(self, connection, event):
         old_nick, new_nick = event.source.nick, event.target
@@ -729,8 +731,8 @@ class Jeeves(SingleServerIRCBot):
                         base_title = "Madam"
                     elif title and title != "neutral":
                         base_title = title.capitalize()
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_debug(f"[core] Error getting title for {nick}: {e}")
 
         try:
             quest_module = self.pm.plugins.get("quest")
@@ -739,8 +741,8 @@ class Jeeves(SingleServerIRCBot):
                 suffix = quest_module.get_legend_suffix_for_user(user_id)
                 if suffix and not base_title.endswith(suffix):
                     base_title = f"{base_title} {suffix}"
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_debug(f"[core] Error getting legend suffix for {nick}: {e}")
 
         return base_title
 
@@ -752,7 +754,8 @@ class Jeeves(SingleServerIRCBot):
                 profile = courtesy._get_user_profile(user_id)
                 if profile and "pronouns" in profile:
                     return profile["pronouns"]
-        except Exception: pass
+        except Exception as e:
+            self.log_debug(f"[core] Error getting pronouns for {nick}: {e}")
         return "they/them"
 
     def on_pubmsg(self, connection, event):
@@ -916,7 +919,19 @@ def main():
     signal.signal(signal.SIGTERM, on_exit)
 
     bot.log_debug("[boot] Starting bot...")
-    bot.start()
+    max_reconnect_delay = 300  # Cap at 5 minutes
+    reconnect_delay = 5
+    while True:
+        try:
+            bot.start()
+            break  # Clean exit
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            bot.log_debug(f"[core] Connection lost: {e}. Reconnecting in {reconnect_delay}s...")
+            print(f"[core] Connection lost: {e}. Reconnecting in {reconnect_delay}s...", file=sys.stderr)
+            time.sleep(reconnect_delay)
+            reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
 if __name__ == "__main__":
     main()

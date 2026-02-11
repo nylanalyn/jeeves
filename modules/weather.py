@@ -26,6 +26,7 @@ class Weather(SimpleCommandModule):
 
     def _register_commands(self):
         self.register_command(r"^\s*!location\s*$", self._cmd_show_location, name="location show", description="Show your saved location")
+        self.register_command(r"^\s*!location\s+clear\s*$", self._cmd_clear_location, name="location clear", description="Delete your saved location")
         self.register_command(r"^\s*!location\s+(.+)$", self._cmd_set_location, name="location", description="Set your default location")
         self.register_command(r"^\s*!weather\s*$", self._cmd_weather_self, name="weather", description="Get weather for your location")
         self.register_command(r"^\s*!weather\s+(.+)$", self._cmd_weather_other, name="weather other", description="Get weather for a specific location")
@@ -394,6 +395,19 @@ class Weather(SimpleCommandModule):
             self.safe_reply(connection, event, f"Noted, {self.bot.title_for(username)}. Your location is set to '{short_name}'.")
         else:
             self.safe_reply(connection, event, f"Location set to '{short_name}'.")
+        return True
+
+    def _cmd_clear_location(self, connection, event, msg, username, match):
+        """Delete the user's stored location data."""
+        user_id = self.bot.get_user_id(username)
+        locations = self.get_state("user_locations") or {}
+        if user_id in locations:
+            del locations[user_id]
+            self.set_state("user_locations", locations)
+            self.save_state()
+            self.safe_reply(connection, event, f"Your location data has been deleted, {self.bot.title_for(username)}.")
+        else:
+            self.safe_reply(connection, event, "No location data to delete.")
         return True
 
     def _cmd_show_location(self, connection, event, msg, username, match):

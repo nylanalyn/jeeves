@@ -194,12 +194,15 @@ def safe_float(value: Any, default: float = 0.0) -> float:
 
 
 def validate_search_term(term: str) -> str:
-    """Validate and sanitize search term."""
+    """Validate and sanitize search term.
+
+    Returns the raw (unescaped) term for use in filtering logic.
+    HTML escaping should be applied at the point of rendering, not here.
+    """
     if not term:
         return ""
-    # Remove potentially harmful characters
-    term = sanitize(term.strip())
-    # Limit length
+    # Strip whitespace and limit length only — no HTML escaping here
+    term = term.strip()
     return truncate_text(term, 100)
 
 

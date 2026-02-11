@@ -251,22 +251,20 @@ def safe_file_operation(
 ):
     """
     Decorator for safely performing file operations with standardized error handling.
-    
+
     Args:
         operation: Description of the operation for logging
         user_message: User-friendly error message
     """
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args, **kwargs) -> Tuple[Any, Optional[str]]:
-            return safe_execute(
-                func,
-                *args,
-                error_message=f"{operation} failed",
-                user_message=user_message,
-                exception_types=(IOError, OSError, PermissionError, FileNotFoundError),
-                **kwargs
-            )
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except (IOError, OSError, PermissionError, FileNotFoundError) as e:
+                logging.error(f"[file_op] {operation} failed: {e}")
+                logging.debug(f"[file_op] {operation} details:\n{traceback.format_exc()}")
+                raise
         return wrapper
     return decorator
 

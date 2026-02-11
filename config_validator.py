@@ -398,7 +398,7 @@ class ConfigValidator:
                         ValidationSeverity.WARNING,
                         f"api_keys.{key_name}",
                         f"API key appears to be a placeholder",
-                        key_value[:10] + "...",
+                        key_value[:4] + "...",
                         f"Replace with actual {key_name} API key or use environment variable"
                     ))
                     break
@@ -411,7 +411,7 @@ class ConfigValidator:
                             ValidationSeverity.WARNING,
                             f"api_keys.{key_name}",
                             f"API key format may be invalid",
-                            key_value[:10] + "...",
+                            key_value[:4] + "...",
                             f"Check {key_name} API key format"
                         ))
 

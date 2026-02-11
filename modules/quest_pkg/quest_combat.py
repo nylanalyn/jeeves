@@ -60,7 +60,7 @@ def apply_active_effects_to_combat(player: Dict[str, Any], base_win_chance: floa
 
     # Lucky charm - boost win chance
     for effect in player.get("active_effects", []):
-        if effect["type"] == "lucky_charm" and effect.get("expires") == "next_fight":
+        if effect.get("type") == "lucky_charm" and effect.get("expires") == "next_fight":
             win_bonus = effect.get("win_bonus", 0) / 100.0
             win_chance += win_bonus
             messages.append(f"Your lucky charm glows! (+{effect.get('win_bonus', 0)}% win chance)")
@@ -68,7 +68,7 @@ def apply_active_effects_to_combat(player: Dict[str, Any], base_win_chance: floa
     # XP scroll - boost XP on wins
     if is_win:
         for effect in player.get("active_effects", []):
-            if effect["type"] == "xp_scroll" and effect.get("expires") == "next_win":
+            if effect.get("type") == "xp_scroll" and effect.get("expires") == "next_win":
                 xp_mult = effect.get("xp_multiplier", 1.0)
                 xp = int(xp * xp_mult)
                 messages.append(f"The XP scroll activates! ({xp_mult}x XP)")
@@ -88,11 +88,11 @@ def consume_combat_effects(player: Dict[str, Any], is_win: bool):
         elif is_win and effect.get("expires") == "next_win":
             effects_to_remove.append(i)
         # Decrement fight-based effects
-        elif effect["type"] == "armor_shard" and "remaining_fights" in effect:
+        elif effect.get("type") == "armor_shard" and "remaining_fights" in effect:
             effect["remaining_fights"] -= 1
             if effect["remaining_fights"] <= 0:
                 effects_to_remove.append(i)
-        elif effect["type"] == "dungeon_relic":
+        elif effect.get("type") == "dungeon_relic":
             if effect.get("triggered_this_fight"):
                 effect["remaining_auto_wins"] = max(0, effect.get("remaining_auto_wins", 0) - 1)
             effect.pop("triggered_this_fight", None)
@@ -434,10 +434,11 @@ def close_mob_window(quest_module):
         rare_prefix = "[RARE] " if is_rare and not is_legend else ""
         monster_name = f"{boss_prefix}{legend_prefix}{rare_prefix}Level {monster_level} {monster['name']}"
 
-        # Announce outcome
+        # Announce outcome (short pause for dramatic effect; mob_lock is held
+        # but active_mob is already cleared so new joins won't queue)
         party_names = ", ".join([p["username"] for p in participants])
         quest_module.safe_say(f"The party ({party_names}) engages the {monster_name}!", channel)
-        time.sleep(1.5)
+        time.sleep(0.5)
 
         if relic_override_used and relic_override:
             holder = relic_override["participant"]["username"]

@@ -57,9 +57,10 @@ class Sed(SimpleCommandModule):
             return False
 
         match = self.SED_PATTERN.match(msg)
-        self._add_to_history(event.target, username, msg)
 
         if not match:
+            # Only store non-sed messages in history
+            self._add_to_history(event.target, username, msg)
             return False
 
         find, replace = match.groups()

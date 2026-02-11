@@ -185,57 +185,55 @@ class JeevesStatsLoader:
             return {"players": {}, "creatures": {}}
 
         try:
-            conn = sqlite3.connect(self.absurdia_db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
+            with sqlite3.connect(self.absurdia_db_path, timeout=2) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
 
-            # Load player stats
-            players = {}
-            cursor.execute("""
-                SELECT user_id, coins, total_arena_wins, total_arena_losses,
-                       current_win_streak, best_win_streak
-                FROM players
-            """)
+                # Load player stats
+                players = {}
+                cursor.execute("""
+                    SELECT user_id, coins, total_arena_wins, total_arena_losses,
+                           current_win_streak, best_win_streak
+                    FROM players
+                """)
 
-            for row in cursor.fetchall():
-                user_id = row["user_id"]
-                players[user_id] = {
-                    "coins": row["coins"],
-                    "total_arena_wins": row["total_arena_wins"],
-                    "total_arena_losses": row["total_arena_losses"],
-                    "current_win_streak": row["current_win_streak"],
-                    "best_win_streak": row["best_win_streak"],
-                    "win_rate": (row["total_arena_wins"] /
-                               (row["total_arena_wins"] + row["total_arena_losses"])
-                               if (row["total_arena_wins"] + row["total_arena_losses"]) > 0 else 0)
-                }
+                for row in cursor.fetchall():
+                    user_id = row["user_id"]
+                    players[user_id] = {
+                        "coins": row["coins"],
+                        "total_arena_wins": row["total_arena_wins"],
+                        "total_arena_losses": row["total_arena_losses"],
+                        "current_win_streak": row["current_win_streak"],
+                        "best_win_streak": row["best_win_streak"],
+                        "win_rate": (row["total_arena_wins"] /
+                                   (row["total_arena_wins"] + row["total_arena_losses"])
+                                   if (row["total_arena_wins"] + row["total_arena_losses"]) > 0 else 0)
+                    }
 
-            # Load creature counts per player
-            cursor.execute("""
-                SELECT owner_id, COUNT(*) as creature_count,
-                       SUM(CASE WHEN rarity = 'common' THEN 1 ELSE 0 END) as common_count,
-                       SUM(CASE WHEN rarity = 'uncommon' THEN 1 ELSE 0 END) as uncommon_count,
-                       SUM(CASE WHEN rarity = 'rare' THEN 1 ELSE 0 END) as rare_count,
-                       SUM(CASE WHEN rarity = 'epic' THEN 1 ELSE 0 END) as epic_count,
-                       SUM(CASE WHEN rarity = 'legendary' THEN 1 ELSE 0 END) as legendary_count
-                FROM creatures
-                WHERE owner_id IS NOT NULL
-                GROUP BY owner_id
-            """)
+                # Load creature counts per player
+                cursor.execute("""
+                    SELECT owner_id, COUNT(*) as creature_count,
+                           SUM(CASE WHEN rarity = 'common' THEN 1 ELSE 0 END) as common_count,
+                           SUM(CASE WHEN rarity = 'uncommon' THEN 1 ELSE 0 END) as uncommon_count,
+                           SUM(CASE WHEN rarity = 'rare' THEN 1 ELSE 0 END) as rare_count,
+                           SUM(CASE WHEN rarity = 'epic' THEN 1 ELSE 0 END) as epic_count,
+                           SUM(CASE WHEN rarity = 'legendary' THEN 1 ELSE 0 END) as legendary_count
+                    FROM creatures
+                    WHERE owner_id IS NOT NULL
+                    GROUP BY owner_id
+                """)
 
-            for row in cursor.fetchall():
-                user_id = row["owner_id"]
-                if user_id in players:
-                    players[user_id].update({
-                        "creature_count": row["creature_count"],
-                        "common_count": row["common_count"],
-                        "uncommon_count": row["uncommon_count"],
-                        "rare_count": row["rare_count"],
-                        "epic_count": row["epic_count"],
-                        "legendary_count": row["legendary_count"],
-                    })
-
-            conn.close()
+                for row in cursor.fetchall():
+                    user_id = row["owner_id"]
+                    if user_id in players:
+                        players[user_id].update({
+                            "creature_count": row["creature_count"],
+                            "common_count": row["common_count"],
+                            "uncommon_count": row["uncommon_count"],
+                            "rare_count": row["rare_count"],
+                            "epic_count": row["epic_count"],
+                            "legendary_count": row["legendary_count"],
+                        })
 
             return {"players": players}
 

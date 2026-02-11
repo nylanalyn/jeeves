@@ -167,7 +167,8 @@ class QuestHTTPRequestHandler(BaseHTTPRequestHandler):
             self._reload_state()
             self._send_json({"success": True, "message": "Data reloaded successfully"})
         except Exception as e:
-            self._send_json({"success": False, "error": str(e)})
+            logging.exception(f"Reload failed: {e}")
+            self._send_json({"success": False, "error": "Internal server error"})
 
     def _send_html(self, html: str) -> None:
         """Send HTML response."""

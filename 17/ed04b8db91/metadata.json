@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.4.2",
+  "checkpoint_id": "17ed04b8db91",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "config_validator.py",
+    "file_lock.py",
+    "jeeves.py",
+    "modules/admin.py",
+    "modules/exception_utils.py",
+    "modules/quest_pkg/quest_combat.py",
+    "modules/quest_pkg/quest_core.py",
+    "modules/quest_pkg/quest_progression.py",
+    "modules/sed.py",
+    "modules/weather.py",
+    "web/quest/handlers.py",
+    "web/quest/utils.py",
+    "web/stats/data_loader.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/17/ed04b8db91/0/metadata.json",
+      "transcript": "/17/ed04b8db91/0/full.jsonl",
+      "context": "/17/ed04b8db91/0/context.md",
+      "content_hash": "/17/ed04b8db91/0/content_hash.txt",
+      "prompt": "/17/ed04b8db91/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 43,
+    "cache_creation_tokens": 32285,
+    "cache_read_tokens": 5925328,
+    "output_tokens": 5559,
+    "api_call_count": 39
+  }
+}

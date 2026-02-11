@@ -14,6 +14,17 @@ from .exception_utils import (
     log_module_event
 )
 
+try:
+    from file_lock import FileLock
+except ImportError:
+    # Fallback: no-op context manager if FileLock not available
+    import logging as _logging
+    _logging.getLogger(__name__).warning("FileLock not available; StateManager will operate without cross-process locking")
+    class FileLock:
+        def __init__(self, *args, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
 
 class StateManager:
     """Centralized state management with standardized file operations."""
@@ -46,15 +57,16 @@ class StateManager:
             })
             return default or {}
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            try:
-                state = json.load(f)
-            except json.JSONDecodeError as e:
-                log_module_event("state_manager", "state_parse_error", {
-                    "filename": filename,
-                    "error": str(e)
-                })
-                return default or {}
+        with FileLock(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                try:
+                    state = json.load(f)
+                except json.JSONDecodeError as e:
+                    log_module_event("state_manager", "state_parse_error", {
+                        "filename": filename,
+                        "error": str(e)
+                    })
+                    return default or {}
 
         log_module_event("state_manager", "state_loaded", {
             "filename": filename,
@@ -87,15 +99,18 @@ class StateManager:
         file_path = self.state_dir / f"{filename}.json"
         temp_path = file_path.with_suffix('.json.tmp')
 
-        with open(temp_path, 'w', encoding='utf-8') as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        with FileLock(file_path):
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
 
-        # Create backup if file exists, then atomically replace
-        if file_path.exists():
-            backup_path = file_path.with_suffix('.json.bak')
-            import shutil
-            shutil.copy2(file_path, backup_path)
-        temp_path.replace(file_path)
+            # Create backup if file exists, then atomically replace
+            if file_path.exists():
+                backup_path = file_path.with_suffix('.json.bak')
+                import shutil
+                shutil.copy2(file_path, backup_path)
+            temp_path.replace(file_path)
 
         log_module_event("state_manager", "state_saved", {
             "filename": filename,
@@ -113,21 +128,24 @@ class StateManager:
         Returns:
             Updated state
         """
-        current_state = self._load_state_internal(filename, {})
-        current_state.update(updates)
-
         file_path = self.state_dir / f"{filename}.json"
         temp_path = file_path.with_suffix('.json.tmp')
 
-        with open(temp_path, 'w', encoding='utf-8') as f:
-            json.dump(current_state, f, indent=2, ensure_ascii=False)
+        with FileLock(file_path):
+            current_state = self._load_state_internal(filename, {})
+            current_state.update(updates)
 
-        # Create backup if file exists, then atomically replace
-        if file_path.exists():
-            backup_path = file_path.with_suffix('.json.bak')
-            import shutil
-            shutil.copy2(file_path, backup_path)
-        temp_path.replace(file_path)
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                json.dump(current_state, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Create backup if file exists, then atomically replace
+            if file_path.exists():
+                backup_path = file_path.with_suffix('.json.bak')
+                import shutil
+                shutil.copy2(file_path, backup_path)
+            temp_path.replace(file_path)
 
         log_module_event("state_manager", "state_updated", {
             "filename": filename,

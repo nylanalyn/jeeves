@@ -21,6 +21,12 @@ try:
     )
 except ImportError:
     # Fallback for when exception_utils is not available
+    import logging as _fallback_logging
+    _fallback_logging.getLogger(__name__).warning(
+        "SECURITY WARNING: exception_utils failed to import. "
+        "Error handling decorators and security logging are DISABLED. "
+        "Ensure modules/exception_utils.py exists and has no import errors."
+    )
     def handle_exceptions(*args, **kwargs):
         def decorator(func):
             return func

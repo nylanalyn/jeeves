@@ -79,7 +79,9 @@ class Weather(SimpleCommandModule):
             data = self.http.get_json(weather_url)
             return data
         except Exception as e:
-            self._record_error(f"PirateWeather API request failed for {lat},{lon}: {e}")
+            # Redact API key from error message to prevent log exposure
+            error_msg = str(e).replace(api_key, "[REDACTED]") if api_key else str(e)
+            self._record_error(f"PirateWeather API request failed for {lat},{lon}: {error_msg}")
             return None
 
     def _get_met_norway_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
@@ -242,7 +244,9 @@ class Weather(SimpleCommandModule):
                     'temp_low_c': round((day.get('temperatureLow', 32) - 32) * 5 / 9, 1) if day.get('temperatureLow') else None,
                 })
             return forecast
-        except Exception:
+        except Exception as e:
+            error_msg = str(e).replace(api_key, "[REDACTED]") if api_key else str(e)
+            self._record_error(f"PirateWeather forecast request failed for {lat},{lon}: {error_msg}")
             return None
 
     def _get_met_norway_forecast(self, lat: str, lon: str) -> Optional[list]:

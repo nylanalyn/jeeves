@@ -1453,10 +1453,14 @@ def render_achievements_page(stats: Dict[str, Any]) -> str:
                 tooltipList.innerHTML = '';
                 holders.forEach(holder => {{
                     const li = document.createElement('li');
-                    li.innerHTML = `
-                        <div class="username">${{holder.username}}</div>
-                        <div class="date">${{holder.date}}</div>
-                    `;
+                    const usernameDiv = document.createElement('div');
+                    usernameDiv.className = 'username';
+                    usernameDiv.textContent = holder.username;
+                    const dateDiv = document.createElement('div');
+                    dateDiv.className = 'date';
+                    dateDiv.textContent = holder.date;
+                    li.appendChild(usernameDiv);
+                    li.appendChild(dateDiv);
                     tooltipList.appendChild(li);
                 }});
 

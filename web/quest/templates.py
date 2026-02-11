@@ -1245,37 +1245,37 @@ class TemplateEngine:
             <div style="padding: 20px;">
                 <h2 style="color: var(--accent); margin-bottom: 15px;">🎒 Inventory</h2>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-                    <div class="inventory-item" data-item="medkit" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if medkits > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="if({medkits} > 0 && '{current_user_html}') this.style.transform='translateY(-3px)'; if({medkits} > 0 && '{current_user_html}') this.style.boxShadow='0 4px 15px rgba(157, 78, 221, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div class="inventory-item" data-item="medkit" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if medkits > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" >
                         <div style="font-size: 2em;">🩹</div>
                         <div style="font-weight: bold;">{medkits}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">Medkits</div>
                         {'<div style="font-size: 0.75em; margin-top: 5px; color: var(--accent);">Click to use</div>' if medkits > 0 and current_user else ''}
                     </div>
-                    <div class="inventory-item" data-item="energy_potion" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if energy_potions > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="if({energy_potions} > 0 && '{current_user_html}') this.style.transform='translateY(-3px)'; if({energy_potions} > 0 && '{current_user_html}') this.style.boxShadow='0 4px 15px rgba(157, 78, 221, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div class="inventory-item" data-item="energy_potion" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if energy_potions > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" >
                         <div style="font-size: 2em;">⚡</div>
                         <div style="font-weight: bold;">{energy_potions}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">Energy Potions</div>
                         {'<div style="font-size: 0.75em; margin-top: 5px; color: var(--accent);">Click to use</div>' if energy_potions > 0 and current_user else ''}
                     </div>
-                    <div class="inventory-item" data-item="lucky_charm" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if lucky_charms > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="if({lucky_charms} > 0 && '{current_user_html}') this.style.transform='translateY(-3px)'; if({lucky_charms} > 0 && '{current_user_html}') this.style.boxShadow='0 4px 15px rgba(157, 78, 221, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div class="inventory-item" data-item="lucky_charm" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if lucky_charms > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" >
                         <div style="font-size: 2em;">🍀</div>
                         <div style="font-weight: bold;">{lucky_charms}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">Lucky Charms</div>
                         {'<div style="font-size: 0.75em; margin-top: 5px; color: var(--accent);">Click to use</div>' if lucky_charms > 0 and current_user else ''}
                     </div>
-                    <div class="inventory-item" data-item="armor_shard" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if armor_shards > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="if({armor_shards} > 0 && '{current_user_html}') this.style.transform='translateY(-3px)'; if({armor_shards} > 0 && '{current_user_html}') this.style.boxShadow='0 4px 15px rgba(157, 78, 221, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div class="inventory-item" data-item="armor_shard" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if armor_shards > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" >
                         <div style="font-size: 2em;">🛡️</div>
                         <div style="font-weight: bold;">{armor_shards}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">Armor Shards</div>
                         {'<div style="font-size: 0.75em; margin-top: 5px; color: var(--accent);">Click to use</div>' if armor_shards > 0 and current_user else ''}
                     </div>
-                    <div class="inventory-item" data-item="xp_scroll" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if xp_scrolls > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="if({xp_scrolls} > 0 && '{current_user_html}') this.style.transform='translateY(-3px)'; if({xp_scrolls} > 0 && '{current_user_html}') this.style.boxShadow='0 4px 15px rgba(157, 78, 221, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <div class="inventory-item" data-item="xp_scroll" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if xp_scrolls > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" >
                         <div style="font-size: 2em;">📜</div>
                         <div style="font-weight: bold;">{xp_scrolls}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">XP Scrolls</div>
                         {'<div style="font-size: 0.75em; margin-top: 5px; color: var(--accent);">Click to use</div>' if xp_scrolls > 0 and current_user else ''}
                     </div>
-                    {f'''<div class="inventory-item" data-item="dungeon_relic" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if dungeon_relics > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" onmouseover="if({dungeon_relics} > 0 && '{current_user_html}') this.style.transform='translateY(-3px)'; if({dungeon_relics} > 0 && '{current_user_html}') this.style.boxShadow='0 4px 15px rgba(157, 78, 221, 0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    {f'''<div class="inventory-item" data-item="dungeon_relic" style="padding: 15px; background: var(--table_stripe); border-radius: 6px; text-align: center; cursor: {'pointer' if dungeon_relics > 0 and current_user else 'default'}; transition: transform 0.2s, box-shadow 0.2s;" >
                         <div style="font-size: 2em;">✨</div>
                         <div style="font-weight: bold;">{dungeon_relics}</div>
                         <div style="font-size: 0.9em; opacity: 0.8;">Mythic Relics</div>
@@ -1405,133 +1405,7 @@ class TemplateEngine:
             </div>
             """
 
-        # Add JavaScript for interactive features
-        content += """
-        <script>
-        (function() {
-            const linkSection = document.getElementById('link-section');
-            const actionSection = document.getElementById('action-section');
-            const linkForm = document.getElementById('link-form');
-            const linkInput = document.getElementById('link-token');
-            const linkMessage = document.getElementById('link-message');
-            const actionButtons = actionSection ? actionSection.querySelectorAll('button[data-difficulty]') : [];
-            const actionOutput = document.getElementById('action-output');
-            const actionStatus = document.getElementById('action-status');
-            const actionUsername = document.getElementById('action-username');
-            const inventoryItems = document.querySelectorAll('.inventory-item');
-
-            function setStatus(el, text, kind) {
-                if (!el) return;
-                el.textContent = text || '';
-                el.classList.remove('alert-error', 'alert-success');
-                if (kind === 'error') {
-                    el.classList.add('alert-error');
-                } else if (kind === 'success') {
-                    el.classList.add('alert-success');
-                }
-            }
-
-            // Link account handling
-            if (linkForm && linkInput) {
-                linkForm.addEventListener('submit', async function(ev) {
-                    ev.preventDefault();
-                    const token = (linkInput.value || '').trim();
-                    if (!token) {
-                        setStatus(linkMessage, 'Please enter your link code.', 'error');
-                        return;
-                    }
-                    setStatus(linkMessage, 'Linking account…');
-                    try {
-                        const res = await fetch('/api/link/claim', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ token })
-                        });
-                        const data = await res.json();
-                        if (!res.ok || !data.success) {
-                            throw new Error(data.error || 'Unable to link account.');
-                        }
-                        setStatus(linkMessage, 'Linked successfully! Reloading page…', 'success');
-                        setTimeout(() => window.location.reload(), 1000);
-                    } catch (err) {
-                        setStatus(linkMessage, err.message || 'Unable to link account.', 'error');
-                    }
-                });
-            }
-
-            // Quest button handling
-            if (actionButtons.length && actionOutput && actionStatus) {
-                actionButtons.forEach((button) => {
-                    button.addEventListener('click', async () => {
-                        const difficulty = button.getAttribute('data-difficulty');
-                        setStatus(actionStatus, 'Venturing forth…');
-                        actionOutput.textContent = '';
-                        try {
-                            const res = await fetch('/api/quest/solo', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ difficulty })
-                            });
-                            const data = await res.json();
-                            if (!res.ok || !data.success) {
-                                throw new Error(data.error || 'Quest failed.');
-                            }
-                            const messages = Array.isArray(data.messages) ? data.messages : [];
-                            actionOutput.textContent = messages.join('\\n') || 'No response from Jeeves.';
-                            if (data.username && actionUsername) {
-                                actionUsername.textContent = data.username;
-                            }
-                            setStatus(actionStatus, 'Quest complete! Refreshing profile…', 'success');
-                            setTimeout(() => window.location.reload(), 2000);
-                        } catch (err) {
-                            setStatus(actionStatus, err.message || 'Quest failed.', 'error');
-                        }
-                    });
-                });
-            }
-
-            // Item usage handling
-            inventoryItems.forEach((item) => {
-                const itemName = item.getAttribute('data-item');
-                const itemCountEl = item.querySelector('[style*="font-weight: bold"]');
-                if (!itemName || !itemCountEl) return;
-
-                const currentCount = parseInt(itemCountEl.textContent) || 0;
-                if (currentCount <= 0) return;
-
-                item.addEventListener('click', async () => {
-                    if (!actionStatus || !actionOutput) {
-                        alert('Please link your account to use items.');
-                        return;
-                    }
-
-                    const confirmUse = confirm(`Use ${itemName.replace('_', ' ')}?`);
-                    if (!confirmUse) return;
-
-                    setStatus(actionStatus, `Using ${itemName.replace('_', ' ')}…`);
-                    actionOutput.textContent = '';
-
-                    try {
-                        const res = await fetch('/api/item/use', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ item: itemName })
-                        });
-                        const data = await res.json();
-                        if (!res.ok || !data.success) {
-                            throw new Error(data.error || 'Failed to use item.');
-                        }
-                        const messages = Array.isArray(data.messages) ? data.messages : [];
-                        actionOutput.textContent = messages.join('\\n') || 'Item used.';
-                        setStatus(actionStatus, 'Item used! Refreshing profile…', 'success');
-                        setTimeout(() => window.location.reload(), 1500);
-                    } catch (err) {
-                        setStatus(actionStatus, err.message || 'Failed to use item.', 'error');
-                    }
-                });
-            });
-        })();
-        </script>
-        """
+        # Interactive features JS removed: /api/link/claim, /api/quest/solo,
+        # /api/item/use endpoints are not implemented server-side.
 
         return content

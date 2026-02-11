@@ -101,7 +101,7 @@ class Admin(SimpleCommandModule):
             True if user is super admin, False otherwise
         """
         nick = event.source.split('!')[0]
-        if not self.bot.is_super_admin(nick):
+        if not self.bot.is_super_admin(nick, event_source=str(event.source)):
             # Check if password auth is enabled
             password_hash = self.bot.config.get("core", {}).get("super_admin_password_hash", "")
             if password_hash and password_hash.strip():
@@ -122,19 +122,24 @@ class Admin(SimpleCommandModule):
 
         password = match.group(1).strip()
 
-        # Rate limiting: track failed attempts
+        # Rate limiting: track failed attempts by hostname (nicks can be changed freely)
         nick = event.source.split('!')[0]
-        state = self.get_state()
-        auth_attempts = state.get("auth_attempts", {})
-        nick_lower = nick.lower()
+        try:
+            host = event.source.split('@')[1]
+        except IndexError:
+            host = nick.lower()
+        rate_key = host.lower()
+
+        if not hasattr(self, '_auth_attempts'):
+            self._auth_attempts = {}
 
         # Clean up old attempts (older than 5 minutes)
         current_time = time.time()
-        auth_attempts = {k: v for k, v in auth_attempts.items() if current_time - v["last_attempt"] < 300}
+        self._auth_attempts = {k: v for k, v in self._auth_attempts.items() if current_time - v["last_attempt"] < 300}
 
         # Check rate limit (max 5 attempts per 5 minutes)
-        if nick_lower in auth_attempts:
-            attempts = auth_attempts[nick_lower]
+        if rate_key in self._auth_attempts:
+            attempts = self._auth_attempts[rate_key]
             if attempts["count"] >= 5:
                 self.safe_privmsg(username, "Too many authentication attempts. Please wait 5 minutes before trying again.")
                 return True
@@ -142,24 +147,20 @@ class Admin(SimpleCommandModule):
         # Attempt authentication
         if self.bot.authenticate_super_admin(nick, password):
             # Success - clear failed attempts
-            if nick_lower in auth_attempts:
-                del auth_attempts[nick_lower]
-                self.set_state("auth_attempts", auth_attempts)
-                self.save_state()
+            if rate_key in self._auth_attempts:
+                del self._auth_attempts[rate_key]
 
             session_hours = self.bot.config.get("core", {}).get("super_admin_session_hours", 1)
             self.safe_privmsg(username, f"Authentication successful. Super admin privileges granted for {session_hours} hour(s).")
         else:
             # Failed - record attempt
-            if nick_lower not in auth_attempts:
-                auth_attempts[nick_lower] = {"count": 0, "last_attempt": 0}
+            if rate_key not in self._auth_attempts:
+                self._auth_attempts[rate_key] = {"count": 0, "last_attempt": 0}
 
-            auth_attempts[nick_lower]["count"] += 1
-            auth_attempts[nick_lower]["last_attempt"] = current_time
-            self.set_state("auth_attempts", auth_attempts)
-            self.save_state()
+            self._auth_attempts[rate_key]["count"] += 1
+            self._auth_attempts[rate_key]["last_attempt"] = current_time
 
-            remaining = 5 - auth_attempts[nick_lower]["count"]
+            remaining = 5 - self._auth_attempts[rate_key]["count"]
             if remaining > 0:
                 self.safe_privmsg(username, f"Authentication failed. {remaining} attempt(s) remaining before rate limit.")
             else:
@@ -220,6 +221,8 @@ class Admin(SimpleCommandModule):
         return True
 
     def _cmd_say(self, connection, event, username, target, message):
+        # Sanitize newlines to prevent IRC protocol injection
+        message = message.replace('\r', '').replace('\n', ' ')
         self.bot.connection.privmsg(target, message)
         return True
         

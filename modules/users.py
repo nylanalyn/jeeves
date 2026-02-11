@@ -14,6 +14,7 @@ class Users(SimpleCommandModule):
     name = "users"
     version = "2.1.0" # Added flavor text preference
     description = "Provides persistent user identity across nickname changes."
+    MAX_SEEN_NICKS = 50  # Cap nickname history to prevent unbounded growth
 
     # This module is a core service and does not require changes for the refactor,
     # as it has no user-facing commands or ambient triggers to be disabled.
@@ -83,6 +84,9 @@ class Users(SimpleCommandModule):
             if user_profile:
                 if lower_new not in user_profile["seen_nicks"]:
                     user_profile["seen_nicks"].append(lower_new)
+                    # Cap nickname history
+                    if len(user_profile["seen_nicks"]) > self.MAX_SEEN_NICKS:
+                        user_profile["seen_nicks"] = user_profile["seen_nicks"][-self.MAX_SEEN_NICKS:]
                 user_map[user_id] = user_profile
                 self.set_state("user_map", user_map)
                 self.save_state()
@@ -97,6 +101,9 @@ class Users(SimpleCommandModule):
             user_profile["canonical_nick"] = new_nick # Update their "main" name
             if lower_new not in user_profile["seen_nicks"]:
                 user_profile["seen_nicks"].append(lower_new)
+                # Cap nickname history
+                if len(user_profile["seen_nicks"]) > self.MAX_SEEN_NICKS:
+                    user_profile["seen_nicks"] = user_profile["seen_nicks"][-self.MAX_SEEN_NICKS:]
             user_map[user_id] = user_profile
             self.set_state("user_map", user_map)
 

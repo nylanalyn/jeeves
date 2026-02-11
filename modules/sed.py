@@ -1,7 +1,6 @@
 # modules/sed.py
 # A module for handling sed-like s/find/replace syntax.
 import re
-import signal
 from collections import deque
 from typing import Any, Dict, Tuple
 from .base import SimpleCommandModule
@@ -112,13 +111,16 @@ class Sed(SimpleCommandModule):
 
         return True
 
-    def _safe_regex_subn(self, pattern: str, replacement: str, text: str, timeout: int = 1) -> Tuple[str, int]:
-        """Perform regex substitution with timeout protection."""
+    def _safe_regex_subn(self, pattern: str, replacement: str, text: str, timeout: float = 1.0) -> Tuple[str, int]:
+        """Perform regex substitution with timeout protection.
+
+        Uses a worker thread with a timeout, which works reliably
+        regardless of whether this is called from the main thread.
+        """
+        import threading
+
         result = [None, 0]
         exception = [None]
-
-        def handler(signum, frame):
-            raise TimeoutError("Regex operation timed out")
 
         def do_subn():
             try:
@@ -126,25 +128,17 @@ class Sed(SimpleCommandModule):
             except Exception as e:
                 exception[0] = e
 
-        # On Unix-like systems, use signal-based timeout
-        try:
-            old_handler = signal.signal(signal.SIGALRM, handler)
-            signal.alarm(timeout)
-            try:
-                do_subn()
-            finally:
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+        worker = threading.Thread(target=do_subn, daemon=True)
+        worker.start()
+        worker.join(timeout)
 
-            if exception[0]:
-                raise exception[0]
-            if result[0] is None:
-                raise ValueError("Regex operation failed")
+        if worker.is_alive():
+            # Thread is still running — regex timed out
+            raise TimeoutError("Regex operation timed out")
 
-            return result[0], result[1]
-        except (AttributeError, ValueError):
-            # signal.SIGALRM not available on Windows, fall back to simple execution
-            do_subn()
-            if exception[0]:
-                raise exception[0]
-            return result[0], result[1]
+        if exception[0]:
+            raise exception[0]
+        if result[0] is None:
+            raise ValueError("Regex operation failed")
+
+        return result[0], result[1]

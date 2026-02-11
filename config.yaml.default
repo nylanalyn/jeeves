@@ -26,6 +26,9 @@ core:
 connection:
   server: "irc.libera.chat"
   port: 6697
+  # SSL/TLS toggle. Defaults to true when port is 6697, false otherwise.
+  # Set explicitly to use SSL on non-standard ports.
+  ssl: true
   nick: "JeevesBot"
   channel: "#your-channel"
   # If your nickname is registered with NickServ, provide the password here.

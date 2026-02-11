@@ -203,12 +203,13 @@ class MultiFileStateManager:
             self._mark_dirty('state')
 
     def get_module_state(self, name):
-        """Get a module's state from the appropriate file."""
+        """Get a module's state from the appropriate file (returns a deep copy)."""
         file_type = self._get_file_type_for_module(name)
         with self._locks[file_type]:
             self._ensure_latest(file_type)
             mods = self._states[file_type].setdefault("modules", {})
-            return mods.setdefault(name, {})
+            state = mods.setdefault(name, {})
+            return json.loads(json.dumps(state))
 
     def update_module_state(self, name, updates):
         """Update a module's state in the appropriate file."""
@@ -216,7 +217,7 @@ class MultiFileStateManager:
         with self._locks[file_type]:
             self._ensure_latest(file_type)
             mods = self._states[file_type].setdefault("modules", {})
-            mods[name] = updates
+            mods.setdefault(name, {}).update(updates)
             self._mark_dirty(file_type)
 
     def _mark_dirty(self, file_type):
@@ -342,7 +343,8 @@ class Jeeves(SingleServerIRCBot):
         self.ROOT = ROOT
         self._setup_logging()
 
-        if port == 6697:
+        use_ssl = self.config.get("connection", {}).get("ssl", port == 6697)
+        if use_ssl:
             ssl_context = ssl.create_default_context()
             wrapper = functools.partial(ssl_context.wrap_socket, server_hostname=server)
             connect_factory = Factory(wrapper=wrapper)
@@ -356,6 +358,8 @@ class Jeeves(SingleServerIRCBot):
         self.nickname = nickname
         self.JEEVES_NAME_RE = self.config.get("core", {}).get("name_pattern", "(?:jeeves|jeevesbot)")
         self.nickserv_pass = self.config.get("connection", {}).get("nickserv_pass", "")
+        self._super_admin_sessions = {}  # In-memory only: {nick_lower: expiry_timestamp}
+        self._scheduler_thread = None
         self.pm = PluginManager(self)
 
         # Build initial channel list from config
@@ -525,22 +529,27 @@ class Jeeves(SingleServerIRCBot):
         admin_hostnames = courtesy_state.get("admin_hostnames", {})
         stored_host = admin_hostnames.get(user_id)
 
-        if not stored_host or stored_host.lower() != host.lower():
-            self.log_debug(f"[core] Updating registered admin host for {nick} ({user_id}) to: {host}")
+        if not stored_host:
+            # First connection for this admin — register their hostname
+            self.log_debug(f"[core] First admin login for {nick} ({user_id}), registering hostname: {host}")
             courtesy_module = self.pm.plugins.get("courtesy")
             if courtesy_module and hasattr(courtesy_module, "register_admin_hostname"):
                 courtesy_module.register_admin_hostname(user_id, host)
             else:
-                updated_courtesy_state = dict(courtesy_state)
                 updated_hosts = dict(admin_hostnames)
                 updated_hosts[user_id] = host
-                updated_courtesy_state["admin_hostnames"] = updated_hosts
-                self.update_module_state("courtesy", updated_courtesy_state)
-            self.connection.privmsg(nick, f"For security, I have updated your registered hostname to '{host}' for this session.")
+                self.update_module_state("courtesy", {"admin_hostnames": updated_hosts})
+            self.connection.privmsg(nick, f"Admin hostname registered: '{host}'. Future connections must match this hostname.")
+            return True
+
+        if stored_host.lower() != host.lower():
+            # Hostname mismatch — reject and log security event
+            self.log_debug(f"[core] SECURITY: Admin hostname mismatch for {nick} ({user_id}). Expected '{stored_host}', got '{host}'. Access DENIED.")
+            return False
 
         return True
 
-    def is_super_admin(self, nick: str) -> bool:
+    def is_super_admin(self, nick: str, event_source: str = None) -> bool:
         """
         Check if a nick has authenticated as a super admin with password.
 
@@ -549,31 +558,35 @@ class Jeeves(SingleServerIRCBot):
 
         Args:
             nick: The nickname to check
+            event_source: Full event source string for admin verification (optional)
 
         Returns:
             True if the nick is authenticated as super admin, False otherwise
         """
-        # If no password hash is configured, fall back to regular admin check
+        # Verify the nick is actually a valid admin (prevents session hijack via nick takeover)
+        if event_source:
+            if not self.is_admin(event_source):
+                return False
+        else:
+            # Fallback: at least verify nick is in admin list
+            admin_nicks = {n.strip().lower() for n in self.config.get("core", {}).get("admins", [])}
+            if nick.lower() not in admin_nicks:
+                return False
+
+        # If no password hash is configured, all verified admins are super admins
         password_hash = self.config.get("core", {}).get("super_admin_password_hash", "")
         if not password_hash or not password_hash.strip():
-            # No password protection - all admins are super admins
-            return nick.lower() in {n.strip().lower() for n in self.config.get("core", {}).get("admins", [])}
+            return True
 
-        # Check if nick is authenticated
-        core_state = self.get_module_state("core")
-        super_admin_sessions = core_state.get("super_admin_sessions", {})
-
-        session_expiry = super_admin_sessions.get(nick.lower())
+        # Check in-memory session
+        session_expiry = self._super_admin_sessions.get(nick.lower())
         if session_expiry is None:
             return False
 
         # Check if session is still valid
         if time.time() > session_expiry:
-            # Session expired, clean it up
             self.log_debug(f"[core] Super admin session expired for {nick}")
-            updated_sessions = dict(super_admin_sessions)
-            del updated_sessions[nick.lower()]
-            self.update_module_state("core", {"super_admin_sessions": updated_sessions})
+            del self._super_admin_sessions[nick.lower()]
             return False
 
         return True
@@ -616,11 +629,7 @@ class Jeeves(SingleServerIRCBot):
         session_hours = self.config.get("core", {}).get("super_admin_session_hours", 1)
         expiry_time = time.time() + (session_hours * 3600)
 
-        core_state = self.get_module_state("core")
-        super_admin_sessions = dict(core_state.get("super_admin_sessions", {}))
-        super_admin_sessions[nick.lower()] = expiry_time
-
-        self.update_module_state("core", {"super_admin_sessions": super_admin_sessions})
+        self._super_admin_sessions[nick.lower()] = expiry_time
         self.log_debug(f"[core] Super admin authenticated: {nick} (expires in {session_hours}h)")
 
         return True
@@ -790,12 +799,14 @@ class Jeeves(SingleServerIRCBot):
                     self.log_debug(f"[plugins] privmsg error in {name}: {e}\n{traceback.format_exc()}")
 
     def _ensure_scheduler_thread(self):
+        if self._scheduler_thread is not None and self._scheduler_thread.is_alive():
+            return
         def loop():
             while True:
                 schedule.run_pending()
                 time.sleep(1)
-        t = threading.Thread(target=loop, daemon=True, name="jeeves-scheduler")
-        t.start()
+        self._scheduler_thread = threading.Thread(target=loop, daemon=True, name="jeeves-scheduler")
+        self._scheduler_thread.start()
 
 # --- Global State Manager Instance ---
 state_manager = None

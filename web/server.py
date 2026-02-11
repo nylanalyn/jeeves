@@ -8,6 +8,7 @@ import json
 import logging
 import signal
 import sys
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -52,6 +53,7 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         self.stats_loader = JeevesStatsLoader(config_path)
         self.stats: dict | None = None
         self.aggregator: StatsAggregator | None = None
+        self._stats_cache_time: float = 0.0
 
         super().__init__(*args, **kwargs)
 
@@ -61,21 +63,32 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         self.quest_mob_cooldowns = load_mob_cooldowns(self.games_path)
         self.quest_boss_hunt_data = load_boss_hunt_data(self.games_path)
 
+    _STATS_CACHE_TTL = 30.0  # seconds
+
     def _load_stats(self) -> bool:
+        now = time.time()
+        if self.stats is not None and (now - self._stats_cache_time) < self._STATS_CACHE_TTL:
+            return True
         try:
             self.stats = self.stats_loader.load_all()
             self.aggregator = StatsAggregator(self.stats)
+            self._stats_cache_time = now
             return True
         except Exception as exc:  # pragma: no cover
             logging.exception(f"Error loading stats: {exc}")
             self.stats = None
             self.aggregator = None
+            self._stats_cache_time = 0.0
             return False
 
     def _send_response(self, status: HTTPStatus, content: str, content_type: str = "text/html") -> None:
         self.send_response(status.value)
         self.send_header("Content-Type", f"{content_type}; charset=utf-8")
         self.send_header("Content-Length", str(len(content.encode("utf-8"))))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'")
         self.end_headers()
         self.wfile.write(content.encode("utf-8"))
 
@@ -179,10 +192,6 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
             if path in ("/api/status", "/quest/api/status"):
                 self._handle_quest_api_status()
                 return
-            if path in ("/api/reload", "/quest/api/reload"):
-                self._handle_quest_api_reload()
-                return
-
             self._send_error_page(HTTPStatus.NOT_FOUND, "Page not found.", home_path="/")
         except Exception as exc:  # pragma: no cover
             import traceback
@@ -199,7 +208,7 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         try:
-            if path == "/api/reload":
+            if path in ("/api/reload", "/quest/api/reload"):
                 self._handle_quest_api_reload()
                 return
             self._send_error_page(HTTPStatus.NOT_FOUND, "Page not found.", home_path="/")
@@ -286,12 +295,31 @@ class JeevesHTTPRequestHandler(BaseHTTPRequestHandler):
         }
         self._send_json(status)
 
+    # Rate limit: minimum 5 seconds between reloads
+    _last_reload_time: float = 0.0
+
     def _handle_quest_api_reload(self) -> None:
+        # Only allow from localhost
+        client_ip = self.client_address[0]
+        if client_ip not in ("127.0.0.1", "::1", "localhost"):
+            self._send_json({"success": False, "error": "Forbidden"}, status=HTTPStatus.FORBIDDEN)
+            return
+
+        # Rate limit reloads
+        now = time.time()
+        if now - JeevesHTTPRequestHandler._last_reload_time < 5.0:
+            self._send_json(
+                {"success": False, "error": "Rate limited. Try again in a few seconds."},
+                status=HTTPStatus.TOO_MANY_REQUESTS,
+            )
+            return
+
         try:
             self._quest_reload_state()
+            JeevesHTTPRequestHandler._last_reload_time = now
             self._send_json({"success": True, "message": "Quest data reloaded successfully"})
         except Exception as exc:  # pragma: no cover
-            self._send_json({"success": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            self._send_json({"success": False, "error": "Internal server error"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     # Stats handlers
     def _handle_stats_overview(self) -> None:

@@ -421,6 +421,7 @@ class Fishing(SimpleCommandModule):
                 "locations_fished": [],
                 "water_today": 0,  # Number of water bottles consumed today
                 "water_date": None,  # Date of last water consumption (for daily reset)
+                "water_last_used": None,  # ISO timestamp of last !water command
                 "xp_boost_catches": 0,
                 "force_rare_legendary": False,
             }
@@ -1311,6 +1312,39 @@ class Fishing(SimpleCommandModule):
             water_count = 0
             water_date = today
 
+        # Check cooldown - must wait at least 1 hour between waters
+        water_last_used = player.get("water_last_used")
+        if water_last_used and water_count > 0:
+            last_used_time = datetime.fromisoformat(water_last_used)
+            elapsed = datetime.now(UTC) - last_used_time
+            remaining_minutes = 60 - (elapsed.total_seconds() / 60)
+            if remaining_minutes > 0:
+                too_fast_messages = [
+                    (
+                        f"I beg your pardon, {self.bot.title_for(username)}, but I find it rather difficult to believe "
+                        f"that you have consumed an entire bottle of water in {elapsed.total_seconds() / 60:.0f} minutes. "
+                        f"One does not wish to make accusations, but this has all the hallmarks of what I believe "
+                        f"the younger generation refers to as 'gaming the system.' Perhaps try again in {remaining_minutes:.0f} minutes."
+                    ),
+                    (
+                        f"Most irregular, {self.bot.title_for(username)}. I have served in some of the finest households "
+                        f"in England, and I have never once witnessed a bottle of water dispatched with such supernatural haste. "
+                        f"Might I suggest actually drinking one? You may retry in {remaining_minutes:.0f} minutes."
+                    ),
+                    (
+                        f"Forgive me, {self.bot.title_for(username)}, but unless you have developed gills — "
+                        f"which, while fascinating, seems improbable — I rather suspect this water bottle is purely theoretical. "
+                        f"The next hydration opportunity presents itself in {remaining_minutes:.0f} minutes."
+                    ),
+                    (
+                        f"I venture to observe, {self.bot.title_for(username)}, that the speed of your alleged consumption "
+                        f"would make even the most enthusiastic camel raise an eyebrow. One hesitates to use the word "
+                        f"'shenanigans,' but the evidence is compelling. Do try again in {remaining_minutes:.0f} minutes."
+                    ),
+                ]
+                self.safe_reply(connection, event, random.choice(too_fast_messages))
+                return True
+
         # Check if they've already had 4 bottles today
         if water_count >= 4:
             self.safe_reply(
@@ -1324,6 +1358,7 @@ class Fishing(SimpleCommandModule):
         water_count += 1
         player["water_today"] = water_count
         player["water_date"] = today
+        player["water_last_used"] = datetime.now(UTC).isoformat()
         self._save_player(user_id, player)
 
         # Calculate new boost percentage

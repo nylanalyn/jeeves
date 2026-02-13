@@ -758,6 +758,10 @@ class Jeeves(SingleServerIRCBot):
             self.log_debug(f"[core] Error getting pronouns for {nick}: {e}")
         return "they/them"
 
+    def on_action(self, connection, event):
+        """Handle /me actions - delegate to pubmsg handler for ambient processing."""
+        self.on_pubmsg(connection, event)
+
     def on_pubmsg(self, connection, event):
         msg, username = event.arguments[0], event.source.nick
         self.log_debug(f"PUBMSG from {username} in {event.target}: {msg}")

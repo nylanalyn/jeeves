@@ -279,6 +279,49 @@ XP_BONUS_SMALL_RANGE = (8, 20)
 XP_BONUS_LARGE_RANGE = (40, 90)
 
 # Cast flavor messages
+REAL_FACTS = [
+    "Your eyes remain the same size from birth to death. They never grow.",
+    "Sharks have existed longer than trees.",
+    "King Charles II of England used to drink alcohol mixed with crushed human skull powder.",
+    "There are more possible iterations of a game of chess than there are atoms in the observable universe.",
+    "Honey never spoils. Archaeologists have found 3000-year-old honey in Egyptian tombs that was still edible.",
+    "Octopuses have three hearts, and two of them stop beating when they swim.",
+    "A group of flamingos is called a 'flamboyance.'",
+    "Cleopatra lived closer in time to the Moon landing than to the construction of the Great Pyramid.",
+    "Oxford University is older than the Aztec Empire.",
+    "There are more trees on Earth than stars in the Milky Way.",
+    "Bananas are berries, but strawberries are not.",
+    "A day on Venus is longer than a year on Venus.",
+    "The inventor of the Pringles can is buried in one.",
+    "Humans share about 60% of their DNA with bananas.",
+    "The woolly mammoth was still alive when the Great Pyramid was being built.",
+    "Your skeleton is wet right now.",
+    "There is a species of jellyfish that is biologically immortal.",
+    "Nintendo was founded in 1889.",
+    "The lighter was invented before the match.",
+    "Scotland's national animal is the unicorn.",
+    "A single strand of spaghetti is called a 'spaghetto.'",
+    "The total weight of all ants on Earth roughly equals the total weight of all humans.",
+    "You can't hum while holding your nose.",
+    "There are more fake flamingos in the world than real ones.",
+    "The shortest war in history lasted 38 minutes, between Britain and Zanzibar.",
+    "Cows have best friends and get stressed when separated from them.",
+    "Vending machines are statistically more dangerous than sharks.",
+    "The heart of a blue whale is so large that a small child could swim through its arteries.",
+    "Some turtles can breathe through their butts.",
+    "Maine is the closest US state to Africa.",
+    "If you shuffled a deck of cards properly, the resulting order has almost certainly never existed before.",
+    "The average person walks past 36 murderers in their lifetime.",
+    "There are more ways to arrange a deck of cards than there are atoms on Earth.",
+    "Wombat poop is cube-shaped.",
+    "Dead people can get goosebumps.",
+    "Your brain uses about 20% of your total oxygen and calorie intake despite being only 2% of your body weight.",
+    "Dolphins have been observed calling each other by unique names.",
+    "The longest hiccupping spree lasted 68 years.",
+    "Astronauts' fingernails tend to fall off in space.",
+    "The smell of freshly cut grass is actually a plant distress signal.",
+]
+
 CAST_MESSAGES = [
     "You cast your line, it goes {distance}m and floats quietly...",
     "With a practiced flick, your line sails {distance}m into the {location}.",
@@ -399,6 +442,12 @@ class Fishing(SimpleCommandModule):
             self._cmd_water,
             name="water",
             description="Celebrate finishing a water bottle (boosts rare fish chances)"
+        )
+        self.register_command(
+            r'^\s*!real\s*$',
+            self._cmd_real,
+            name="real",
+            description="Share a spooky but true fact"
         )
 
     def _get_player(self, user_id: str) -> Dict[str, Any]:
@@ -1293,6 +1342,14 @@ class Fishing(SimpleCommandModule):
             connection, event,
             f"{self.bot.title_for(username)}, I've sent you the fishing guide."
         )
+        return True
+
+    def _cmd_real(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        fact = random.choice(REAL_FACTS)
+        self.safe_reply(connection, event, f"Real fact: {fact}")
         return True
 
     def _cmd_water(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

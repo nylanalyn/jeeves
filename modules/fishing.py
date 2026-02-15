@@ -841,7 +841,12 @@ class Fishing(SimpleCommandModule):
             # No location specified, use current level's default location
             location = self._get_location_for_level(player["level"])
         
-        distance = self._get_cast_distance(player["level"], location)
+        # Apply artifact distance bonus if applicable
+        artifact = player.get("artifact")
+        artifact_distance_bonus = 0.0
+        if artifact and artifact.get("bonus_type") == "distance":
+            artifact_distance_bonus = artifact.get("bonus_value", 0.0)
+        distance = self._get_cast_distance(player["level"], location, artifact_distance_bonus)
 
         # Record the cast
         active_casts[user_id] = {
@@ -863,10 +868,16 @@ class Fishing(SimpleCommandModule):
         triggered_event = self._check_event_trigger(event.target, location["name"])
 
         # Send cast message
-        cast_msg = random.choice(CAST_MESSAGES).format(
-            distance=distance,
-            location=location["name"]
-        )
+        if artifact:
+            cast_msg = (
+                f"{artifact['cast_text']}, it sails {distance}m into the {location['name']}, "
+                f"{artifact['float_text']}..."
+            )
+        else:
+            cast_msg = random.choice(CAST_MESSAGES).format(
+                distance=distance,
+                location=location["name"]
+            )
         self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {cast_msg}")
 
         # Announce event if triggered

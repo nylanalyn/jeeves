@@ -615,16 +615,18 @@ class Fishing(SimpleCommandModule):
         player["xp"] = xp
         return None
 
-    def _get_cast_distance(self, level: int, location: Dict[str, Any]) -> float:
+    def _get_cast_distance(self, level: int, location: Dict[str, Any], artifact_bonus: float = 0.0) -> float:
         """Generate a random cast distance based on level and location."""
         max_dist = location["max_distance"]
-        # Base distance is 30-70% of max, with level adding potential
         min_dist = max_dist * 0.3
-        level_bonus = (level / 9) * 0.3  # Up to 30% bonus at max level
+        level_bonus = (level / 9) * 0.3
         base_max = max_dist * (0.7 + level_bonus)
-        return round(random.uniform(min_dist, base_max), 1)
+        distance = random.uniform(min_dist, base_max)
+        # Apply artifact distance bonus
+        distance *= (1.0 + artifact_bonus)
+        return round(distance, 1)
 
-    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, water_boost: float = 0.0) -> str:
+    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, water_boost: float = 0.0, artifact_rarity_boost: float = 0.0) -> str:
         """Select a rarity tier based on wait time, active events, and hydration boost."""
         weights = RARITY_WEIGHTS.copy()
 
@@ -657,6 +659,13 @@ class Fishing(SimpleCommandModule):
             weights["common"] = max(1, int(weights["common"] - common_reduction))
             
             # Distribute the reduction to rare and legendary
+            weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
+            weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
+
+        # Apply artifact rarity boost
+        if artifact_rarity_boost > 0:
+            common_reduction = weights["common"] * artifact_rarity_boost
+            weights["common"] = max(1, int(weights["common"] - common_reduction))
             weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
             weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
 

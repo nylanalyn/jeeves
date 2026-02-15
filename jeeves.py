@@ -79,6 +79,7 @@ class MultiFileStateManager:
         'weather': 'users',
         'memos': 'users',
         'profiles': 'users',
+        'birthday': 'users',
         # Stats modules
         'coffee': 'stats',
         'courtesy': 'stats',

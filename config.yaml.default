@@ -93,6 +93,9 @@ arithmetic:
     max_fudge_factor: 2
     cooldown_seconds: 5
 
+birthday:
+    cooldown_seconds: 5
+
 bell:
     min_hours_between_rings: 1
     max_hours_between_rings: 8

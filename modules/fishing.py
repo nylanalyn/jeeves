@@ -526,6 +526,12 @@ class Fishing(SimpleCommandModule):
             name="real",
             description="Share a spooky but true fact"
         )
+        self.register_command(
+            r'^\s*!discard\s*$',
+            self._cmd_discard,
+            name="discard",
+            description="Discard your current fishing artifact"
+        )
 
     def _get_player(self, user_id: str) -> Dict[str, Any]:
         """Get or create a player record."""
@@ -1454,10 +1460,12 @@ class Fishing(SimpleCommandModule):
             "!fishinfo <location> - Show fish caught at a specific location (e.g., !fishinfo pond)",
             "!aquarium - View your rare/legendary catches",
             "!water - Celebrate finishing a water bottle (boosts rare fish, max 4/day)",
+            "!discard - Discard your current artifact and return to normal casts",
             "",
             "Tips: !cast pulls fish from your current level and any lower unlocked levels.",
             "You can also travel back to previous locations to hunt for rare fish you missed!",
             "Stay hydrated! Each bottle of water increases rare fish chances by 10% (up to 40%).",
+            "Artifacts: Rare finds hidden among the junk! They change your cast style and grant small bonuses.",
         ]
 
         for line in help_lines:
@@ -1571,4 +1579,30 @@ class Fishing(SimpleCommandModule):
             )
 
         self.safe_reply(connection, event, response)
+        return True
+
+    def _cmd_discard(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+        artifact = player.get("artifact")
+
+        if not artifact:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, you don't have an artifact to discard."
+            )
+            return True
+
+        artifact_name = artifact["name"]
+        player["artifact"] = None
+        self._save_player(user_id, player)
+
+        self.safe_reply(
+            connection, event,
+            f"{self.bot.title_for(username)} tosses the {artifact_name} into the water. "
+            "All bonuses lost. Your casts return to normal."
+        )
         return True

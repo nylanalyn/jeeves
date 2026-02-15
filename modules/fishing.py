@@ -972,8 +972,26 @@ class Fishing(SimpleCommandModule):
             junk_chance = 0.10
             if active_event and active_event.get("effect") == "junk_boost":
                 junk_chance *= active_event.get("multiplier", 1.0)
+            # Apply artifact junk shield
+            artifact = player.get("artifact")
+            if artifact and artifact.get("bonus_type") == "junk_shield":
+                junk_chance *= (1.0 - artifact.get("bonus_value", 0.0))
 
             if random.random() < junk_chance:
+                # Chance for artifact instead of junk
+                if random.random() < ARTIFACT_CHANCE:
+                    new_artifact = random.choice(ARTIFACTS)
+                    old_artifact = player.get("artifact")
+                    player["artifact"] = new_artifact.copy()
+                    self._save_player(user_id, player)
+                    response = (
+                        f"{self.bot.title_for(username)} reels in... wait, something else is tangled in the line! "
+                        f"You found the {new_artifact['name']}! Your casts will never be the same."
+                    )
+                    if old_artifact:
+                        response += f" (Replaced: {old_artifact['name']})"
+                    self.safe_reply(connection, event, response)
+                    return True
                 junk = self._get_junk(location["type"])
                 player["junk_collected"] += 1
                 self._save_player(user_id, player)
@@ -990,7 +1008,11 @@ class Fishing(SimpleCommandModule):
 
         # Successful catch!
         water_boost = self._get_water_boost(player)
-        rarity = self._select_rarity(effective_wait, active_event, water_boost)
+        artifact = player.get("artifact")
+        artifact_rarity_boost = 0.0
+        if artifact and artifact.get("bonus_type") == "rarity":
+            artifact_rarity_boost = artifact.get("bonus_value", 0.0)
+        rarity = self._select_rarity(effective_wait, active_event, water_boost, artifact_rarity_boost)
         eligible_locations = None
         if cast.get("allow_lower_fish"):
             eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
@@ -1082,6 +1104,11 @@ class Fishing(SimpleCommandModule):
         # Event XP boost
         if active_event and active_event.get("effect") == "xp_boost":
             xp_gain = int(xp_gain * active_event.get("multiplier", 1.0))
+
+        # Artifact XP boost
+        artifact = player.get("artifact")
+        if artifact and artifact.get("bonus_type") == "xp":
+            xp_gain = int(xp_gain * (1.0 + artifact.get("bonus_value", 0.0)))
 
         bonus_messages = []
         boost_catches = player.get("xp_boost_catches", 0)

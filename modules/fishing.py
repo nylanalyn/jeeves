@@ -278,6 +278,83 @@ XP_BOOST_MULTIPLIER = 2
 XP_BONUS_SMALL_RANGE = (8, 20)
 XP_BONUS_LARGE_RANGE = (40, 90)
 
+# Artifact discovery chance (portion of junk rolls that become artifacts)
+ARTIFACT_CHANCE = 0.15
+
+# Artifact pool - each modifies cast text and grants a small bonus
+ARTIFACTS = [
+    {
+        "name": "Rod of Indifference",
+        "cast_text": "You cast your line apathetically",
+        "float_text": "and floats with profound disinterest",
+        "bonus_type": "distance",
+        "bonus_value": 0.10,
+    },
+    {
+        "name": "Bobber of Passion",
+        "cast_text": "You cast your line with burning intensity",
+        "float_text": "and floats seductively",
+        "bonus_type": "rarity",
+        "bonus_value": 0.05,
+    },
+    {
+        "name": "Line of Questionable Intent",
+        "cast_text": "You cast your line suspiciously",
+        "float_text": "and floats with unclear motives",
+        "bonus_type": "junk_shield",
+        "bonus_value": 0.25,
+    },
+    {
+        "name": "Rod of Excessive Enthusiasm",
+        "cast_text": "You cast your line with WAY too much energy",
+        "float_text": "and floats aggressively",
+        "bonus_type": "distance",
+        "bonus_value": 0.15,
+    },
+    {
+        "name": "Bobber of Existential Dread",
+        "cast_text": "You cast your line into the uncaring void",
+        "float_text": "and floats, contemplating its existence",
+        "bonus_type": "xp",
+        "bonus_value": 0.10,
+    },
+    {
+        "name": "Line of Mild Disappointment",
+        "cast_text": "You cast your line with a heavy sigh",
+        "float_text": "and floats, barely trying",
+        "bonus_type": "rarity",
+        "bonus_value": 0.10,
+    },
+    {
+        "name": "Rod of Unearned Confidence",
+        "cast_text": "You cast your line like you own the place",
+        "float_text": "and floats with smug satisfaction",
+        "bonus_type": "xp",
+        "bonus_value": 0.10,
+    },
+    {
+        "name": "Bobber of Chaotic Energy",
+        "cast_text": "You cast your line in a wild frenzy",
+        "float_text": "and floats unpredictably",
+        "bonus_type": "distance",
+        "bonus_value": 0.20,
+    },
+    {
+        "name": "Line of Ancient Wisdom",
+        "cast_text": "You cast your line thoughtfully",
+        "float_text": "and floats with quiet dignity",
+        "bonus_type": "rarity",
+        "bonus_value": 0.15,
+    },
+    {
+        "name": "Rod of Procrastination",
+        "cast_text": "You eventually get around to casting your line",
+        "float_text": "and floats, putting things off",
+        "bonus_type": "junk_shield",
+        "bonus_value": 0.30,
+    },
+]
+
 # Cast flavor messages
 REAL_FACTS = [
     "Your eyes remain the same size from birth to death. They never grow.",
@@ -473,6 +550,7 @@ class Fishing(SimpleCommandModule):
                 "water_last_used": None,  # ISO timestamp of last !water command
                 "xp_boost_catches": 0,
                 "force_rare_legendary": False,
+                "artifact": None,
             }
             self.set_state("players", players)
             self.save_state()

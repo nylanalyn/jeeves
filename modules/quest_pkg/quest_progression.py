@@ -405,9 +405,10 @@ def handle_hardcore_select_item(quest_module, connection, event, username, args)
     return True
 
 
-def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: bool = False, is_crit: bool = False) -> List[str]:
+def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: bool = False, is_crit: bool = False, player: Optional[Dict[str, Any]] = None) -> List[str]:
     """Grant XP to a player and handle leveling."""
-    player = get_player(quest_module, user_id, username)
+    if player is None:
+        player = get_player(quest_module, user_id, username)
     messages = []
     total_xp_gain = int(amount)
     today = datetime.now(UTC).date().isoformat()
@@ -551,13 +552,14 @@ def grant_xp(quest_module, user_id: str, username: str, amount: int, is_win: boo
     return messages
 
 
-def deduct_xp(quest_module, user_id: str, username: str, amount: int) -> Dict[str, Any]:
+def deduct_xp(quest_module, user_id: str, username: str, amount: int, player: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Deduct XP from a player (on loss), allowing level downs when XP underflows."""
     loss = max(0, int(amount))
     if loss == 0:
-        return get_player(quest_module, user_id, username)
+        return player if player is not None else get_player(quest_module, user_id, username)
 
-    player = get_player(quest_module, user_id, username)
+    if player is None:
+        player = get_player(quest_module, user_id, username)
 
     # Check if player is in hardcore mode (different level cap)
     is_hardcore = player.get("hardcore_mode", False)
@@ -1325,7 +1327,7 @@ def cmd_dungeon_run(quest_module, connection, event, msg, username, match, skip_
             }
 
             if xp_award > 0 and not bypass_active:
-                xp_messages = grant_xp(quest_module, user_id, username, xp_award, is_win=True)
+                xp_messages = grant_xp(quest_module, user_id, username, xp_award, is_win=True, player=player)
                 for xp_msg in xp_messages:
                     quest_module.safe_privmsg(username, xp_msg)
 

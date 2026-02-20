@@ -291,7 +291,7 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         for msg in xp_effect_msgs:
             if "scroll" in msg.lower():
                 quest_module.safe_reply(connection, event, msg)
-        for m in quest_progression.grant_xp(quest_module, user_id, username, total_xp, is_win=True, is_crit=is_crit):
+        for m in quest_progression.grant_xp(quest_module, user_id, username, total_xp, is_win=True, is_crit=is_crit, player=player):
             quest_module.safe_reply(connection, event, m)
 
         # Try to drop an item from combat
@@ -308,7 +308,7 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
         xp_loss_perc = quest_module.get_config_value("xp_loss_percentage", event.target, default=0.25)
         xp_loss = total_xp * xp_loss_perc
         quest_module.safe_reply(connection, event, f"Defeat! (Win chance: {win_chance_modified:.0%}) You have been bested! You lose {int(xp_loss)} XP.")
-        quest_progression.deduct_xp(quest_module, user_id, username, xp_loss)
+        quest_progression.deduct_xp(quest_module, user_id, username, xp_loss, player=player)
 
         # Try to drop a medkit on loss
         item_drop_msg = try_drop_item_from_combat(quest_module, player, event, is_win=False, is_crit=False)
@@ -575,7 +575,7 @@ def handle_search(quest_module, connection, event, username, args):
 
     # Apply XP change if any
     if total_xp_change < 0:
-        quest_progression.deduct_xp(quest_module, user_id, username, abs(total_xp_change))
+        quest_progression.deduct_xp(quest_module, user_id, username, abs(total_xp_change), player=player)
 
     # Save player state
     players_state = quest_module.get_state("players", {})
@@ -1187,7 +1187,7 @@ def _medkit_heal_other(quest_module, connection, event, username, user_id, playe
     xp_reward = int(base_xp * altruistic_multiplier)
 
     xp_messages = []
-    for msg in quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=True, is_crit=False):
+    for msg in quest_progression.grant_xp(quest_module, user_id, username, xp_reward, is_win=True, is_crit=False, player=player):
         xp_messages.append(msg)
 
     # Save both players

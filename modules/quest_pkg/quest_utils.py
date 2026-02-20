@@ -429,7 +429,7 @@ def apply_dungeon_failure_penalty(quest_module, player: Dict[str, Any], user_id:
     xp_loss = max(1, int(round(base_pool * ratio)))
 
     from . import quest_progression
-    quest_progression.deduct_xp(quest_module, user_id, username, xp_loss)
+    quest_progression.deduct_xp(quest_module, user_id, username, xp_loss, player=player)
     return xp_loss
 
 

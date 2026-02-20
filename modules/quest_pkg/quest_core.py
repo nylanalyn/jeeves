@@ -322,6 +322,8 @@ def handle_solo_quest(quest_module, connection, event, username, difficulty):
             quest_module.safe_reply(connection, event, injury_msg)
             # Try to show haunting message on injury
             quest_boss_hunt.try_show_haunting_message(quest_module, connection, event, username, event.target, "injury")
+        # Refresh player to include any injury applied before further modifications
+        player = quest_module.get_state("players").get(user_id, player)
 
     # Consume active effects after combat
     quest_combat.consume_combat_effects(player, is_win=win)

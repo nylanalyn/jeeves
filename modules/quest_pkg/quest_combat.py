@@ -532,6 +532,8 @@ def close_mob_window(quest_module):
                 injury_msg = quest_utils.apply_injury(quest_module, p["user_id"], p["username"], channel, injury_reduction=armor_injury_reduction, class_injury_reduction=class_bonuses["injury_reduction"])
                 if injury_msg:
                     quest_module.safe_say(f"{p['username']}: {injury_msg}", channel)
+                # Refresh players_state to include any injury applied before further modifications
+                players_state = quest_module.get_state("players")
 
                 # Hardcore mode: Apply HP damage (heavy on defeats!)
                 player = players_state.get(p["user_id"])

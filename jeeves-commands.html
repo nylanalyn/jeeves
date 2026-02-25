@@ -402,7 +402,7 @@
                 <div class="module-content">
                     <div class="module-inner">
                         <div class="ambient-note">
-                            <strong>About Absurdia:</strong> Catch absurdist creatures, care for them, and battle in the arena! A complete creature collection and battling game with exploration, training, and hourly tournaments.
+                            <strong>About Absurdia:</strong> Catch absurdist creatures, care for them, and battle in the arena! A complete creature collection and battling game with exploration, training, and hourly tournaments. Only in #absurdia
                         </div>
 
                         <div class="command-group">
@@ -522,7 +522,7 @@
             <div class="module">
                 <div class="module-header" onclick="toggleModule(this)">
                     <div class="module-title">
-                        <h3>🗺️ Choose-Your-Own-Adventure</h3>
+                        <h3>🗺️ Choose-Your-Own-Adventure - Currently Disabled </h3>
                         <span class="module-badge">adventure.py</span>
                     </div>
                     <span class="expand-icon">▶</span>
@@ -556,7 +556,7 @@
             <div class="module">
                 <div class="module-header" onclick="toggleModule(this)">
                     <div class="module-title">
-                        <h3>🔔 Service Bell</h3>
+                        <h3>🔔 Service Bell - Currently disabled</h3>
                         <span class="module-badge">bell.py</span>
                     </div>
                     <span class="expand-icon">▶</span>
@@ -574,6 +574,10 @@
                         <div class="command">
                             <div class="command-syntax">!bell top</div>
                             <div class="command-desc">View the leaderboard</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!bell ring</div>
+                            <div class="command-desc">[Admin] Force the bell to ring immediately</div>
                         </div>
                         <div class="ambient-note">
                             <strong>How it works:</strong> The service bell rings at random intervals. Be the first to answer!
@@ -658,7 +662,7 @@
             <div class="module">
                 <div class="module-header" onclick="toggleModule(this)">
                     <div class="module-title">
-                        <h3>⚔️ RPG Quests</h3>
+                        <h3>⚔️ RPG Quests - Only in #quest </h3>
                         <span class="module-badge">quest.py</span>
                     </div>
                     <span class="expand-icon">▶</span>
@@ -742,11 +746,98 @@
                 </div>
             </div>
 
+            <!-- Fishing Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🎣 Fishing</h3>
+                        <span class="module-badge">fishing.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="ambient-note">
+                            <strong>About Fishing:</strong> Cast your line and wait for a bite! Level up from the Puddle all the way to The Void. Fish from across the solar system, find artifacts, and track rare catches in your aquarium.
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Core Gameplay</h4>
+                            <div class="command">
+                                <div class="command-syntax">!cast [location]</div>
+                                <div class="command-desc">Cast your fishing line (optionally specify a location you've unlocked, e.g. !cast pond). Wait at least 1 hour before reeling in — longer waits yield rarer fish.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!reel</div>
+                                <div class="command-desc">Reel in your catch. Optimal wait is 18–24 hours. Waiting beyond 24 hours risks line breaks or escaped fish.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!fishing</div>
+                                <div class="command-syntax">!fishstats</div>
+                                <div class="command-desc">View your fishing stats: level, XP, total fish, biggest catch, casts, and junk collected.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!fishing help</div>
+                                <div class="command-desc">Get the full fishing guide via private message.</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Progress & Leaderboards</h4>
+                            <div class="command">
+                                <div class="command-syntax">!fishing top</div>
+                                <div class="command-desc">Show fishing leaderboards (most fish caught, biggest catch).</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!fishing location</div>
+                                <div class="command-desc">Show your current fishing location, unlocked locations, and level progress.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!fishinfo [location]</div>
+                                <div class="command-desc">List locations you've fished, or show fish caught at a specific location with species completion stats.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!aquarium</div>
+                                <div class="command-desc">View your rare and legendary catches on display.</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Bonuses & Artifacts</h4>
+                            <div class="command">
+                                <div class="command-syntax">!water</div>
+                                <div class="command-desc">Celebrate finishing a water bottle! Each bottle (up to 4/day) adds 10% to your rare fish chances. Jeeves will express polite scepticism if you drink too fast.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!discard</div>
+                                <div class="command-desc">Discard your current fishing artifact and return to normal casts. Artifacts are found hidden among junk and modify your cast style and grant bonuses.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!real</div>
+                                <div class="command-desc">Share a spooky but true fact while you wait for a bite.</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Admin Commands</h4>
+                            <div class="command">
+                                <div class="command-syntax">!fishing bless &lt;user&gt;</div>
+                                <div class="command-desc">[Admin] Guarantee a user's next reel-in is rare or legendary.</div>
+                            </div>
+                        </div>
+
+                        <div class="ambient-note">
+                            <strong>Locations:</strong> Puddle → Pond → Lake → River → Ocean → Deep Sea → Moon → Mars → Jupiter → The Void. Each location unlocks at a new level and has unique fish. You can fish at any unlocked location by specifying it in <code>!cast</code>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Roadtrip Module -->
             <div class="module">
                 <div class="module-header" onclick="toggleModule(this)">
                     <div class="module-title">
-                        <h3>🚗 Roadtrip</h3>
+                        <h3>🚗 Roadtrip - Currently disabled</h3>
                         <span class="module-badge">roadtrip.py</span>
                     </div>
                     <span class="expand-icon">▶</span>
@@ -759,6 +850,80 @@
                         </div>
                         <div class="ambient-note">
                             <strong>Joining:</strong> When Jeeves asks who's coming on a roadtrip, say "coming jeeves" or "!me" to join
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MUD Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🏚️ Dungeon Crawl (MUD) - Only in #quest</h3>
+                        <span class="module-badge">mud.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="ambient-note">
+                            <strong>About the MUD:</strong> A tiny shared dungeon for the whole channel. Explore rooms, fight monsters, collect weapons and gold. The party is shared — everyone in the channel fights together.
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Navigation</h4>
+                            <div class="command">
+                                <div class="command-syntax">!mud n</div>
+                                <div class="command-syntax">!mud e</div>
+                                <div class="command-syntax">!mud s</div>
+                                <div class="command-syntax">!mud w</div>
+                                <div class="command-desc">Move the party north, east, south, or west (also accepts "north", "east", etc.). Can't move while a monster is present.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mud look</div>
+                                <div class="command-syntax">!mud</div>
+                                <div class="command-desc">Look around the current room (shows description, exits, monsters, and items).</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Combat</h4>
+                            <div class="command">
+                                <div class="command-syntax">!mud attack</div>
+                                <div class="command-syntax">!mud a</div>
+                                <div class="command-desc">Attack the monster in the current room. Uses d20 + weapon bonus vs. monster AC.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mud flee</div>
+                                <div class="command-syntax">!mud run</div>
+                                <div class="command-desc">Attempt to flee from combat (50% success chance).</div>
+                            </div>
+                        </div>
+
+                        <div class="command-group">
+                            <h4>Items & Party</h4>
+                            <div class="command">
+                                <div class="command-syntax">!mud take &lt;item&gt;</div>
+                                <div class="command-syntax">!mud get &lt;item&gt;</div>
+                                <div class="command-desc">Pick up an item from the current room.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mud equip &lt;weapon&gt;</div>
+                                <div class="command-desc">Equip a weapon from your inventory.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mud inv</div>
+                                <div class="command-syntax">!mud inventory</div>
+                                <div class="command-desc">Show the party's inventory (weapons and items).</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mud status</div>
+                                <div class="command-desc">Show party HP, AC, level, XP, gold, and current weapon.</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!mud help</div>
+                                <div class="command-desc">Show a quick command reference.</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -802,6 +967,44 @@
                         </div>
                         <div class="ambient-note">
                             <strong>Automatic Title Fetching:</strong> Jeeves automatically displays titles for URLs posted in chat, including enhanced YouTube information
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Birthday Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🎂 Birthdays</h3>
+                        <span class="module-badge">birthday.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!birthday YYYY-MM-DD</div>
+                            <div class="command-desc">Set your birthday with year (e.g. !birthday 1990-06-15)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!birthday MM-DD</div>
+                            <div class="command-desc">Set your birthday without year (e.g. !birthday 06-15)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!birthday</div>
+                            <div class="command-desc">Check your own stored birthday</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!birthday &lt;nick&gt;</div>
+                            <div class="command-desc">Check another user's birthday</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!birthday remove</div>
+                            <div class="command-desc">Remove your stored birthday</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>Automatic Greetings:</strong> Jeeves will wish you a happy birthday the first time you speak on your birthday.
                         </div>
                     </div>
                 </div>
@@ -917,6 +1120,14 @@
                                 <div class="command-syntax">!scare</div>
                                 <div class="command-desc">Hear a frightening horror story, if you dare</div>
                             </div>
+                            <div class="command">
+                                <div class="command-syntax">!turtle</div>
+                                <div class="command-desc">See what the turtle is up to right now</div>
+                            </div>
+                            <div class="command">
+                                <div class="command-syntax">!real</div>
+                                <div class="command-desc">Share a spooky but true fact</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -966,6 +1177,79 @@
                         </div>
                         <div class="ambient-note">
                             <strong>Automatic Collection:</strong> Jeeves randomly remembers things people say in the channel (about 1 in 200 messages) and can recall them later with perfect attribution and date.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Achievements Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>🏆 Achievements</h3>
+                        <span class="module-badge">achievements.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!achievements</div>
+                            <div class="command-syntax">!ach</div>
+                            <div class="command-desc">Show your achievement summary (how many unlocked)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!achievements list</div>
+                            <div class="command-syntax">!ach list</div>
+                            <div class="command-desc">Get a full list of your unlocked achievements via private message, grouped by category</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!achievements stats</div>
+                            <div class="command-syntax">!ach stats</div>
+                            <div class="command-desc">Show global achievement statistics: how many users are tracking, how many achievements have been discovered, and the rarest unlock</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!achievements &lt;user&gt;</div>
+                            <div class="command-syntax">!ach &lt;user&gt;</div>
+                            <div class="command-desc">Check how many achievements another user has unlocked</div>
+                        </div>
+                        <div class="ambient-note">
+                            <strong>How to opt in:</strong> Join the <code>#achievements</code> channel. Once opted in, your progress across quests, fishing, hunting, and other activities is automatically tracked. Unlocks are announced in <code>#achievements</code>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ideas Module -->
+            <div class="module">
+                <div class="module-header" onclick="toggleModule(this)">
+                    <div class="module-title">
+                        <h3>💡 Community Ideas - Currently disabled</h3>
+                        <span class="module-badge">ideas.py</span>
+                    </div>
+                    <span class="expand-icon">▶</span>
+                </div>
+                <div class="module-content">
+                    <div class="module-inner">
+                        <div class="command">
+                            <div class="command-syntax">!idea &lt;text&gt;</div>
+                            <div class="command-desc">Submit an idea for consideration (up to 300 characters)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!vote &lt;number&gt;</div>
+                            <div class="command-desc">Vote for an idea during an active poll (you can change your vote)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!winners</div>
+                            <div class="command-desc">List all past winning ideas</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!idea-poll</div>
+                            <div class="command-desc">[Admin] Start a timed poll with all pending ideas</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!winners delete &lt;number|all&gt;</div>
+                            <div class="command-desc">[Admin] Delete a winner by number, or clear all winners</div>
                         </div>
                     </div>
                 </div>
@@ -1030,7 +1314,7 @@
             <div class="module">
                 <div class="module-header" onclick="toggleModule(this)">
                     <div class="module-title">
-                        <h3>🔮 Oracle (AI Conversation)</h3>
+                        <h3>🔮 Oracle (AI Conversation) - Only in rumi's' room.</h3>
                         <span class="module-badge">oracle.py</span>
                     </div>
                     <span class="expand-icon">▶</span>
@@ -1067,7 +1351,7 @@
                 <div class="module-content">
                     <div class="module-inner">
                         <div class="command">
-                            <div class="command-syntax">Chatter</div>
+                            <div class="command-syntax">Chatter - Currently disabled</div>
                             <div class="command-desc">Jeeves occasionally makes scheduled comments and chimes in on conversations about animals, weather, technology, food, or greetings</div>
                         </div>
                         <div class="command">
@@ -1083,8 +1367,16 @@
                             <div class="command-desc">Responds with nautical lore when specific users say "SAIL"</div>
                         </div>
                         <div class="command">
-                            <div class="command-syntax">Sed Replace</div>
+                            <div class="command-syntax">Sed Replace - Currently disabled</div>
                             <div class="command-desc">Correct your last message with <code>s/find/replace/</code> syntax</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">Clanker</div>
+                            <div class="command-desc">Mentioning "clanker" prompts Jeeves to politely object and share an educational video on the subject (5-minute cooldown)</div>
+                        </div>
+                        <div class="command">
+                            <div class="command-syntax">!topic - Only in rooms where he is op, also I think currently disabled</div>
+                            <div class="command-desc">Request an immediate channel topic refresh (AI-generated mood line, 1-hour cooldown per channel). Admins can use <code>!topic refresh</code> to force a refresh and <code>!topic status</code> to check last-set topics.</div>
                         </div>
                     </div>
                 </div>

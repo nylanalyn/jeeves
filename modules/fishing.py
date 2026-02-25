@@ -515,12 +515,6 @@ class Fishing(SimpleCommandModule):
             description="[Admin] Guarantee a user's next catch is rare or legendary"
         )
         self.register_command(
-            r'^\s*!water\s*$',
-            self._cmd_water,
-            name="water",
-            description="Celebrate finishing a water bottle (boosts rare fish chances)"
-        )
-        self.register_command(
             r'^\s*!real\s*$',
             self._cmd_real,
             name="real",
@@ -551,9 +545,6 @@ class Fishing(SimpleCommandModule):
                 "catches_by_location": {},  # {"location_name": {"fish_name": count}}
                 "rare_catches": [],
                 "locations_fished": [],
-                "water_today": 0,  # Number of water bottles consumed today
-                "water_date": None,  # Date of last water consumption (for daily reset)
-                "water_last_used": None,  # ISO timestamp of last !water command
                 "xp_boost_catches": 0,
                 "force_rare_legendary": False,
                 "artifact": None,
@@ -632,8 +623,8 @@ class Fishing(SimpleCommandModule):
         distance *= (1.0 + artifact_bonus)
         return round(distance, 1)
 
-    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, water_boost: float = 0.0, artifact_rarity_boost: float = 0.0) -> str:
-        """Select a rarity tier based on wait time, active events, and hydration boost."""
+    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, artifact_rarity_boost: float = 0.0) -> str:
+        """Select a rarity tier based on wait time, active events, and artifact bonuses."""
         weights = RARITY_WEIGHTS.copy()
 
         # Adjust weights based on wait time
@@ -657,16 +648,6 @@ class Fishing(SimpleCommandModule):
         if event and event.get("effect") == "rare_boost":
             weights["rare"] = int(weights["rare"] * event.get("multiplier", 1))
             weights["legendary"] = int(weights["legendary"] * event.get("multiplier", 1))
-
-        # Apply water boost (increases rare and legendary chances)
-        if water_boost > 0:
-            # Reduce common weight by the boost percentage
-            common_reduction = weights["common"] * water_boost
-            weights["common"] = max(1, int(weights["common"] - common_reduction))
-            
-            # Distribute the reduction to rare and legendary
-            weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
-            weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
 
         # Apply artifact rarity boost
         if artifact_rarity_boost > 0:
@@ -780,20 +761,6 @@ class Fishing(SimpleCommandModule):
             return None
 
         return event
-
-    def _get_water_boost(self, player: Dict[str, Any]) -> float:
-        """Get the current water boost percentage (0.0 to 0.4 for 0% to 40%)."""
-        # Check if we need to reset daily counter
-        today = datetime.now(UTC).date().isoformat()
-        water_date = player.get("water_date")
-        
-        if water_date != today:
-            # New day, reset counter
-            return 0.0
-        
-        # Each water bottle adds 10% boost, max 4 bottles = 40%
-        water_count = player.get("water_today", 0)
-        return min(water_count * 0.10, 0.40)
 
     def _cmd_cast(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
@@ -1013,12 +980,11 @@ class Fishing(SimpleCommandModule):
                 return True
 
         # Successful catch!
-        water_boost = self._get_water_boost(player)
         artifact = player.get("artifact")
         artifact_rarity_boost = 0.0
         if artifact and artifact.get("bonus_type") == "rarity":
             artifact_rarity_boost = artifact.get("bonus_value", 0.0)
-        rarity = self._select_rarity(effective_wait, active_event, water_boost, artifact_rarity_boost)
+        rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost)
         eligible_locations = None
         if cast.get("allow_lower_fish"):
             eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
@@ -1459,12 +1425,10 @@ class Fishing(SimpleCommandModule):
             "!fishinfo - List locations you've fished",
             "!fishinfo <location> - Show fish caught at a specific location (e.g., !fishinfo pond)",
             "!aquarium - View your rare/legendary catches",
-            "!water - Celebrate finishing a water bottle (boosts rare fish, max 4/day)",
             "!discard - Discard your current artifact and return to normal casts",
             "",
             "Tips: !cast pulls fish from your current level and any lower unlocked levels.",
             "You can also travel back to previous locations to hunt for rare fish you missed!",
-            "Stay hydrated! Each bottle of water increases rare fish chances by 10% (up to 40%).",
             "Artifacts: Rare finds hidden among the junk! They change your cast style and grant small bonuses.",
         ]
 
@@ -1483,102 +1447,6 @@ class Fishing(SimpleCommandModule):
 
         fact = random.choice(REAL_FACTS)
         self.safe_reply(connection, event, f"Real fact: {fact}")
-        return True
-
-    def _cmd_water(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
-        if not self.is_enabled(event.target):
-            return False
-
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id)
-
-        # Get today's date
-        today = datetime.now(UTC).date().isoformat()
-        water_date = player.get("water_date")
-        water_count = player.get("water_today", 0)
-
-        # Reset counter if it's a new day
-        if water_date != today:
-            water_count = 0
-            water_date = today
-
-        # Check cooldown - must wait at least 1 hour between waters
-        water_last_used = player.get("water_last_used")
-        if water_last_used and water_count > 0:
-            last_used_time = datetime.fromisoformat(water_last_used)
-            elapsed = datetime.now(UTC) - last_used_time
-            remaining_minutes = 60 - (elapsed.total_seconds() / 60)
-            if remaining_minutes > 0:
-                too_fast_messages = [
-                    (
-                        f"I beg your pardon, {self.bot.title_for(username)}, but I find it rather difficult to believe "
-                        f"that you have consumed an entire bottle of water in {elapsed.total_seconds() / 60:.0f} minutes. "
-                        f"One does not wish to make accusations, but this has all the hallmarks of what I believe "
-                        f"the younger generation refers to as 'gaming the system.' Perhaps try again in {remaining_minutes:.0f} minutes."
-                    ),
-                    (
-                        f"Most irregular, {self.bot.title_for(username)}. I have served in some of the finest households "
-                        f"in England, and I have never once witnessed a bottle of water dispatched with such supernatural haste. "
-                        f"Might I suggest actually drinking one? You may retry in {remaining_minutes:.0f} minutes."
-                    ),
-                    (
-                        f"Forgive me, {self.bot.title_for(username)}, but unless you have developed gills — "
-                        f"which, while fascinating, seems improbable — I rather suspect this water bottle is purely theoretical. "
-                        f"The next hydration opportunity presents itself in {remaining_minutes:.0f} minutes."
-                    ),
-                    (
-                        f"I venture to observe, {self.bot.title_for(username)}, that the speed of your alleged consumption "
-                        f"would make even the most enthusiastic camel raise an eyebrow. One hesitates to use the word "
-                        f"'shenanigans,' but the evidence is compelling. Do try again in {remaining_minutes:.0f} minutes."
-                    ),
-                ]
-                self.safe_reply(connection, event, random.choice(too_fast_messages))
-                return True
-
-        # Check if they've already had 4 bottles today
-        if water_count >= 4:
-            self.safe_reply(
-                connection, event,
-                f"{self.bot.title_for(username)}, you have already consumed your four bottles of water today! "
-                "Most commendable dedication to hydration. Do return tomorrow for further encouragement."
-            )
-            return True
-
-        # Increment the counter
-        water_count += 1
-        player["water_today"] = water_count
-        player["water_date"] = today
-        player["water_last_used"] = datetime.now(UTC).isoformat()
-        self._save_player(user_id, player)
-
-        # Calculate new boost percentage
-        boost_percentage = water_count * 10
-
-        # Build response based on how many they've had
-        if water_count == 1:
-            response = (
-                f"Splendid! {self.bot.title_for(username)}, I am delighted to see you tending to your hydration. "
-                f"Three more bottles to go! Your commitment to wellness grants you a {boost_percentage}% boost "
-                "to catching rare and legendary fish today."
-            )
-        elif water_count == 2:
-            response = (
-                f"Excellent progress, {self.bot.title_for(username)}! Two bottles down, two more to go! "
-                f"Your dedication is most admirable. You now have a {boost_percentage}% boost to rare catches."
-            )
-        elif water_count == 3:
-            response = (
-                f"Marvelous! {self.bot.title_for(username)}, just one more bottle remains! "
-                f"You are nearly at peak hydration. Current boost: {boost_percentage}% to rare and legendary fish."
-            )
-        else:  # water_count == 4
-            response = (
-                f"Outstanding! {self.bot.title_for(username)}, you have completed your daily hydration goal! "
-                f"I am exceedingly proud of your commitment to health. You now enjoy a magnificent {boost_percentage}% "
-                "boost to catching rare and legendary fish for the remainder of the day!"
-            )
-
-        self.safe_reply(connection, event, response)
         return True
 
     def _cmd_discard(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

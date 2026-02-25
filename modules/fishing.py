@@ -526,6 +526,12 @@ class Fishing(SimpleCommandModule):
             name="discard",
             description="Discard your current fishing artifact"
         )
+        self.register_command(
+            r'^\s*!water\s*$',
+            self._cmd_water,
+            name="water",
+            description="..."
+        )
 
     def _get_player(self, user_id: str) -> Dict[str, Any]:
         """Get or create a player record."""
@@ -548,6 +554,7 @@ class Fishing(SimpleCommandModule):
                 "xp_boost_catches": 0,
                 "force_rare_legendary": False,
                 "artifact": None,
+                "junk_curse_date": None,
             }
             self.set_state("players", players)
             self.save_state()
@@ -939,6 +946,19 @@ class Fishing(SimpleCommandModule):
                         "Maybe don't leave your line out so long next time."
                     )
                 return True
+
+        # Junk curse check — !water punishment, bypasses all protections
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        if player.get("junk_curse_date") == today:
+            junk = self._get_junk(location["type"])
+            player["junk_collected"] += 1
+            self._save_player(user_id, player)
+            achievement_hooks.record_achievement(self.bot, username, "junk_collected", 1)
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)} reels in... {junk}. The curse holds."
+            )
+            return True
 
         # Junk check (base chance, boosted by murky waters)
         if not forced_rare_flag:
@@ -1472,5 +1492,25 @@ class Fishing(SimpleCommandModule):
             connection, event,
             f"{self.bot.title_for(username)} tosses the {artifact_name} into the water. "
             "All bonuses lost. Your casts return to normal."
+        )
+        return True
+
+    def _cmd_water(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+
+        if player.get("junk_curse_date") == today:
+            return True
+
+        player["junk_curse_date"] = today
+        self._save_player(user_id, player)
+        self.safe_reply(
+            connection, event,
+            f"Cheaters never prosper, {self.bot.title_for(username)}. "
+            "I curse you with junk for the remainder of the day."
         )
         return True

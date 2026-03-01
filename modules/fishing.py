@@ -1408,7 +1408,7 @@ class Fishing(SimpleCommandModule):
     def _run_annual_reset(self, reset_year: Optional[int] = None) -> None:
         """Execute the annual reset: crown champions, announce, wipe player data."""
         if reset_year is None:
-            reset_year = datetime.now(UTC).year - 1  # Previous year's season
+            reset_year = datetime.now(UTC).year - 1  # Season just ended: reset fires April 1st of year N, so the concluded season is N-1
 
         players = self.get_state("players", {})
         user_map = self.bot.get_module_state("users").get("user_map", {})

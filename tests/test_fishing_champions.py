@@ -333,5 +333,372 @@ class TestAnnualReset(unittest.TestCase):
         self.assertIn("RESET", combined)
 
 
+class TestFishingChampionsCommand(unittest.TestCase):
+    """Tests for _cmd_fishing_champions."""
+
+    def _make_champions_fishing(self, state=None, user_map=None):
+        """Build a Fishing instance wired up for _cmd_fishing_champions tests."""
+        f = _make_fishing(state)
+
+        class _BotStub:
+            config = {"fishing": {}}
+
+            def get_module_state(self, name):
+                return {"user_map": user_map or {}}
+
+        f.bot = _BotStub()
+        f._replies = []
+        f.safe_reply = lambda conn, evt, text: f._replies.append(text)
+        return f
+
+    def _make_event(self, target="#fishing"):
+        evt = types.SimpleNamespace(target=target)
+        return evt
+
+    def _call_cmd(self, f, state=None):
+        """Invoke _cmd_fishing_champions with dummy connection/event/msg/username/match."""
+        conn = object()
+        event = self._make_event()
+        f._cmd_fishing_champions(conn, event, "!champions", "testuser", None)
+
+    # ------------------------------------------------------------------
+    # Test 1: no champions yet (fishing_champions state is None / absent)
+    # ------------------------------------------------------------------
+
+    def test_no_champions_replies_with_first_reset_message(self):
+        f = self._make_champions_fishing(state={})
+        self._call_cmd(f)
+        self.assertEqual(len(f._replies), 1)
+        self.assertIn("No champions yet", f._replies[0])
+        self.assertIn("April 1st", f._replies[0])
+
+    def test_no_champions_when_state_key_missing(self):
+        """fishing_champions key not present at all → no-champions message."""
+        f = self._make_champions_fishing(state={})
+        self._call_cmd(f)
+        self.assertIn("first reset", f._replies[0])
+
+    def test_no_champions_when_all_slots_null(self):
+        """fishing_champions exists but all slots are None → treated as no champions."""
+        f = self._make_champions_fishing(state={
+            "fishing_champions": {
+                "year": 2025,
+                "traveler": None,
+                "caster": None,
+                "collector": None,
+            }
+        })
+        self._call_cmd(f)
+        self.assertEqual(len(f._replies), 1)
+        self.assertIn("No champions yet", f._replies[0])
+
+    # ------------------------------------------------------------------
+    # Test 2: champions exist with snapshot stats
+    # ------------------------------------------------------------------
+
+    def test_champions_with_snapshot_stats_formats_traveler(self):
+        """Snapshot traveler_level and traveler_location appear in output."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": "alice",
+                    "caster": None,
+                    "collector": None,
+                    "traveler_level": 9,
+                    "traveler_location": "The Void",
+                }
+            },
+            user_map={"alice": {"canonical_nick": "Alice"}},
+        )
+        self._call_cmd(f)
+        self.assertEqual(len(f._replies), 1)
+        reply = f._replies[0]
+        self.assertIn("the Traveler", reply)
+        self.assertIn("Alice", reply)
+        self.assertIn("level 9", reply)
+        self.assertIn("The Void", reply)
+
+    def test_champions_with_snapshot_stats_formats_caster(self):
+        """Snapshot caster_distance appears formatted with one decimal place."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": None,
+                    "caster": "bob",
+                    "collector": None,
+                    "caster_distance": 4999.5,
+                }
+            },
+            user_map={"bob": {"canonical_nick": "Bob"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertIn("the Caster", reply)
+        self.assertIn("Bob", reply)
+        self.assertIn("4999.5m", reply)
+
+    def test_champions_with_snapshot_stats_formats_collector(self):
+        """Snapshot collector_count appears in output."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": None,
+                    "caster": None,
+                    "collector": "carol",
+                    "collector_count": 17,
+                }
+            },
+            user_map={"carol": {"canonical_nick": "Carol"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertIn("the Collector", reply)
+        self.assertIn("Carol", reply)
+        self.assertIn("17", reply)
+        self.assertIn("rare/legendary", reply)
+
+    def test_snapshot_fallback_to_live_player_data_for_traveler(self):
+        """When snapshot stats are absent, live player data is used instead."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": "alice",
+                    "caster": None,
+                    "collector": None,
+                    # no traveler_level or traveler_location snapshot
+                },
+                "players": {
+                    "alice": {"level": 7, "furthest_cast": 0.0, "rare_catches": [], "total_fish": 0},
+                },
+            },
+            user_map={"alice": {"canonical_nick": "Alice"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertIn("level 7", reply)
+        # Level 7 maps to Mars in LOCATIONS
+        self.assertIn("Mars", reply)
+
+    def test_snapshot_fallback_to_live_player_data_for_caster(self):
+        """When caster_distance snapshot is absent, live furthest_cast is used."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": None,
+                    "caster": "bob",
+                    "collector": None,
+                    # no caster_distance snapshot
+                },
+                "players": {
+                    "bob": {"level": 3, "furthest_cast": 123.4, "rare_catches": [], "total_fish": 0},
+                },
+            },
+            user_map={"bob": {"canonical_nick": "Bob"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertIn("123.4m", reply)
+
+    def test_snapshot_fallback_to_live_player_data_for_collector(self):
+        """When collector_count snapshot is absent, len(rare_catches) is used."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": None,
+                    "caster": None,
+                    "collector": "carol",
+                    # no collector_count snapshot
+                },
+                "players": {
+                    "carol": {
+                        "level": 0, "furthest_cast": 0.0,
+                        "rare_catches": [{}] * 5, "total_fish": 5,
+                    },
+                },
+            },
+            user_map={"carol": {"canonical_nick": "Carol"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertIn("5", reply)
+
+    # ------------------------------------------------------------------
+    # Test 3: null champion slot is omitted gracefully
+    # ------------------------------------------------------------------
+
+    def test_null_caster_slot_is_omitted(self):
+        """When caster is None, the Caster line does not appear in output."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": "alice",
+                    "caster": None,
+                    "collector": None,
+                    "traveler_level": 9,
+                    "traveler_location": "The Void",
+                }
+            },
+            user_map={"alice": {"canonical_nick": "Alice"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertNotIn("the Caster", reply)
+        self.assertIn("the Traveler", reply)
+
+    def test_null_traveler_slot_is_omitted(self):
+        """When traveler is None, the Traveler line does not appear in output."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": None,
+                    "caster": "bob",
+                    "collector": None,
+                    "caster_distance": 500.0,
+                }
+            },
+            user_map={"bob": {"canonical_nick": "Bob"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertNotIn("the Traveler", reply)
+        self.assertIn("the Caster", reply)
+
+    def test_null_collector_slot_is_omitted(self):
+        """When collector is None, the Collector line does not appear in output."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": None,
+                    "caster": "bob",
+                    "collector": None,
+                    "caster_distance": 500.0,
+                }
+            },
+            user_map={"bob": {"canonical_nick": "Bob"}},
+        )
+        self._call_cmd(f)
+        reply = f._replies[0]
+        self.assertNotIn("the Collector", reply)
+
+    # ------------------------------------------------------------------
+    # Test 4: year is displayed in output
+    # ------------------------------------------------------------------
+
+    def test_year_appears_in_output(self):
+        """The champions year is included in the reply header."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2024,
+                    "traveler": "alice",
+                    "caster": None,
+                    "collector": None,
+                    "traveler_level": 5,
+                    "traveler_location": "Deep Sea",
+                }
+            },
+            user_map={"alice": {"canonical_nick": "Alice"}},
+        )
+        self._call_cmd(f)
+        self.assertIn("2024", f._replies[0])
+
+    def test_year_question_mark_when_missing(self):
+        """When year key is absent from champions dict, '?' is displayed."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    # no 'year' key
+                    "traveler": "alice",
+                    "caster": None,
+                    "collector": None,
+                    "traveler_level": 5,
+                    "traveler_location": "Deep Sea",
+                }
+            },
+            user_map={"alice": {"canonical_nick": "Alice"}},
+        )
+        self._call_cmd(f)
+        self.assertIn("?", f._replies[0])
+
+    # ------------------------------------------------------------------
+    # Test 5: user_map lookup for display names
+    # ------------------------------------------------------------------
+
+    def test_user_map_lookup_uses_canonical_nick(self):
+        """canonical_nick from user_map is used as display name."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": "uid_xyz",
+                    "caster": None,
+                    "collector": None,
+                    "traveler_level": 3,
+                    "traveler_location": "River",
+                }
+            },
+            user_map={"uid_xyz": {"canonical_nick": "FancyNick"}},
+        )
+        self._call_cmd(f)
+        self.assertIn("FancyNick", f._replies[0])
+        self.assertNotIn("uid_xyz", f._replies[0])
+
+    def test_user_map_falls_back_to_uid_when_not_found(self):
+        """When uid is not in user_map, the uid itself is used as display name."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": "unknown_uid",
+                    "caster": None,
+                    "collector": None,
+                    "traveler_level": 2,
+                    "traveler_location": "Lake",
+                }
+            },
+            user_map={},  # empty — no entry for unknown_uid
+        )
+        self._call_cmd(f)
+        self.assertIn("unknown_uid", f._replies[0])
+
+    def test_all_three_champions_appear_in_single_reply(self):
+        """All three champion slots appear together, pipe-separated."""
+        f = self._make_champions_fishing(
+            state={
+                "fishing_champions": {
+                    "year": 2025,
+                    "traveler": "alice",
+                    "caster": "bob",
+                    "collector": "carol",
+                    "traveler_level": 9,
+                    "traveler_location": "The Void",
+                    "caster_distance": 4999.0,
+                    "collector_count": 20,
+                }
+            },
+            user_map={
+                "alice": {"canonical_nick": "Alice"},
+                "bob": {"canonical_nick": "Bob"},
+                "carol": {"canonical_nick": "Carol"},
+            },
+        )
+        self._call_cmd(f)
+        self.assertEqual(len(f._replies), 1)
+        reply = f._replies[0]
+        self.assertIn("the Traveler", reply)
+        self.assertIn("the Caster", reply)
+        self.assertIn("the Collector", reply)
+        self.assertIn("|", reply)
+
+
 if __name__ == "__main__":
     unittest.main()

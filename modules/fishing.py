@@ -668,7 +668,7 @@ class Fishing(SimpleCommandModule):
         distance *= (1.0 + champion_bonus)
         return round(distance, 1)
 
-    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, artifact_rarity_boost: float = 0.0) -> str:
+    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, artifact_rarity_boost: float = 0.0, champion_rarity_boost: float = 0.0) -> str:
         """Select a rarity tier based on wait time, active events, and artifact bonuses."""
         weights = RARITY_WEIGHTS.copy()
 
@@ -697,6 +697,13 @@ class Fishing(SimpleCommandModule):
         # Apply artifact rarity boost
         if artifact_rarity_boost > 0:
             common_reduction = weights["common"] * artifact_rarity_boost
+            weights["common"] = max(1, int(weights["common"] - common_reduction))
+            weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
+            weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
+
+        # Apply champion rarity boost (same logic as artifact boost)
+        if champion_rarity_boost > 0:
+            common_reduction = weights["common"] * champion_rarity_boost
             weights["common"] = max(1, int(weights["common"] - common_reduction))
             weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
             weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
@@ -1043,7 +1050,8 @@ class Fishing(SimpleCommandModule):
         artifact_rarity_boost = 0.0
         if artifact and artifact.get("bonus_type") == "rarity":
             artifact_rarity_boost = artifact.get("bonus_value", 0.0)
-        rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost)
+        champion_bonuses = self._get_champion_bonuses(user_id)
+        rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost, champion_bonuses["rarity"])
         eligible_locations = None
         if cast.get("allow_lower_fish"):
             eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]

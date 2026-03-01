@@ -233,5 +233,25 @@ class TestCasterBonus(unittest.TestCase):
         self.assertAlmostEqual(with_bonus, base * 1.20, places=1)
 
 
+class TestCollectorBonus(unittest.TestCase):
+    def test_select_rarity_accepts_champion_rarity_boost(self):
+        f = _make_fishing({})
+        # Should not raise with 4th argument
+        result = f._select_rarity(20.0, None, 0.0, 0.20)
+        self.assertIn(result, ["common", "uncommon", "rare", "legendary"])
+
+    def test_collector_boost_shifts_weights_toward_rare(self):
+        """With max wait and collector boost, rare/legendary should dominate."""
+        import random
+        f = _make_fishing({})
+        random.seed(0)
+        results_with = [f._select_rarity(20.0, None, 0.0, 0.20) for _ in range(200)]
+        random.seed(0)
+        results_without = [f._select_rarity(20.0, None, 0.0, 0.0) for _ in range(200)]
+        rare_with = sum(1 for r in results_with if r in ("rare", "legendary"))
+        rare_without = sum(1 for r in results_without if r in ("rare", "legendary"))
+        self.assertGreater(rare_with, rare_without)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -655,7 +655,8 @@ class Fishing(SimpleCommandModule):
         player["xp"] = xp
         return None
 
-    def _get_cast_distance(self, level: int, location: Dict[str, Any], artifact_bonus: float = 0.0, champion_bonus: float = 0.0) -> float:
+    @staticmethod
+    def _get_cast_distance(level: int, location: Dict[str, Any], artifact_bonus: float = 0.0, champion_bonus: float = 0.0) -> float:
         """Generate a random cast distance based on level and location."""
         max_dist = location["max_distance"]
         min_dist = max_dist * 0.3

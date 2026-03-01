@@ -4,7 +4,6 @@
 import random
 import re
 import schedule
-import sys
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -484,7 +483,7 @@ class Fishing(SimpleCommandModule):
         try:
             self._run_annual_reset()
         except Exception as e:
-            print(f"[fishing] Annual reset failed: {e}", file=sys.stderr)
+            self.log_debug(f"Annual reset failed: {e}")
         finally:
             self._schedule_next_reset()
         return schedule.CancelJob

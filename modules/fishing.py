@@ -655,7 +655,7 @@ class Fishing(SimpleCommandModule):
         player["xp"] = xp
         return None
 
-    def _get_cast_distance(self, level: int, location: Dict[str, Any], artifact_bonus: float = 0.0) -> float:
+    def _get_cast_distance(self, level: int, location: Dict[str, Any], artifact_bonus: float = 0.0, champion_bonus: float = 0.0) -> float:
         """Generate a random cast distance based on level and location."""
         max_dist = location["max_distance"]
         min_dist = max_dist * 0.3
@@ -664,6 +664,7 @@ class Fishing(SimpleCommandModule):
         distance = random.uniform(min_dist, base_max)
         # Apply artifact distance bonus
         distance *= (1.0 + artifact_bonus)
+        distance *= (1.0 + champion_bonus)
         return round(distance, 1)
 
     def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, artifact_rarity_boost: float = 0.0) -> str:
@@ -862,7 +863,8 @@ class Fishing(SimpleCommandModule):
         artifact_distance_bonus = 0.0
         if artifact and artifact.get("bonus_type") == "distance":
             artifact_distance_bonus = artifact.get("bonus_value", 0.0)
-        distance = self._get_cast_distance(player["level"], location, artifact_distance_bonus)
+        champion_bonuses = self._get_champion_bonuses(user_id)
+        distance = self._get_cast_distance(player["level"], location, artifact_distance_bonus, champion_bonuses["distance"])
 
         # Record the cast
         active_casts[user_id] = {

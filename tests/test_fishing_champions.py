@@ -203,5 +203,32 @@ class TestGetFishingSuffix(unittest.TestCase):
         self.assertEqual(f.get_fishing_suffix_for_user("alice"), "")
 
 
+class TestCasterBonus(unittest.TestCase):
+    def test_no_champion_bonus_no_change(self):
+        from modules.fishing import LOCATIONS
+        puddle = LOCATIONS[0]  # max_distance=5
+        # Without bonus, distance is in [1.5, 3.5] (0.3–0.7 * 5 for level 0)
+        # With 0.0 bonus it should not exceed 5.0
+        distance = Fishing._get_cast_distance(Fishing, 0, puddle, 0.0, 0.0)
+        self.assertLessEqual(distance, 5.0)
+
+    def test_caster_bonus_increases_distance(self):
+        from modules.fishing import LOCATIONS
+        void = LOCATIONS[9]  # max_distance=5000
+        without = Fishing._get_cast_distance(Fishing, 9, void, 0.0, 0.0)
+        with_bonus = Fishing._get_cast_distance(Fishing, 9, void, 0.0, 0.20)
+        self.assertGreater(with_bonus, without)
+
+    def test_caster_bonus_is_multiplicative(self):
+        from modules.fishing import LOCATIONS
+        import random
+        void = LOCATIONS[9]
+        random.seed(42)
+        base = Fishing._get_cast_distance(Fishing, 9, void, 0.0, 0.0)
+        random.seed(42)
+        with_bonus = Fishing._get_cast_distance(Fishing, 9, void, 0.0, 0.20)
+        self.assertAlmostEqual(with_bonus, base * 1.20, places=1)
+
+
 if __name__ == "__main__":
     unittest.main()

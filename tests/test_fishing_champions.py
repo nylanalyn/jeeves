@@ -131,5 +131,77 @@ class TestComputeAnnualChampions(unittest.TestCase):
         self.assertEqual(result["collector"], "alice")
 
 
+class TestGetChampionBonuses(unittest.TestCase):
+    def test_no_champions_returns_zero_bonuses(self):
+        f = _make_fishing({"fishing_champions": {}})
+        bonuses = f._get_champion_bonuses("alice")
+        self.assertEqual(bonuses["xp"], 0.0)
+        self.assertEqual(bonuses["distance"], 0.0)
+        self.assertEqual(bonuses["rarity"], 0.0)
+
+    def test_traveler_gets_xp_bonus(self):
+        f = _make_fishing({"fishing_champions": {"traveler": "alice"}})
+        bonuses = f._get_champion_bonuses("alice")
+        self.assertEqual(bonuses["xp"], 0.20)
+        self.assertEqual(bonuses["distance"], 0.0)
+
+    def test_caster_gets_distance_bonus(self):
+        f = _make_fishing({"fishing_champions": {"caster": "bob"}})
+        bonuses = f._get_champion_bonuses("bob")
+        self.assertEqual(bonuses["distance"], 0.20)
+
+    def test_collector_gets_rarity_bonus(self):
+        f = _make_fishing({"fishing_champions": {"collector": "carol"}})
+        bonuses = f._get_champion_bonuses("carol")
+        self.assertEqual(bonuses["rarity"], 0.20)
+
+    def test_player_can_hold_multiple_titles(self):
+        f = _make_fishing({"fishing_champions": {
+            "traveler": "alice", "caster": "alice", "collector": "alice"
+        }})
+        bonuses = f._get_champion_bonuses("alice")
+        self.assertEqual(bonuses["xp"], 0.20)
+        self.assertEqual(bonuses["distance"], 0.20)
+        self.assertEqual(bonuses["rarity"], 0.20)
+
+    def test_non_champion_gets_zero_bonuses(self):
+        f = _make_fishing({"fishing_champions": {"traveler": "alice"}})
+        bonuses = f._get_champion_bonuses("bob")
+        self.assertEqual(bonuses["xp"], 0.0)
+
+
+class TestGetFishingSuffix(unittest.TestCase):
+    def test_no_champions_returns_empty(self):
+        f = _make_fishing({"fishing_champions": {}})
+        self.assertEqual(f.get_fishing_suffix_for_user("alice"), "")
+
+    def test_traveler_returns_suffix(self):
+        f = _make_fishing({"fishing_champions": {"traveler": "alice"}})
+        self.assertEqual(f.get_fishing_suffix_for_user("alice"), "the Traveler")
+
+    def test_caster_returns_suffix(self):
+        f = _make_fishing({"fishing_champions": {"caster": "alice"}})
+        self.assertEqual(f.get_fishing_suffix_for_user("alice"), "the Caster")
+
+    def test_collector_returns_suffix(self):
+        f = _make_fishing({"fishing_champions": {"collector": "alice"}})
+        self.assertEqual(f.get_fishing_suffix_for_user("alice"), "the Collector")
+
+    def test_multiple_titles_join_in_order(self):
+        f = _make_fishing({"fishing_champions": {
+            "traveler": "alice", "caster": "alice", "collector": "alice"
+        }})
+        result = f.get_fishing_suffix_for_user("alice")
+        self.assertEqual(result, "the Traveler the Caster the Collector")
+
+    def test_non_champion_returns_empty(self):
+        f = _make_fishing({"fishing_champions": {"traveler": "bob"}})
+        self.assertEqual(f.get_fishing_suffix_for_user("alice"), "")
+
+    def test_no_fishing_champions_state_returns_empty(self):
+        f = _make_fishing({})
+        self.assertEqual(f.get_fishing_suffix_for_user("alice"), "")
+
+
 if __name__ == "__main__":
     unittest.main()

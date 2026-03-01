@@ -582,6 +582,27 @@ class Fishing(SimpleCommandModule):
             "collector": best(lambda p: len(p.get("rare_catches", [])), lambda p: len(p.get("rare_catches", [])) > 0),
         }
 
+    def _get_champion_bonuses(self, user_id: str) -> Dict[str, float]:
+        """Return active champion bonuses for a user. All values 0.0 if not a champion."""
+        champions = self.get_state("fishing_champions", {})
+        return {
+            "xp": 0.20 if champions.get("traveler") == user_id else 0.0,
+            "distance": 0.20 if champions.get("caster") == user_id else 0.0,
+            "rarity": 0.20 if champions.get("collector") == user_id else 0.0,
+        }
+
+    def get_fishing_suffix_for_user(self, user_id: str) -> str:
+        """Return champion title suffix for display in title_for(). Empty string if none."""
+        champions = self.get_state("fishing_champions", {})
+        parts = []
+        if champions.get("traveler") == user_id:
+            parts.append("the Traveler")
+        if champions.get("caster") == user_id:
+            parts.append("the Caster")
+        if champions.get("collector") == user_id:
+            parts.append("the Collector")
+        return " ".join(parts)
+
     def _get_location_for_level(self, level: int) -> Dict[str, Any]:
         """Get the location a player can fish at based on their level."""
         # Player fishes at their max unlocked location

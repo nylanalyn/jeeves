@@ -3,6 +3,7 @@
 
 import random
 import re
+import schedule
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -457,6 +458,41 @@ class Fishing(SimpleCommandModule):
         if not self.get_state("active_event"):
             self.set_state("active_event", None)
         self.save_state()
+
+    def _schedule_next_reset(self) -> None:
+        """Cancel any existing reset jobs and schedule the next April 1st midnight UTC."""
+        for job in schedule.get_jobs():
+            if any(tag == f"{self.name}-annual-reset" for tag in job.tags):
+                schedule.cancel_job(job)
+
+        now = datetime.now(UTC)
+        next_reset = datetime(now.year, 4, 1, 0, 0, 0, tzinfo=UTC)
+        if now >= next_reset:
+            next_reset = datetime(now.year + 1, 4, 1, 0, 0, 0, tzinfo=UTC)
+
+        seconds_until = (next_reset - now).total_seconds()
+        (
+            schedule.every(seconds_until)
+            .seconds
+            .do(self._reset_and_reschedule)
+            .tag(f"{self.name}-annual-reset")
+        )
+
+    def _reset_and_reschedule(self):
+        """Fire the annual reset then schedule the next one. Returns CancelJob to stop repeating."""
+        self._run_annual_reset()
+        self._schedule_next_reset()
+        return schedule.CancelJob
+
+    def on_load(self) -> None:
+        super().on_load()
+        self._schedule_next_reset()
+
+    def on_unload(self) -> None:
+        super().on_unload()
+        for job in schedule.get_jobs():
+            if any(tag == f"{self.name}-annual-reset" for tag in job.tags):
+                schedule.cancel_job(job)
 
     def _register_commands(self) -> None:
         self.register_command(

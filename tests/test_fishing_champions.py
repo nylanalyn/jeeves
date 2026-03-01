@@ -253,5 +253,85 @@ class TestCollectorBonus(unittest.TestCase):
         self.assertGreater(rare_with, rare_without)
 
 
+class TestAnnualReset(unittest.TestCase):
+    def _make_fishing_with_players(self):
+        players = {
+            "alice": {
+                "level": 9, "furthest_cast": 5000.0,
+                "rare_catches": [{}] * 20, "total_fish": 100,
+                "xp": 0, "total_casts": 0, "biggest_fish": 0.0,
+                "biggest_fish_name": None, "lines_broken": 0,
+                "junk_collected": 0, "catches": {}, "catches_by_location": {},
+                "locations_fished": [], "xp_boost_catches": 0,
+                "force_rare_legendary": False, "artifact": None, "junk_curse_date": None,
+            },
+            "bob": {
+                "level": 3, "furthest_cast": 100.0,
+                "rare_catches": [], "total_fish": 10,
+                "xp": 0, "total_casts": 0, "biggest_fish": 0.0,
+                "biggest_fish_name": None, "lines_broken": 0,
+                "junk_collected": 0, "catches": {}, "catches_by_location": {},
+                "locations_fished": [], "xp_boost_catches": 0,
+                "force_rare_legendary": False, "artifact": None, "junk_curse_date": None,
+            },
+        }
+        state = {
+            "players": players,
+            "active_casts": {"alice": {"timestamp": "2025-01-01T00:00:00+00:00"}},
+            "active_event": {"type": "test"},
+        }
+        f = _make_fishing(state)
+        # Stub out bot and safe_say so reset doesn't crash
+        class _BotStub:
+            def get_module_state(self, name): return {"user_map": {}}
+            joined_channels = ["#test"]
+            config = {"fishing": {}}
+        f.bot = _BotStub()
+        f._messages_sent = []
+        f.safe_say = lambda msg, target=None: f._messages_sent.append(msg)
+        f.save_state = lambda force=False: None
+        return f
+
+    def test_reset_updates_fishing_champions(self):
+        f = self._make_fishing_with_players()
+        f._run_annual_reset(2025)
+        champions = f.get_state("fishing_champions", {})
+        self.assertEqual(champions["year"], 2025)
+        self.assertEqual(champions["traveler"], "alice")
+        self.assertEqual(champions["caster"], "alice")
+        self.assertEqual(champions["collector"], "alice")
+
+    def test_reset_stores_snapshot_stats(self):
+        f = self._make_fishing_with_players()
+        f._run_annual_reset(2025)
+        champions = f.get_state("fishing_champions", {})
+        self.assertEqual(champions["traveler_level"], 9)
+        self.assertEqual(champions["traveler_location"], "The Void")
+        self.assertAlmostEqual(champions["caster_distance"], 5000.0, places=1)
+        self.assertEqual(champions["collector_count"], 20)
+
+    def test_reset_wipes_players(self):
+        f = self._make_fishing_with_players()
+        f._run_annual_reset(2025)
+        self.assertEqual(f.get_state("players", {}), {})
+
+    def test_reset_clears_active_casts(self):
+        f = self._make_fishing_with_players()
+        f._run_annual_reset(2025)
+        self.assertEqual(f.get_state("active_casts", {}), {})
+
+    def test_reset_clears_active_event(self):
+        f = self._make_fishing_with_players()
+        f._run_annual_reset(2025)
+        self.assertIsNone(f.get_state("active_event"))
+
+    def test_reset_sends_announcement(self):
+        f = self._make_fishing_with_players()
+        f._run_annual_reset(2025)
+        self.assertTrue(len(f._messages_sent) > 0)
+        combined = " ".join(f._messages_sent)
+        self.assertIn("RESET", combined)
+
+
 if __name__ == "__main__":
     unittest.main()

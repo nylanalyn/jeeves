@@ -1362,6 +1362,91 @@ class Fishing(SimpleCommandModule):
         self.safe_reply(connection, event, " | ".join(parts))
         return True
 
+    def _run_annual_reset(self, reset_year: Optional[int] = None) -> None:
+        """Execute the annual reset: crown champions, announce, wipe player data."""
+        if reset_year is None:
+            reset_year = datetime.now(UTC).year - 1  # Previous year's season
+
+        players = self.get_state("players", {})
+        user_map = self.bot.get_module_state("users").get("user_map", {})
+
+        # Compute champions from current player data
+        champion_ids = self._compute_annual_champions(players)
+
+        # Snapshot winning stats before wiping players
+        champions = {
+            "year": reset_year,
+            "traveler": champion_ids["traveler"],
+            "caster": champion_ids["caster"],
+            "collector": champion_ids["collector"],
+        }
+
+        traveler_id = champion_ids["traveler"]
+        if traveler_id and traveler_id in players:
+            p = players[traveler_id]
+            champions["traveler_level"] = p["level"]
+            champions["traveler_location"] = self._get_location_for_level(p["level"])["name"]
+
+        caster_id = champion_ids["caster"]
+        if caster_id and caster_id in players:
+            p = players[caster_id]
+            champions["caster_distance"] = p["furthest_cast"]
+
+        collector_id = champion_ids["collector"]
+        if collector_id and collector_id in players:
+            p = players[collector_id]
+            champions["collector_count"] = len(p["rare_catches"])
+
+        self.set_state("fishing_champions", champions)
+
+        # Build announcement lines
+        lines = [f"** APRIL 1ST FISHING RESET ** The sea has been cleared! {reset_year} champions:"]
+
+        if traveler_id:
+            name = user_map.get(traveler_id, {}).get("canonical_nick", traveler_id)
+            loc_name = champions.get("traveler_location", "?")
+            level = champions.get("traveler_level", 0)
+            lines.append(
+                f"the Traveler: {name} (reached {loc_name}, level {level}) "
+                "— carries a +20% XP blessing into the new year"
+            )
+        else:
+            lines.append("the Traveler: unclaimed (no one leveled up this year)")
+
+        if caster_id:
+            name = user_map.get(caster_id, {}).get("canonical_nick", caster_id)
+            dist = champions.get("caster_distance", 0.0)
+            lines.append(
+                f"the Caster: {name} (cast {dist:.1f}m) "
+                "— carries a +20% distance blessing"
+            )
+        else:
+            lines.append("the Caster: unclaimed (no casts recorded this year)")
+
+        if collector_id:
+            name = user_map.get(collector_id, {}).get("canonical_nick", collector_id)
+            count = champions.get("collector_count", 0)
+            lines.append(
+                f"the Collector: {name} ({count} rare/legendary catches) "
+                "— carries a +20% rare blessing"
+            )
+        else:
+            lines.append("the Collector: unclaimed (no rare catches this year)")
+
+        lines.append("Good luck to all in the new season!")
+
+        # Broadcast to all enabled channels
+        channels = [ch for ch in self.bot.joined_channels if self.is_enabled(ch)]
+        for channel in channels:
+            for line in lines:
+                self.safe_say(line, target=channel)
+
+        # Wipe player data
+        self.set_state("players", {})
+        self.set_state("active_casts", {})
+        self.set_state("active_event", None)
+        self.save_state()
+
     def _cmd_fishing_location(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False

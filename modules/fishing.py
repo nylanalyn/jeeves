@@ -1669,6 +1669,7 @@ class Fishing(SimpleCommandModule):
             "!reel - Reel in your catch (wait 1-24 hours for best results)",
             "!fishing - Show your stats",
             "!fishing top - Leaderboards",
+            "!fishing champions - Show this year's title holders and their winning stats",
             "!fishing location - Current location and level progress",
             "!fishinfo - List locations you've fished",
             "!fishinfo <location> - Show fish caught at a specific location (e.g., !fishinfo pond)",

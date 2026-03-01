@@ -577,7 +577,7 @@ class Fishing(SimpleCommandModule):
             return max(candidates, key=lambda x: (key_fn(x[1]), x[1].get("total_fish", 0)))[0]
 
         return {
-            "traveler": best(lambda p: p.get("level", 0), lambda p: p.get("level", 0) >= 0),
+            "traveler": best(lambda p: p.get("level", 0), lambda p: p.get("level", 0) > 0),
             "caster": best(lambda p: p.get("furthest_cast", 0.0), lambda p: p.get("furthest_cast", 0.0) > 0),
             "collector": best(lambda p: len(p.get("rare_catches", [])), lambda p: len(p.get("rare_catches", [])) > 0),
         }

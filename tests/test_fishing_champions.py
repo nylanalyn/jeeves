@@ -114,6 +114,13 @@ class TestComputeAnnualChampions(unittest.TestCase):
         result = Fishing._compute_annual_champions(players)
         self.assertIsNone(result["collector"])
 
+    def test_traveler_requires_level_above_zero(self):
+        players = {
+            "alice": _player(level=0, total_fish=100),
+        }
+        result = Fishing._compute_annual_champions(players)
+        self.assertIsNone(result["traveler"])
+
     def test_all_three_can_be_same_player(self):
         players = {
             "alice": _player(level=9, furthest_cast=9999.0, rare_catches=[{}] * 20, total_fish=100),

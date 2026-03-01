@@ -1175,6 +1175,12 @@ class Fishing(SimpleCommandModule):
             )
 
         total_xp = xp_gain + extra_xp
+
+        # Traveler champion XP bonus — reuse champion_bonuses fetched earlier
+        if champion_bonuses["xp"] > 0:
+            total_xp = int(total_xp * (1.0 + champion_bonuses["xp"]))
+            bonus_messages.append("Traveler's blessing: +20% XP.")
+
         player["xp"] += total_xp
         self._save_player(user_id, player)
 

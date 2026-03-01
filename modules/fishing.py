@@ -4,6 +4,7 @@
 import random
 import re
 import schedule
+import sys
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -462,7 +463,7 @@ class Fishing(SimpleCommandModule):
     def _schedule_next_reset(self) -> None:
         """Cancel any existing reset jobs and schedule the next April 1st midnight UTC."""
         for job in schedule.get_jobs():
-            if any(tag == f"{self.name}-annual-reset" for tag in job.tags):
+            if any(tag.startswith(f"{self.name}-") for tag in job.tags):
                 schedule.cancel_job(job)
 
         now = datetime.now(UTC)
@@ -480,8 +481,12 @@ class Fishing(SimpleCommandModule):
 
     def _reset_and_reschedule(self):
         """Fire the annual reset then schedule the next one. Returns CancelJob to stop repeating."""
-        self._run_annual_reset()
-        self._schedule_next_reset()
+        try:
+            self._run_annual_reset()
+        except Exception as e:
+            print(f"[fishing] Annual reset failed: {e}", file=sys.stderr)
+        finally:
+            self._schedule_next_reset()
         return schedule.CancelJob
 
     def on_load(self) -> None:
@@ -491,7 +496,7 @@ class Fishing(SimpleCommandModule):
     def on_unload(self) -> None:
         super().on_unload()
         for job in schedule.get_jobs():
-            if any(tag == f"{self.name}-annual-reset" for tag in job.tags):
+            if any(tag.startswith(f"{self.name}-") for tag in job.tags):
                 schedule.cancel_job(job)
 
     def _register_commands(self) -> None:

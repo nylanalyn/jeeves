@@ -484,6 +484,12 @@ class Fishing(SimpleCommandModule):
             description="Show fishing leaderboards"
         )
         self.register_command(
+            r'^\s*!fish(?:ing)?\s+champions?\s*$',
+            self._cmd_fishing_champions,
+            name="fishing champions",
+            description="Show current fishing champions and their winning stats"
+        )
+        self.register_command(
             r'^\s*!fish(?:ing)?\s+location\s*$',
             self._cmd_fishing_location,
             name="fishing location",
@@ -1313,6 +1319,47 @@ class Fishing(SimpleCommandModule):
             response_parts.append("Biggest Catch: " + ", ".join(size_list))
 
         self.safe_reply(connection, event, " | ".join(response_parts))
+        return True
+
+    def _cmd_fishing_champions(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        champions = self.get_state("fishing_champions", {})
+        if not champions or not any(champions.get(k) for k in ("traveler", "caster", "collector")):
+            self.safe_reply(
+                connection, event,
+                "No champions yet — the first reset is on April 1st!"
+            )
+            return True
+
+        year = champions.get("year", "?")
+        players = self.get_state("players", {})
+        user_map = self.bot.get_module_state("users").get("user_map", {})
+
+        parts = [f"Fishing Champions ({year}):"]
+
+        traveler_id = champions.get("traveler")
+        if traveler_id:
+            p = players.get(traveler_id, {})
+            name = user_map.get(traveler_id, {}).get("canonical_nick", traveler_id)
+            loc = self._get_location_for_level(p.get("level", 0))
+            parts.append(f"the Traveler: {name} (level {p.get('level', 0)}, {loc['name']})")
+
+        caster_id = champions.get("caster")
+        if caster_id:
+            p = players.get(caster_id, {})
+            name = user_map.get(caster_id, {}).get("canonical_nick", caster_id)
+            parts.append(f"the Caster: {name} ({p.get('furthest_cast', 0.0):.1f}m)")
+
+        collector_id = champions.get("collector")
+        if collector_id:
+            p = players.get(collector_id, {})
+            name = user_map.get(collector_id, {}).get("canonical_nick", collector_id)
+            count = len(p.get("rare_catches", []))
+            parts.append(f"the Collector: {name} ({count} rare/legendary catches)")
+
+        self.safe_reply(connection, event, " | ".join(parts))
         return True
 
     def _cmd_fishing_location(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

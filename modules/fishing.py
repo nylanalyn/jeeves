@@ -567,6 +567,21 @@ class Fishing(SimpleCommandModule):
         self.set_state("players", players)
         self.save_state()
 
+    @staticmethod
+    def _compute_annual_champions(players: Dict[str, Any]) -> Dict[str, Any]:
+        """Compute the three annual champions from player data. Pure function."""
+        def best(key_fn, filter_fn=None):
+            candidates = [(uid, p) for uid, p in players.items() if filter_fn is None or filter_fn(p)]
+            if not candidates:
+                return None
+            return max(candidates, key=lambda x: (key_fn(x[1]), x[1].get("total_fish", 0)))[0]
+
+        return {
+            "traveler": best(lambda p: p.get("level", 0), lambda p: p.get("level", 0) >= 0),
+            "caster": best(lambda p: p.get("furthest_cast", 0.0), lambda p: p.get("furthest_cast", 0.0) > 0),
+            "collector": best(lambda p: len(p.get("rare_catches", [])), lambda p: len(p.get("rare_catches", [])) > 0),
+        }
+
     def _get_location_for_level(self, level: int) -> Dict[str, Any]:
         """Get the location a player can fish at based on their level."""
         # Player fishes at their max unlocked location

@@ -1341,22 +1341,22 @@ class Fishing(SimpleCommandModule):
 
         traveler_id = champions.get("traveler")
         if traveler_id:
-            p = players.get(traveler_id, {})
             name = user_map.get(traveler_id, {}).get("canonical_nick", traveler_id)
-            loc = self._get_location_for_level(p.get("level", 0))
-            parts.append(f"the Traveler: {name} (level {p.get('level', 0)}, {loc['name']})")
+            # Use snapshot stats if available, otherwise fall back to live player data
+            level = champions.get("traveler_level") or players.get(traveler_id, {}).get("level", 0)
+            location = champions.get("traveler_location") or self._get_location_for_level(level)["name"]
+            parts.append(f"the Traveler: {name} (level {level}, {location})")
 
         caster_id = champions.get("caster")
         if caster_id:
-            p = players.get(caster_id, {})
             name = user_map.get(caster_id, {}).get("canonical_nick", caster_id)
-            parts.append(f"the Caster: {name} ({p.get('furthest_cast', 0.0):.1f}m)")
+            distance = champions.get("caster_distance") or players.get(caster_id, {}).get("furthest_cast", 0.0)
+            parts.append(f"the Caster: {name} ({distance:.1f}m)")
 
         collector_id = champions.get("collector")
         if collector_id:
-            p = players.get(collector_id, {})
             name = user_map.get(collector_id, {}).get("canonical_nick", collector_id)
-            count = len(p.get("rare_catches", []))
+            count = champions.get("collector_count") or len(players.get(collector_id, {}).get("rare_catches", []))
             parts.append(f"the Collector: {name} ({count} rare/legendary catches)")
 
         self.safe_reply(connection, event, " | ".join(parts))

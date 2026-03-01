@@ -745,6 +745,16 @@ class Jeeves(SingleServerIRCBot):
         except Exception as e:
             self.log_debug(f"[core] Error getting legend suffix for {nick}: {e}")
 
+        try:
+            fishing_module = self.pm.plugins.get("fishing")
+            if fishing_module and hasattr(fishing_module, "get_fishing_suffix_for_user"):
+                user_id = self.get_user_id(nick)
+                suffix = fishing_module.get_fishing_suffix_for_user(user_id)
+                if suffix and not base_title.endswith(suffix):
+                    base_title = f"{base_title} {suffix}"
+        except Exception as e:
+            self.log_debug(f"[core] Error getting fishing suffix for {nick}: {e}")
+
         return base_title
 
     def pronouns_for(self, nick):

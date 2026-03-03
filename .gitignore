@@ -9,6 +9,10 @@ audit/
 solo_quest/save.json
 docs/review/
 
+# --- AI Agent / Local Tool Config ---
+.agents/
+.gemini/
+
 # Local environment variable files.
 .env
 jeeves.env
@@ -72,6 +76,8 @@ venv.bak/
 # Ignore various log files and local databases.
 *.log
 *.log.*
+.*.log
+.web_test_log
 debug.log*
 *.db
 *.sqlite3

@@ -5,6 +5,26 @@ import types
 
 
 def _install_dependency_stubs():
+    if "jaraco" not in sys.modules:
+        jaraco_module = types.ModuleType("jaraco")
+        jaraco_stream_module = types.ModuleType("jaraco.stream")
+        jaraco_buffer_module = types.ModuleType("jaraco.stream.buffer")
+
+        class LenientDecodingLineBuffer:
+            pass
+
+        class DecodingLineBuffer:
+            errors = "strict"
+
+        jaraco_buffer_module.LenientDecodingLineBuffer = LenientDecodingLineBuffer
+        jaraco_buffer_module.DecodingLineBuffer = DecodingLineBuffer
+        jaraco_stream_module.buffer = jaraco_buffer_module
+        jaraco_module.stream = jaraco_stream_module
+
+        sys.modules["jaraco"] = jaraco_module
+        sys.modules["jaraco.stream"] = jaraco_stream_module
+        sys.modules["jaraco.stream.buffer"] = jaraco_buffer_module
+
     if "irc" not in sys.modules:
         irc_module = types.ModuleType("irc")
         irc_bot_module = types.ModuleType("irc.bot")

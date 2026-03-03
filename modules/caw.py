@@ -3,7 +3,7 @@
 import re
 import random
 import time
-from typing import Any, List, Pattern
+from typing import Any, List
 from .base import SimpleCommandModule
 
 
@@ -26,14 +26,14 @@ class Caw(SimpleCommandModule):
         "The ancient corvids foretold this moment, {title}. Or they just wanted your chips.",
         "One for sorrow, two for joy \u2014 but {title} has summoned a whole murder, which I believe counts as 'chaos'.",
         "Crows can recognize faces and hold grudges for years, {title}. Just thought you should know.",
-        "CAW! In crow culture this is considered either rude, a greeting, or a dire warning. The elders disagree.",
+        "CAW! In crow culture this is considered either rude, a greeting, or a dire warning, {title}. The elders disagree.",
         "The crow perches upon the fence post, {title}, and it is judging you. It is always judging you.",
         "A gift of french fries will be accepted, {title}. A gift of vegetables will be remembered. And punished.",
         "The augurs of ancient Rome read omens from corvids, {title}. Right now they're reading: 'chaos incoming'.",
         "CAW CAW, {title}! Your call has been received by the council. Please hold. Current wait time: whenever we feel like it.",
         "Crows have been observed holding funerals for their dead, {title}. They have also been observed stealing shoelaces. Both are entirely true.",
         "The crow knows, {title}. The crow always knows. The crow has been watching since before you arrived.",
-        "In Norse mythology, Odin's ravens carried thought and memory across the world. Your crow is carrying... is that a candy wrapper?",
+        "In Norse mythology, Odin's ravens carried thought and memory across the world, {title}. Your crow is carrying... is that a candy wrapper?",
         "CAW! The omen is unclear, {title}. Consult the murder again in three business days.",
         "Crows are among the most intelligent birds on earth, {title}. They are currently using this intelligence to steal your lunch.",
         "The corvid council has convened, {title}. The vote on whether to trust you was: 2 for, 14 against, 1 abstained to steal a shiny button.",
@@ -48,10 +48,11 @@ class Caw(SimpleCommandModule):
         super().__init__(bot)
         self.set_state("last_response_time", self.get_state("last_response_time", 0.0))
         self.save_state()
-        self.RE_CAW: Pattern[str] = re.compile(r'\bCAW\b', re.IGNORECASE)
-        self.RE_BANG_CAW: Pattern[str] = re.compile(r'!caw', re.IGNORECASE)
+        self.RE_CAW: re.Pattern[str] = re.compile(r'\bCAW\b', re.IGNORECASE)
+        self.RE_BANG_CAW: re.Pattern[str] = re.compile(r'!CAW', re.IGNORECASE)
 
     def _register_commands(self) -> None:
+        # This module has no !commands.
         pass
 
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:

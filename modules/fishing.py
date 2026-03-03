@@ -457,6 +457,8 @@ class Fishing(SimpleCommandModule):
             self.set_state("players", {})
         if not self.get_state("active_event"):
             self.set_state("active_event", None)
+        if self.get_state("chum_state") is None:
+            self.set_state("chum_state", None)
         self.save_state()
 
     def _schedule_next_reset(self) -> None:
@@ -567,6 +569,18 @@ class Fishing(SimpleCommandModule):
             description="Share a spooky but true fact"
         )
         self.register_command(
+            r'^\s*!lure\s*$',
+            self._cmd_lure,
+            name="lure",
+            description="Spend 30 XP to rig a mystery lure (rarity or size boost)"
+        )
+        self.register_command(
+            r'^\s*!chum\s*$',
+            self._cmd_chum,
+            name="chum",
+            description="Spend 250 XP to chum the water, boosting fish size for everyone for 20 minutes"
+        )
+        self.register_command(
             r'^\s*!discard\s*$',
             self._cmd_discard,
             name="discard",
@@ -601,6 +615,7 @@ class Fishing(SimpleCommandModule):
                 "force_rare_legendary": False,
                 "artifact": None,
                 "junk_curse_date": None,
+                "active_lure": None,
             }
             self.set_state("players", players)
             self.save_state()
@@ -714,7 +729,7 @@ class Fishing(SimpleCommandModule):
         distance *= (1.0 + champion_bonus)
         return round(distance, 1)
 
-    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, artifact_rarity_boost: float = 0.0, champion_rarity_boost: float = 0.0) -> str:
+    def _select_rarity(self, wait_hours: float, event: Optional[Dict[str, Any]] = None, artifact_rarity_boost: float = 0.0, champion_rarity_boost: float = 0.0, lure_rarity_boost: float = 0.0) -> str:
         """Select a rarity tier based on wait time, active events, and artifact bonuses."""
         weights = RARITY_WEIGHTS.copy()
 
@@ -750,6 +765,13 @@ class Fishing(SimpleCommandModule):
         # Apply champion rarity boost (same logic as artifact boost)
         if champion_rarity_boost > 0:
             common_reduction = weights["common"] * champion_rarity_boost
+            weights["common"] = max(1, int(weights["common"] - common_reduction))
+            weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
+            weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
+
+        # Apply lure rarity boost (same logic as artifact/champion boost)
+        if lure_rarity_boost > 0:
+            common_reduction = weights["common"] * lure_rarity_boost
             weights["common"] = max(1, int(weights["common"] - common_reduction))
             weights["rare"] = int(weights["rare"] + common_reduction * 0.6)
             weights["legendary"] = int(weights["legendary"] + common_reduction * 0.4)
@@ -1092,12 +1114,17 @@ class Fishing(SimpleCommandModule):
                 return True
 
         # Successful catch!
+        lure_type = None
+        if player.get("active_lure"):
+            lure_type = player["active_lure"]["type"]
+
         artifact = player.get("artifact")
         artifact_rarity_boost = 0.0
         if artifact and artifact.get("bonus_type") == "rarity":
             artifact_rarity_boost = artifact.get("bonus_value", 0.0)
         champion_bonuses = self._get_champion_bonuses(user_id)
-        rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost, champion_bonuses["rarity"])
+        lure_rarity_boost = 0.40 if lure_type == "rarity" else 0.0
+        rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost, champion_bonuses["rarity"], lure_rarity_boost)
         eligible_locations = None
         if cast.get("allow_lower_fish"):
             eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
@@ -1128,6 +1155,22 @@ class Fishing(SimpleCommandModule):
             return True
 
         weight = self._calculate_weight(fish, effective_wait)
+
+        # Apply size lure boost
+        if lure_type == "size":
+            weight = round(weight * 1.30, 2)
+
+        # Apply chum boost
+        chum_active = False
+        chum_state = self.get_state("chum_state")
+        if chum_state:
+            chum_expires = datetime.fromisoformat(chum_state["expires"])
+            if datetime.utcnow() < chum_expires:
+                weight = round(weight * 1.40, 2)
+                chum_active = True
+            elif datetime.utcnow() >= datetime.fromisoformat(chum_state["cooldown_until"]):
+                self.set_state("chum_state", None)
+                self.save_state()
 
         # Line break check - bigger fish = higher chance
         if not forced_rare_applied:
@@ -1241,6 +1284,16 @@ class Fishing(SimpleCommandModule):
         if 18.0 <= wait_hours <= 24.0:
             achievement_hooks.record_achievement(self.bot, username, "perfect_waits", 1)
 
+        # Consume lure on successful catch and build reveal text
+        lure_reveal = ""
+        if lure_type:
+            player["active_lure"] = None
+            self._save_player(user_id, player)
+            if lure_type == "rarity":
+                lure_reveal = " The rarity lure pays off!"
+            else:
+                lure_reveal = " The size lure pays off!"
+
         # Check level up
         new_level = self._check_level_up(user_id, player, username)
 
@@ -1263,6 +1316,8 @@ class Fishing(SimpleCommandModule):
             response += " " + " ".join(bonus_messages)
         if forced_rare_applied:
             response += " A rare blessing guides your catch."
+        if lure_reveal:
+            response += lure_reveal
 
         if new_level:
             new_location = self._get_location_for_level(new_level)
@@ -1675,6 +1730,8 @@ class Fishing(SimpleCommandModule):
             "!fishinfo <location> - Show fish caught at a specific location (e.g., !fishinfo pond)",
             "!aquarium - View your rare/legendary catches",
             "!discard - Discard your current artifact and return to normal casts",
+            "!lure - Spend 30 XP to rig a mystery lure (one-catch bonus: rarity boost or size boost)",
+            "!chum - Spend 250 XP to chum the water, boosting fish size for everyone for 20 minutes",
             "",
             "Tips: !cast pulls fish from your current level and any lower unlocked levels.",
             "You can also travel back to previous locations to hunt for rare fish you missed!",
@@ -1696,6 +1753,95 @@ class Fishing(SimpleCommandModule):
 
         fact = random.choice(REAL_FACTS)
         self.safe_reply(connection, event, f"Real fact: {fact}")
+        return True
+
+    def _cmd_lure(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+
+        if player.get("active_lure") is not None:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, you already have a lure rigged up!"
+            )
+            return True
+
+        if player["xp"] < 30:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, not enough XP (need 30, have {player['xp']})."
+            )
+            return True
+
+        player["xp"] -= 30
+        lure_type = random.choice(["rarity", "size"])
+        player["active_lure"] = {"type": lure_type}
+        self._save_player(user_id, player)
+
+        self.safe_reply(
+            connection, event,
+            f"{self.bot.title_for(username)} spends 30 XP and rigs up a mystery lure. Let's see what it attracts!"
+        )
+        return True
+
+    def _cmd_chum(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        chum_state = self.get_state("chum_state")
+
+        if chum_state:
+            now = datetime.utcnow()
+            expires = datetime.fromisoformat(chum_state["expires"])
+            cooldown_until = datetime.fromisoformat(chum_state["cooldown_until"])
+            if now < expires:
+                remaining = int((expires - now).total_seconds() / 60) + 1
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)}, the water is already chummed! {remaining} minute(s) remaining."
+                )
+                return True
+            if now < cooldown_until:
+                remaining = int((cooldown_until - now).total_seconds() / 60) + 1
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)}, the chum is on cooldown. {remaining} minute(s) until it can be used again."
+                )
+                return True
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+
+        if player["xp"] < 250:
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)}, not enough XP (need 250, have {player['xp']})."
+            )
+            return True
+
+        player["xp"] -= 250
+        self._save_player(user_id, player)
+
+        now = datetime.utcnow()
+        expires = now + timedelta(minutes=20)
+        cooldown_until = now + timedelta(minutes=50)
+        self.set_state("chum_state", {
+            "expires": expires.isoformat(),
+            "cooldown_until": cooldown_until.isoformat(),
+            "activated_by": user_id,
+            "activated_by_name": username,
+        })
+        self.save_state()
+
+        display_name = self.bot.title_for(username)
+        self.safe_say(
+            f"{display_name} tosses a handful of chum into the water! "
+            "Fish should be running large for the next 20 minutes!",
+            target=event.target
+        )
         return True
 
     def _cmd_discard(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

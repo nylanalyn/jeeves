@@ -39,8 +39,6 @@ def _make_caw():
     c._state_dirty = False
 
     c.RE_CAW = re.compile(r'\bCAW\b', re.IGNORECASE)
-    # No word boundary on bang-pattern: !caw anywhere in message triggers it
-    c.RE_BANG_CAW = re.compile(r'!caw', re.IGNORECASE)
 
     c._replies = []
     c.safe_reply = lambda conn, evt, text: c._replies.append(text)
@@ -95,6 +93,13 @@ class TestCawTriggers(unittest.TestCase):
         """'cawing' should not match the whole-word CAW pattern."""
         c = _make_caw()
         result = c.on_ambient_message(None, _make_event(), "the crow was cawing away", "alice")
+        self.assertFalse(result)
+        self.assertEqual(len(c._replies), 0)
+
+    def test_bang_caw_embedded_in_word_does_not_trigger(self):
+        """!cawing should not match - the word boundary applies to the bang form too."""
+        c = _make_caw()
+        result = c.on_ambient_message(None, _make_event(), "!cawing", "alice")
         self.assertFalse(result)
         self.assertEqual(len(c._replies), 0)
 

@@ -49,7 +49,6 @@ class Caw(SimpleCommandModule):
         self.set_state("last_response_time", self.get_state("last_response_time", 0.0))
         self.save_state()
         self.RE_CAW: re.Pattern[str] = re.compile(r'\bCAW\b', re.IGNORECASE)
-        self.RE_BANG_CAW: re.Pattern[str] = re.compile(r'!CAW', re.IGNORECASE)
 
     def _register_commands(self) -> None:
         # This module has no !commands.
@@ -59,7 +58,7 @@ class Caw(SimpleCommandModule):
         if not self.is_enabled(event.target):
             return False
 
-        if self.RE_CAW.search(msg) or self.RE_BANG_CAW.search(msg):
+        if self.RE_CAW.search(msg):
             cooldown = self.get_config_value("cooldown_seconds", event.target, 5.0)
             now = time.time()
             if now - self.get_state("last_response_time", 0.0) >= cooldown:

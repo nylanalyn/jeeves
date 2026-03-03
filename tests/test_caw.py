@@ -1,4 +1,5 @@
 # tests/test_caw.py
+import re
 import threading
 import time
 import types
@@ -37,8 +38,8 @@ def _make_caw():
     c._state_lock = threading.RLock()
     c._state_dirty = False
 
-    import re
     c.RE_CAW = re.compile(r'\bCAW\b', re.IGNORECASE)
+    # No word boundary on bang-pattern: !caw anywhere in message triggers it
     c.RE_BANG_CAW = re.compile(r'!caw', re.IGNORECASE)
 
     c._replies = []
@@ -91,9 +92,9 @@ class TestCawTriggers(unittest.TestCase):
         self.assertEqual(len(c._replies), 1)
 
     def test_caw_embedded_in_word_does_not_trigger(self):
-        """'scarecrow' or 'cawing' should not match the whole-word CAW pattern."""
+        """'cawing' should not match the whole-word CAW pattern."""
         c = _make_caw()
-        result = c.on_ambient_message(None, _make_event(), "the scarecrow stood still", "alice")
+        result = c.on_ambient_message(None, _make_event(), "the crow was cawing away", "alice")
         self.assertFalse(result)
         self.assertEqual(len(c._replies), 0)
 

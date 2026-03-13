@@ -2,6 +2,7 @@
 # Weather module for local weather lookups
 import re
 import json
+import threading
 from typing import Dict, Any, Optional
 from .base import SimpleCommandModule, admin_required
 from . import achievement_hooks
@@ -49,9 +50,14 @@ class Weather(SimpleCommandModule):
                     self.safe_reply(connection, event, "No default location set.")
                 return True
 
-            self._reply_with_weather(connection, event, location_obj, username)
+            self._run_async(self._reply_with_weather, connection, event, location_obj, username)
             return True
         return False
+
+    def _run_async(self, fn, *args, **kwargs):
+        """Run fn(*args, **kwargs) in a daemon thread so the bot main loop is never blocked."""
+        t = threading.Thread(target=fn, args=args, kwargs=kwargs, daemon=True)
+        t.start()
 
     def _get_weather_data(self, lat: str, lon: str, country_code: str = None) -> Optional[tuple]:
         """Fetch weather data; returns (data, is_pirate_format) or None.
@@ -460,33 +466,35 @@ class Weather(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, "No location set.")
             return True
-        self._reply_with_weather(connection, event, location_obj, username)
+        self._run_async(self._reply_with_weather, connection, event, location_obj, username)
         return True
 
     def _cmd_weather_other(self, connection, event, msg, username, match):
         query = match.group(1).strip()
-        
+
         users_module = self.bot.pm.plugins.get("users")
         target_user_id = users_module.get_state("nick_map", {}).get(query.lower()) if users_module else None
-            
+
         if target_user_id and (location_obj := self.get_state("user_locations", {}).get(target_user_id)):
-            self._reply_with_weather(connection, event, location_obj, username, target_user=query)
+            self._run_async(self._reply_with_weather, connection, event, location_obj, username, target_user=query)
             return True
 
-        geo_data_tuple = self._get_geocode_data(query)
-        if not geo_data_tuple:
-            if self.has_flavor_enabled(username):
-                self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
-            else:
-                self.safe_reply(connection, event, f"User or location '{query}' not found.")
-            return True
+        def _lookup_and_reply():
+            geo_data_tuple = self._get_geocode_data(query)
+            if not geo_data_tuple:
+                if self.has_flavor_enabled(username):
+                    self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
+                else:
+                    self.safe_reply(connection, event, f"User or location '{query}' not found.")
+                return
+            lat, lon, geo_data = geo_data_tuple
+            location_obj = {
+                "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data),
+                "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
+            }
+            self._reply_with_weather(connection, event, location_obj, username)
 
-        lat, lon, geo_data = geo_data_tuple
-        location_obj = {
-            "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data),
-            "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
-        }
-        self._reply_with_weather(connection, event, location_obj, username)
+        self._run_async(_lookup_and_reply)
         return True
 
     def _cmd_forecast_self(self, connection, event, msg, username, match):
@@ -499,7 +507,7 @@ class Weather(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, "No location set.")
             return True
-        self._reply_with_forecast(connection, event, location_obj, username)
+        self._run_async(self._reply_with_forecast, connection, event, location_obj, username)
         return True
 
     def _cmd_forecast_other(self, connection, event, msg, username, match):
@@ -510,23 +518,25 @@ class Weather(SimpleCommandModule):
         target_user_id = users_module.get_state("nick_map", {}).get(query.lower()) if users_module else None
 
         if target_user_id and (location_obj := self.get_state("user_locations", {}).get(target_user_id)):
+            self._run_async(self._reply_with_forecast, connection, event, location_obj, username)
+            return True
+
+        def _lookup_and_reply():
+            geo_data_tuple = self._get_geocode_data(query)
+            if not geo_data_tuple:
+                if self.has_flavor_enabled(username):
+                    self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
+                else:
+                    self.safe_reply(connection, event, f"User or location '{query}' not found.")
+                return
+            lat, lon, geo_data = geo_data_tuple
+            location_obj = {
+                "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data),
+                "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
+            }
             self._reply_with_forecast(connection, event, location_obj, username)
-            return True
 
-        geo_data_tuple = self._get_geocode_data(query)
-        if not geo_data_tuple:
-            if self.has_flavor_enabled(username):
-                self.safe_reply(connection, event, f"My apologies, I could not find a user or location named '{query}'.")
-            else:
-                self.safe_reply(connection, event, f"User or location '{query}' not found.")
-            return True
-
-        lat, lon, geo_data = geo_data_tuple
-        location_obj = {
-            "lat": lat, "lon": lon, "short_name": self._format_location_name(geo_data),
-            "display_name": geo_data.get("display_name"), "country_code": geo_data.get("address", {}).get("country_code", "us").upper()
-        }
-        self._reply_with_forecast(connection, event, location_obj, username)
+        self._run_async(_lookup_and_reply)
         return True
 
 def setup(bot):

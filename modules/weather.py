@@ -53,15 +53,24 @@ class Weather(SimpleCommandModule):
             return True
         return False
 
-    def _get_weather_data(self, lat: str, lon: str, country_code: str = None) -> Optional[Dict[str, Any]]:
-        """Fetch weather data using PirateWeather for US locations, yr.no for others."""
-        # Determine if location is in the US
+    def _get_weather_data(self, lat: str, lon: str, country_code: str = None) -> Optional[tuple]:
+        """Fetch weather data; returns (data, is_pirate_format) or None.
+
+        US locations try PirateWeather first, falling back to MET Norway on failure.
+        """
         use_pirate = country_code == "US"
 
         if use_pirate:
-            return self._get_pirate_weather_data(lat, lon)
+            data = self._get_pirate_weather_data(lat, lon)
+            if data:
+                return data, True
+            # PirateWeather unavailable — fall back to MET Norway
+            self._record_error(f"PirateWeather unavailable for {lat},{lon}, falling back to MET Norway")
+            data = self._get_met_norway_weather_data(lat, lon)
+            return (data, False) if data else None
         else:
-            return self._get_met_norway_weather_data(lat, lon)
+            data = self._get_met_norway_weather_data(lat, lon)
+            return (data, False) if data else None
 
     def _get_pirate_weather_data(self, lat: str, lon: str) -> Optional[Dict[str, Any]]:
         """Fetch weather from PirateWeather API (US locations)."""
@@ -191,9 +200,9 @@ class Weather(SimpleCommandModule):
         )
         country_code = location_obj.get('country_code', 'US').upper()
 
-        weather_data = self._get_weather_data(location_obj["lat"], location_obj["lon"], country_code)
-        if weather_data:
-            is_pirate = country_code == "US"
+        result = self._get_weather_data(location_obj["lat"], location_obj["lon"], country_code)
+        if result:
+            weather_data, is_pirate = result
             report = self._format_weather_report(weather_data, location_name, requester, is_pirate, target_user)
             self.safe_reply(connection, event, report)
             # Record achievement progress
@@ -204,14 +213,23 @@ class Weather(SimpleCommandModule):
             else:
                 self.safe_reply(connection, event, "Could not fetch weather.")
 
-    def _get_forecast_data(self, lat: str, lon: str, country_code: Optional[str] = None) -> Optional[list]:
-        """Fetch 3-day forecast data."""
+    def _get_forecast_data(self, lat: str, lon: str, country_code: Optional[str] = None) -> Optional[tuple]:
+        """Fetch 3-day forecast data; returns (data, is_pirate_format) or None.
+
+        US locations try PirateWeather first, falling back to MET Norway on failure.
+        """
         use_pirate = country_code == "US"
 
         if use_pirate:
-            return self._get_pirate_forecast(lat, lon)
+            data = self._get_pirate_forecast(lat, lon)
+            if data:
+                return data, True
+            self._record_error(f"PirateWeather forecast unavailable for {lat},{lon}, falling back to MET Norway")
+            data = self._get_met_norway_forecast(lat, lon)
+            return (data, False) if data else None
         else:
-            return self._get_met_norway_forecast(lat, lon)
+            data = self._get_met_norway_forecast(lat, lon)
+            return (data, False) if data else None
 
     def _get_pirate_forecast(self, lat: str, lon: str) -> Optional[list]:
         """Extract 3-day forecast from PirateWeather API."""
@@ -353,9 +371,9 @@ class Weather(SimpleCommandModule):
         )
         country_code = location_obj.get('country_code', 'US').upper()
 
-        forecast_data = self._get_forecast_data(location_obj["lat"], location_obj["lon"], country_code)
-        if forecast_data:
-            is_pirate = country_code == "US"
+        result = self._get_forecast_data(location_obj["lat"], location_obj["lon"], country_code)
+        if result:
+            forecast_data, is_pirate = result
             report = self._format_forecast_report(forecast_data, location_name, requester, is_pirate)
             self.safe_reply(connection, event, report)
         else:

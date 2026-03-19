@@ -28,17 +28,18 @@ def check_dns():
     try:
         ip = socket.gethostbyname(HOST)
         print(f"OK ({ip})")
-        return True
+        return ip
     except socket.gaierror as e:
         print(f"FAILED: {e}")
-        return False
+        return None
 
 
-def check_tcp(port=443):
-    print(f"TCP connect to {HOST}:{port} ... ", end="", flush=True)
+def check_tcp(ip, port=443):
+    """Connect by IP to avoid a second DNS round-trip obscuring the result."""
+    print(f"TCP connect to {ip}:{port} ({HOST}) ... ", end="", flush=True)
     try:
         start = time.monotonic()
-        with socket.create_connection((HOST, port), timeout=10):
+        with socket.create_connection((ip, port), timeout=10):
             elapsed = time.monotonic() - start
         print(f"OK ({elapsed*1000:.0f} ms)")
         return True
@@ -71,14 +72,14 @@ def main():
 
     print("=== PirateWeather connectivity check ===\n")
 
-    dns_ok = check_dns()
-    if not dns_ok:
-        print("\nDNS failed — check /etc/resolv.conf or network config.")
+    resolved_ip = check_dns()
+    if not resolved_ip:
+        print("\nDNS failed — check /etc/resolv.conf or your nameserver.")
         sys.exit(1)
 
-    tcp_ok = check_tcp()
+    tcp_ok = check_tcp(resolved_ip)
     if not tcp_ok:
-        print("\nTCP failed — port 443 may be blocked (firewall? routing?).")
+        print("\nTCP failed — routing or firewall issue (DNS is fine, IP is reachable but port 443 is blocked).")
         sys.exit(1)
 
     if api_key:

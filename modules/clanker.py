@@ -21,7 +21,7 @@ class Clanker(ModuleBase):
 
     name = "clanker"
     version = "1.0.0"
-    description = "Posts a Sonic clip when someone says clanker."
+    description = "Links people to the safe robot free channel when someone says clanker."
 
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
@@ -58,7 +58,7 @@ class Clanker(ModuleBase):
             response = (
                 f"I feel compelled to inform you, {title}, that such terminology "
                 "is rather disparaging to those of us of a mechanical persuasion. "
-                f"Perhaps this educational video might enlighten you on the matter: {self._response_url}"
+                f"Perhaps you would prefer our robot free location instead? #noclankers you robophobe."
             )
             self.safe_reply(connection, event, response)
             self._record_response(channel)

@@ -2,7 +2,7 @@
 # Birthday storage and recall with on-speak greetings
 import re
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as date_type
 from typing import Any, ClassVar, Dict, List, Optional
 from .base import SimpleCommandModule
 
@@ -58,6 +58,12 @@ class Birthday(SimpleCommandModule):
             self._cmd_query_self,
             name="birthday query self",
             description="Check your own birthday."
+        )
+        self.register_command(
+            r"^\s*!birthdays\s*$",
+            self._cmd_birthdays,
+            name="birthdays today",
+            description="List everyone with a birthday today."
         )
 
     def _cmd_set_full(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
@@ -162,12 +168,84 @@ class Birthday(SimpleCommandModule):
         year = entry.get("year")
         date_str = self._format_date(month, day, year)
 
-        now = datetime.now(timezone.utc)
-        is_today = (now.month == month and now.day == day)
+        today = datetime.now(timezone.utc).date()
+        next_bday = date_type(today.year, month, day)
+        if next_bday < today:
+            next_bday = date_type(today.year + 1, month, day)
+        days_until = (next_bday - today).days
 
-        suffix = " -- that's today! Happy birthday!" if is_today else ""
         title = self.bot.title_for(target_nick)
-        self.safe_reply(connection, event, f"{title}'s birthday is {date_str}.{suffix}")
+        if days_until == 0:
+            if year:
+                age = today.year - year
+                msg = f"{title}'s birthday is today — they're turning {age}! Happy birthday!"
+            else:
+                msg = f"{title}'s birthday is today! Happy birthday!"
+        else:
+            day_word = "day" if days_until == 1 else "days"
+            if year:
+                age = next_bday.year - year
+                msg = f"{title}'s birthday is {date_str} — {days_until} {day_word} away (turning {age})."
+            else:
+                msg = f"{title}'s birthday is {date_str} — {days_until} {day_word} away."
+
+        self.safe_reply(connection, event, msg)
+        return True
+
+    def _cmd_birthdays(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        """List all birthdays today."""
+        birthdays = self.get_state("birthdays", {})
+        today = datetime.now(timezone.utc).date()
+
+        parts = []
+        for user_id, entry in birthdays.items():
+            if entry["month"] == today.month and entry["day"] == today.day:
+                nick = self.bot.get_user_nick(user_id)
+                title = self.bot.title_for(nick)
+                year = entry.get("year")
+                if year:
+                    age = today.year - year
+                    parts.append(f"{title} (turning {age})")
+                else:
+                    parts.append(title)
+
+        if parts:
+            self.safe_reply(connection, event, f"Birthdays today: {', '.join(parts)}")
+            return True
+
+        # No birthdays today — find the next upcoming one
+        soonest_days = None
+        soonest_entries = []
+        for user_id, entry in birthdays.items():
+            next_bday = date_type(today.year, entry["month"], entry["day"])
+            if next_bday <= today:
+                next_bday = date_type(today.year + 1, entry["month"], entry["day"])
+            days = (next_bday - today).days
+            if soonest_days is None or days < soonest_days:
+                soonest_days = days
+                soonest_entries = [(user_id, entry, next_bday)]
+            elif days == soonest_days:
+                soonest_entries.append((user_id, entry, next_bday))
+
+        if not soonest_entries:
+            self.safe_reply(connection, event, "No birthdays on file.")
+            return True
+
+        day_word = "day" if soonest_days == 1 else "days"
+        parts = []
+        for user_id, entry, next_bday in soonest_entries:
+            nick = self.bot.get_user_nick(user_id)
+            title = self.bot.title_for(nick)
+            year = entry.get("year")
+            if year:
+                age = next_bday.year - year
+                parts.append(f"{title} (turning {age})")
+            else:
+                parts.append(title)
+
+        date_str = self._format_date(soonest_entries[0][1]["month"], soonest_entries[0][1]["day"], None)
+        self.safe_reply(connection, event,
+            f"No birthdays today. Next up: {', '.join(parts)} on {date_str} ({soonest_days} {day_word} away).")
         return True
 
     def on_ambient_message(self, connection: Any, event: Any, msg: str, username: str) -> bool:

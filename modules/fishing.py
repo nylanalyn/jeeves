@@ -1,6 +1,8 @@
 # modules/fishing.py
 # A fishing mini-game where users cast lines and reel in catches over time.
 
+import json
+import os
 import random
 import re
 import schedule
@@ -33,161 +35,19 @@ LOCATIONS = [
 
 # Fish database organized by location
 # Each fish has: name, min_weight, max_weight, rarity
-FISH_DATABASE: Dict[str, List[Dict[str, Any]]] = {
-    "Puddle": [
-        # Common
-        {"name": "Minnow", "min_weight": 0.1, "max_weight": 0.5, "rarity": "common"},
-        {"name": "Tadpole", "min_weight": 0.05, "max_weight": 0.2, "rarity": "common"},
-        {"name": "Guppy", "min_weight": 0.1, "max_weight": 0.3, "rarity": "common"},
-        {"name": "Water Beetle", "min_weight": 0.01, "max_weight": 0.1, "rarity": "common"},
-        # Uncommon
-        {"name": "Goldfish", "min_weight": 0.5, "max_weight": 2.0, "rarity": "uncommon"},
-        {"name": "Small Frog", "min_weight": 0.3, "max_weight": 1.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Koi", "min_weight": 2.0, "max_weight": 5.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The Puddle King", "min_weight": 8.0, "max_weight": 15.0, "rarity": "legendary"},
-    ],
-    "Pond": [
-        # Common
-        {"name": "Bluegill", "min_weight": 0.5, "max_weight": 2.0, "rarity": "common"},
-        {"name": "Perch", "min_weight": 0.5, "max_weight": 3.0, "rarity": "common"},
-        {"name": "Sunfish", "min_weight": 0.3, "max_weight": 1.5, "rarity": "common"},
-        {"name": "Crayfish", "min_weight": 0.1, "max_weight": 0.5, "rarity": "common"},
-        # Uncommon
-        {"name": "Largemouth Bass", "min_weight": 2.0, "max_weight": 8.0, "rarity": "uncommon"},
-        {"name": "Catfish", "min_weight": 3.0, "max_weight": 10.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Golden Perch", "min_weight": 5.0, "max_weight": 12.0, "rarity": "rare"},
-        # Legendary
-        {"name": "Old Whiskers", "min_weight": 20.0, "max_weight": 40.0, "rarity": "legendary"},
-    ],
-    "Lake": [
-        # Common
-        {"name": "Trout", "min_weight": 1.0, "max_weight": 5.0, "rarity": "common"},
-        {"name": "Crappie", "min_weight": 0.5, "max_weight": 3.0, "rarity": "common"},
-        {"name": "Walleye", "min_weight": 2.0, "max_weight": 8.0, "rarity": "common"},
-        {"name": "Pike", "min_weight": 3.0, "max_weight": 12.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Lake Sturgeon", "min_weight": 10.0, "max_weight": 30.0, "rarity": "uncommon"},
-        {"name": "Muskie", "min_weight": 8.0, "max_weight": 25.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Albino Sturgeon", "min_weight": 20.0, "max_weight": 50.0, "rarity": "rare"},
-        # Legendary
-        {"name": "Nessie's Cousin", "min_weight": 100.0, "max_weight": 200.0, "rarity": "legendary"},
-    ],
-    "River": [
-        # Common
-        {"name": "Salmon", "min_weight": 5.0, "max_weight": 15.0, "rarity": "common"},
-        {"name": "Steelhead", "min_weight": 4.0, "max_weight": 12.0, "rarity": "common"},
-        {"name": "River Carp", "min_weight": 3.0, "max_weight": 20.0, "rarity": "common"},
-        {"name": "Smallmouth Bass", "min_weight": 2.0, "max_weight": 6.0, "rarity": "common"},
-        # Uncommon
-        {"name": "King Salmon", "min_weight": 15.0, "max_weight": 40.0, "rarity": "uncommon"},
-        {"name": "Paddlefish", "min_weight": 20.0, "max_weight": 60.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Golden Salmon", "min_weight": 25.0, "max_weight": 50.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The River Guardian", "min_weight": 80.0, "max_weight": 150.0, "rarity": "legendary"},
-    ],
-    "Ocean": [
-        # Common
-        {"name": "Tuna", "min_weight": 20.0, "max_weight": 80.0, "rarity": "common"},
-        {"name": "Mackerel", "min_weight": 5.0, "max_weight": 15.0, "rarity": "common"},
-        {"name": "Sea Bass", "min_weight": 10.0, "max_weight": 40.0, "rarity": "common"},
-        {"name": "Flounder", "min_weight": 3.0, "max_weight": 12.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Swordfish", "min_weight": 50.0, "max_weight": 150.0, "rarity": "uncommon"},
-        {"name": "Mahi-Mahi", "min_weight": 15.0, "max_weight": 50.0, "rarity": "uncommon"},
-        {"name": "Barracuda", "min_weight": 20.0, "max_weight": 60.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Blue Marlin", "min_weight": 100.0, "max_weight": 300.0, "rarity": "rare"},
-        {"name": "Sailfish", "min_weight": 80.0, "max_weight": 200.0, "rarity": "rare"},
-        # Legendary
-        {"name": "Moby Dick Jr.", "min_weight": 500.0, "max_weight": 1000.0, "rarity": "legendary"},
-    ],
-    "Deep Sea": [
-        # Common
-        {"name": "Anglerfish", "min_weight": 5.0, "max_weight": 20.0, "rarity": "common"},
-        {"name": "Viperfish", "min_weight": 2.0, "max_weight": 8.0, "rarity": "common"},
-        {"name": "Gulper Eel", "min_weight": 3.0, "max_weight": 15.0, "rarity": "common"},
-        {"name": "Lanternfish", "min_weight": 0.5, "max_weight": 3.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Giant Squid", "min_weight": 50.0, "max_weight": 200.0, "rarity": "uncommon"},
-        {"name": "Oarfish", "min_weight": 30.0, "max_weight": 100.0, "rarity": "uncommon"},
-        {"name": "Goblin Shark", "min_weight": 100.0, "max_weight": 300.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Colossal Squid", "min_weight": 200.0, "max_weight": 500.0, "rarity": "rare"},
-        {"name": "Megamouth Shark", "min_weight": 300.0, "max_weight": 600.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The Kraken", "min_weight": 1000.0, "max_weight": 2500.0, "rarity": "legendary"},
-    ],
-    "Moon": [
-        # Common
-        {"name": "Moon Jellyfish", "min_weight": 1.0, "max_weight": 5.0, "rarity": "common"},
-        {"name": "Lunar Shrimp", "min_weight": 0.5, "max_weight": 2.0, "rarity": "common"},
-        {"name": "Crater Minnow", "min_weight": 0.3, "max_weight": 1.5, "rarity": "common"},
-        {"name": "Dust Swimmer", "min_weight": 1.0, "max_weight": 4.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Crater Crab", "min_weight": 5.0, "max_weight": 15.0, "rarity": "uncommon"},
-        {"name": "Void Eel", "min_weight": 10.0, "max_weight": 30.0, "rarity": "uncommon"},
-        {"name": "Selenite Fish", "min_weight": 8.0, "max_weight": 25.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Cosmic Whale", "min_weight": 50.0, "max_weight": 200.0, "rarity": "rare"},
-        {"name": "Starlight Serpent", "min_weight": 40.0, "max_weight": 150.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The Leviathan of Tranquility", "min_weight": 500.0, "max_weight": 1000.0, "rarity": "legendary"},
-    ],
-    "Mars": [
-        # Common
-        {"name": "Rust Minnow", "min_weight": 0.5, "max_weight": 2.0, "rarity": "common"},
-        {"name": "Red Silt Crawler", "min_weight": 1.0, "max_weight": 5.0, "rarity": "common"},
-        {"name": "Iron Guppy", "min_weight": 0.5, "max_weight": 3.0, "rarity": "common"},
-        {"name": "Dust Devil Fish", "min_weight": 2.0, "max_weight": 8.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Olympus Bass", "min_weight": 10.0, "max_weight": 30.0, "rarity": "uncommon"},
-        {"name": "Valles Trout", "min_weight": 15.0, "max_weight": 40.0, "rarity": "uncommon"},
-        {"name": "Phobos Flounder", "min_weight": 8.0, "max_weight": 25.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Martian Kraken", "min_weight": 100.0, "max_weight": 300.0, "rarity": "rare"},
-        {"name": "Red Planet Leviathan", "min_weight": 150.0, "max_weight": 400.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The Ancient One", "min_weight": 1000.0, "max_weight": 2000.0, "rarity": "legendary"},
-    ],
-    "Jupiter": [
-        # Common
-        {"name": "Gas Giant Jellyfish", "min_weight": 2.0, "max_weight": 10.0, "rarity": "common"},
-        {"name": "Storm Swimmer", "min_weight": 5.0, "max_weight": 15.0, "rarity": "common"},
-        {"name": "Ammonia Minnow", "min_weight": 1.0, "max_weight": 5.0, "rarity": "common"},
-        {"name": "Cloud Drifter", "min_weight": 3.0, "max_weight": 12.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Red Spot Ray", "min_weight": 20.0, "max_weight": 60.0, "rarity": "uncommon"},
-        {"name": "Ammonia Eel", "min_weight": 30.0, "max_weight": 80.0, "rarity": "uncommon"},
-        {"name": "Io Salmon", "min_weight": 25.0, "max_weight": 70.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Jovian Leviathan", "min_weight": 200.0, "max_weight": 500.0, "rarity": "rare"},
-        {"name": "Europa Ice Beast", "min_weight": 250.0, "max_weight": 600.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The Great Red Serpent", "min_weight": 2000.0, "max_weight": 4000.0, "rarity": "legendary"},
-    ],
-    "The Void": [
-        # Common
-        {"name": "Void Mite", "min_weight": 1.0, "max_weight": 5.0, "rarity": "common"},
-        {"name": "Dark Matter Shrimp", "min_weight": 3.0, "max_weight": 10.0, "rarity": "common"},
-        {"name": "Null Fish", "min_weight": 2.0, "max_weight": 8.0, "rarity": "common"},
-        {"name": "Entropy Minnow", "min_weight": 1.0, "max_weight": 6.0, "rarity": "common"},
-        # Uncommon
-        {"name": "Entropy Eel", "min_weight": 25.0, "max_weight": 75.0, "rarity": "uncommon"},
-        {"name": "Singularity Squid", "min_weight": 50.0, "max_weight": 150.0, "rarity": "uncommon"},
-        {"name": "Dimensional Drifter", "min_weight": 40.0, "max_weight": 120.0, "rarity": "uncommon"},
-        # Rare
-        {"name": "Reality Warper", "min_weight": 300.0, "max_weight": 800.0, "rarity": "rare"},
-        {"name": "Event Horizon Eel", "min_weight": 400.0, "max_weight": 900.0, "rarity": "rare"},
-        # Legendary
-        {"name": "The Cosmic Horror", "min_weight": 5000.0, "max_weight": 10000.0, "rarity": "legendary"},
-        {"name": "Cthulhu's Cousin", "min_weight": 8000.0, "max_weight": 15000.0, "rarity": "legendary"},
-    ],
-}
+# Loaded from config/fish_database.json
+def _load_fish_database() -> Dict[str, List[Dict[str, Any]]]:
+    """Load fish database from JSON config file."""
+    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "fish_database.json")
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        # Fallback to empty dict if file doesn't exist or is invalid
+        print(f"Warning: Could not load fish database from {config_path}: {e}")
+        return {}
+
+FISH_DATABASE: Dict[str, List[Dict[str, Any]]] = _load_fish_database()
 
 # Junk items by location type
 JUNK_ITEMS: Dict[str, List[str]] = {

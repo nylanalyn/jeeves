@@ -48,7 +48,7 @@ class Caw(SimpleCommandModule):
         super().__init__(bot)
         self.set_state("last_response_time", self.get_state("last_response_time", 0.0))
         self.save_state()
-        self.RE_CAW: re.Pattern[str] = re.compile(r'\bCAW\b', re.IGNORECASE)
+        self.RE_CAW: re.Pattern[str] = re.compile(r'\b(CAW|KAW)\b', re.IGNORECASE)
 
     def _register_commands(self) -> None:
         # This module has no !commands.

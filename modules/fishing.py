@@ -452,6 +452,12 @@ class Fishing(SimpleCommandModule):
             name="water",
             description="..."
         )
+        self.register_command(
+            r'^\s*!dynamite\s*$',
+            self._cmd_dynamite,
+            name="dynamite",
+            description="A risky gambit. What could possibly go wrong?"
+        )
 
     def _get_player(self, user_id: str) -> Dict[str, Any]:
         """Get or create a player record."""
@@ -476,6 +482,7 @@ class Fishing(SimpleCommandModule):
                 "artifact": None,
                 "junk_curse_date": None,
                 "active_lure": None,
+                "dynamite_banned_until": None,
             }
             self.set_state("players", players)
             self.save_state()
@@ -763,7 +770,29 @@ class Fishing(SimpleCommandModule):
             return True
 
         player = self._get_player(user_id)
-        
+
+        # Check dynamite ban
+        banned_until = player.get("dynamite_banned_until")
+        if banned_until:
+            ban_dt = datetime.fromisoformat(banned_until)
+            if datetime.now(UTC) < ban_dt:
+                days_left = (ban_dt - datetime.now(UTC)).days + 1
+                stump_messages = [
+                    f"{self.bot.title_for(username)} stares at the fishing hole wistfully, "
+                    f"wiggling the stump where their hand used to be. ({days_left} day(s) remaining on the ban)",
+                    f"{self.bot.title_for(username)} gazes longingly at the water, "
+                    f"a single tear rolling down their cheek. The stump itches. ({days_left} day(s) remaining)",
+                    f"{self.bot.title_for(username)} approaches the water's edge, holds up the stump "
+                    f"in quiet contemplation, and shuffles back home. ({days_left} day(s) remaining)",
+                    f"{self.bot.title_for(username)} tries to grip a rod with the stump. "
+                    f"It doesn't work. It never works. ({days_left} day(s) remaining)",
+                ]
+                self.safe_reply(connection, event, random.choice(stump_messages))
+                return True
+            else:
+                player["dynamite_banned_until"] = None
+                self._save_player(user_id, player)
+
         # Check if location argument was provided
         location_arg = match.group(1)
         if location_arg:
@@ -1728,6 +1757,161 @@ class Fishing(SimpleCommandModule):
             f"{self.bot.title_for(username)} tosses the {artifact_name} into the water. "
             "All bonuses lost. Your casts return to normal."
         )
+        return True
+
+    def _cmd_dynamite(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
+        if not self.is_enabled(event.target):
+            return False
+
+        user_id = self.bot.get_user_id(username)
+        player = self._get_player(user_id)
+
+        # Check if already banned
+        banned_until = player.get("dynamite_banned_until")
+        if banned_until:
+            ban_dt = datetime.fromisoformat(banned_until)
+            if datetime.now(UTC) < ban_dt:
+                days_left = (ban_dt - datetime.now(UTC)).days + 1
+                self.safe_reply(
+                    connection, event,
+                    f"{self.bot.title_for(username)} reaches into the tackle box with the stump. "
+                    f"There's no dynamite there. There's no hand either. ({days_left} day(s) remaining)"
+                )
+                return True
+            else:
+                player["dynamite_banned_until"] = None
+                self._save_player(user_id, player)
+
+        roll = random.random()
+
+        # 10% — player thinks better of it
+        if roll < 0.10:
+            chicken_messages = [
+                f"{self.bot.title_for(username)} pulls out the dynamite, stares at it for a long moment... "
+                "and puts it back. Some decisions don't need to be made today. Goes to get a cup of tea.",
+                f"{self.bot.title_for(username)} hefts the dynamite thoughtfully, then sets it gently on a rock. "
+                "The tea is calling. The fish can wait.",
+                f"{self.bot.title_for(username)} gets halfway through lighting the fuse before reconsidering. "
+                "Honestly, a nice biscuit sounds better right now.",
+                f"{self.bot.title_for(username)} holds the dynamite aloft dramatically... "
+                "then pockets it and wanders off in search of a kettle.",
+                f"{self.bot.title_for(username)} considers the dynamite. Considers the fish. "
+                "Considers their own mortality. Decides tea is the wiser investment.",
+            ]
+            self.safe_reply(connection, event, random.choice(chicken_messages))
+            return True
+
+        # 20% — glorious success
+        if roll < 0.30:
+            # Calculate XP needed for two level-ups from current position
+            temp_level = player["level"]
+            temp_xp = player["xp"]
+            xp_to_grant = 0
+            levels_possible = 0
+            while levels_possible < 2 and temp_level < 9:
+                needed = self._get_xp_for_level(temp_level)
+                xp_to_grant += max(0, needed - temp_xp)
+                temp_xp = 0
+                temp_level += 1
+                levels_possible += 1
+            xp_to_grant += random.randint(80, 200)  # extra for good measure
+
+            # Grant a haul of rare/legendary fish
+            eligible_locations = [l["name"] for l in LOCATIONS if l["level"] <= player["level"]]
+            haul = []
+            haul_count = random.randint(3, 6)
+            now = datetime.now(UTC)
+            for _ in range(haul_count):
+                rarity = random.choice(["rare", "rare", "legendary"])
+                fish = self._select_fish(
+                    eligible_locations[-1] if eligible_locations else "Puddle",
+                    rarity,
+                    eligible_locations if eligible_locations else None,
+                    allow_fallback=True,
+                )
+                if fish:
+                    weight = round(random.uniform(fish["max_weight"] * 0.7, fish["max_weight"]), 2)
+                    haul.append((fish, rarity, weight))
+                    # Add to player records
+                    catches = player.get("catches", {})
+                    catches[fish["name"]] = catches.get(fish["name"], 0) + 1
+                    player["catches"] = catches
+                    player["total_fish"] = player.get("total_fish", 0) + 1
+                    if weight > player.get("biggest_fish", 0.0):
+                        player["biggest_fish"] = weight
+                        player["biggest_fish_name"] = fish["name"]
+                    rare_catches = player.get("rare_catches", [])
+                    rare_catches.append({
+                        "name": fish["name"],
+                        "weight": weight,
+                        "rarity": rarity,
+                        "location": eligible_locations[-1] if eligible_locations else "Puddle",
+                        "caught_at": now.isoformat(),
+                    })
+                    player["rare_catches"] = rare_catches
+
+            player["xp"] = player.get("xp", 0) + xp_to_grant
+            self._save_player(user_id, player)
+
+            new_level = self._check_level_up(user_id, player, username)
+
+            haul_str = ", ".join(
+                f"{fish['name']} ({weight:.1f} lbs, {rarity})"
+                for fish, rarity, weight in haul
+            ) if haul else "an eerie silence"
+
+            boom_lines = [
+                f"💥 KABOOM! 💥 {self.bot.title_for(username)} hurls the dynamite into the fishing hole! "
+                f"The water ERUPTS. Fish rain from the sky. Locals flee. "
+                f"Belly-up on the surface: {haul_str}. "
+                f"+{xp_to_grant} XP from the sheer audacity of it.",
+                f"🧨 {self.bot.title_for(username)} lights the fuse. The hole detonates. "
+                f"A geyser of fish launches forty feet into the air. "
+                f"Floating to the surface: {haul_str}. "
+                f"+{xp_to_grant} XP. Completely worth it.",
+                f"💥 THE WATER SURRENDERS. {self.bot.title_for(username)}'s dynamite leaves nothing to chance. "
+                f"Every fish within a mile radius is rethinking its life choices. "
+                f"Haul: {haul_str}. "
+                f"+{xp_to_grant} XP. A triumph of raw power over finesse.",
+            ]
+            response = random.choice(boom_lines)
+            if new_level:
+                new_location = self._get_location_for_level(new_level)
+                response += f" 🎉 LEVEL UP x{levels_possible}! Now level {new_level} — {new_location['name']} awaits!"
+            self.safe_say(response, target=event.target)
+            return True
+
+        # 70% — catastrophic failure, 7-day ban
+        ban_until = datetime.now(UTC) + timedelta(days=7)
+        player["dynamite_banned_until"] = ban_until.isoformat()
+        # Remove any active cast
+        active_casts = self.get_state("active_casts", {})
+        if user_id in active_casts:
+            del active_casts[user_id]
+            self.set_state("active_casts", active_casts)
+        self._save_player(user_id, player)
+
+        disaster_lines = [
+            f"💀 {self.bot.title_for(username)} lights the dynamite. The dynamite does not wait. "
+            "There is a flash. A bang. A smell of singed eyebrows and regret. "
+            "The hand is gone. A 7-day fishing ban has been issued by the local authority. "
+            "Please reflect on your choices.",
+            f"🤦 {self.bot.title_for(username)} fumbles the dynamite. "
+            "It goes off immediately. In their hand. "
+            "The fish are fine. The hand is not. "
+            "Banned from fishing for 7 days. The stump will serve as a reminder.",
+            f"💥 A detonation occurs. It is not in the water. "
+            f"{self.bot.title_for(username)} stares at the smoking crater where their hand was. "
+            "A duck watches from a safe distance, unimpressed. "
+            "7-day ban. No appeals.",
+            f"🧨 The fuse on {self.bot.title_for(username)}'s dynamite is... shorter than expected. "
+            "Much shorter. Comically, tragically shorter. "
+            "7-day fishing ban. The stump is now their most interesting feature.",
+            f"📛 {self.bot.title_for(username)} has made a terrible mistake. "
+            "The fish know. The lake knows. Everyone within earshot knows. "
+            "7 days, no fishing, no exceptions. Touch grass (carefully, with the remaining hand).",
+        ]
+        self.safe_say(random.choice(disaster_lines), target=event.target)
         return True
 
     def _cmd_water(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

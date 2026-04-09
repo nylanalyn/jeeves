@@ -903,6 +903,9 @@ class Fishing(SimpleCommandModule):
         self.set_state("active_casts", active_casts)
         self.save_state()
 
+        # boomer gets a little cosmic luck. quietly.
+        is_boomer = username.lower() == "boomer"
+
         # Get active event
         active_event = self._get_active_event(location_name)
 
@@ -911,13 +914,18 @@ class Fishing(SimpleCommandModule):
         if active_event and active_event.get("effect") == "time_boost":
             effective_wait = wait_hours / active_event.get("multiplier", 1.0)
 
+        # boomer always gets treated as if they waited the sweet spot
+        if is_boomer:
+            effective_wait = random.uniform(18.0, 22.0)
+            wait_hours = effective_wait
+
         # Too early - nothing caught
-        if effective_wait < self.MIN_WAIT_HOURS:
+        if effective_wait < self.MIN_WAIT_HOURS and not is_boomer:
             self.safe_reply(connection, event, random.choice(TOO_EARLY_MESSAGES))
             return True
 
         # Danger zone - chance of bad outcome
-        if wait_hours > self.DANGER_THRESHOLD_HOURS and not forced_rare_flag:
+        if wait_hours > self.DANGER_THRESHOLD_HOURS and not forced_rare_flag and not is_boomer:
             hours_over = wait_hours - self.DANGER_THRESHOLD_HOURS
             bad_chance = min(0.1 + (hours_over * 0.05), 0.9)
 
@@ -965,7 +973,7 @@ class Fishing(SimpleCommandModule):
 
         # Junk check (base chance, boosted by murky waters)
         if not forced_rare_flag:
-            junk_chance = 0.10
+            junk_chance = 0.02 if is_boomer else 0.10
             if active_event and active_event.get("effect") == "junk_boost":
                 junk_chance *= active_event.get("multiplier", 1.0)
             # Apply artifact junk shield
@@ -1011,6 +1019,9 @@ class Fishing(SimpleCommandModule):
         artifact_rarity_boost = 0.0
         if artifact and artifact.get("bonus_type") == "rarity":
             artifact_rarity_boost = artifact.get("bonus_value", 0.0)
+        # boomer has inexplicably good rarity luck
+        if is_boomer:
+            artifact_rarity_boost += 0.35
         champion_bonuses = self._get_champion_bonuses(user_id)
         lure_rarity_boost = 0.40 if lure_type == "rarity" else 0.0
         rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost, champion_bonuses["rarity"], lure_rarity_boost)
@@ -1062,7 +1073,7 @@ class Fishing(SimpleCommandModule):
                 self.save_state()
 
         # Line break check - bigger fish = higher chance
-        if not forced_rare_applied:
+        if not forced_rare_applied and not is_boomer:
             break_chance = 0.02 + (weight / 1000) * 0.15
             if random.random() < break_chance:
                 player["lines_broken"] += 1
@@ -1153,6 +1164,10 @@ class Fishing(SimpleCommandModule):
             )
 
         total_xp = xp_gain + extra_xp
+
+        # boomer's cosmic luck extends to XP, quietly
+        if is_boomer:
+            total_xp = int(total_xp * 1.25)
 
         # Traveler champion XP bonus — reuse champion_bonuses fetched earlier
         if champion_bonuses["xp"] > 0:

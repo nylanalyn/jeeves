@@ -374,10 +374,10 @@ class Fishing(SimpleCommandModule):
             description="Reel in your catch"
         )
         self.register_command(
-            r'^\s*!fish(?:ing|stats)?\s*$',
+            r'^\s*!fish(?:ing|stats)?(?:\s+(\S+))?\s*$',
             self._cmd_fishing_stats,
             name="fishing",
-            description="Show your fishing statistics"
+            description="Show your (or another user's) fishing statistics"
         )
         self.register_command(
             r'^\s*!fish(?:ing)?\s+top\s*$',
@@ -1251,15 +1251,27 @@ class Fishing(SimpleCommandModule):
         if not self.is_enabled(event.target):
             return False
 
-        user_id = self.bot.get_user_id(username)
-        player = self._get_player(user_id)
+        target_nick = match.group(1)
+        if target_nick:
+            target_id = self.bot.get_user_id(target_nick)
+            players = self.get_state("players", {})
+            if target_id not in players:
+                self.safe_reply(connection, event, f"{target_nick} hasn't gone fishing yet.")
+                return True
+            display_name = self.bot.title_for(target_nick)
+        else:
+            target_nick = username
+            target_id = self.bot.get_user_id(username)
+            display_name = self.bot.title_for(username)
+
+        player = self._get_player(target_id)
         location = self._get_location_for_level(player["level"])
 
         xp_needed = self._get_xp_for_level(player["level"])
         xp_progress = f"{player['xp']}/{xp_needed}"
 
         stats = (
-            f"Fishing Stats for {self.bot.title_for(username)}: "
+            f"Fishing Stats for {display_name}: "
             f"Level {player['level']} ({location['name']}) | "
             f"XP: {xp_progress} | "
             f"Fish: {player['total_fish']} | "
@@ -1372,8 +1384,17 @@ class Fishing(SimpleCommandModule):
         players = self.get_state("players", {})
         user_map = self.bot.get_module_state("users").get("user_map", {})
 
-        # Compute champions from current player data
-        champion_ids = self._compute_annual_champions(players)
+        # Exclude known trollbots from championship consideration.
+        # They keep their cosmic luck all year — they just don't get to win.
+        CHAMPION_EXCLUDED_NICKS = {"boomer"}
+        excluded_ids = {
+            uid for uid, info in user_map.items()
+            if info.get("canonical_nick", "").lower() in CHAMPION_EXCLUDED_NICKS
+        }
+        eligible_players = {uid: p for uid, p in players.items() if uid not in excluded_ids}
+
+        # Compute champions from eligible player data
+        champion_ids = self._compute_annual_champions(eligible_players)
 
         # Snapshot winning stats before wiping players
         champions = {

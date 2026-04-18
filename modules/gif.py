@@ -95,6 +95,20 @@ class Gif(SimpleCommandModule):
         requested = self.get_state("gifs_requested", 0)
         found = self.get_state("gifs_found", 0)
         success_rate = (found / requested * 100) if requested > 0 else 0
-        
+
         self.safe_reply(connection, event, f"GIF stats: {found}/{requested} successful requests ({success_rate:.1f}% success rate).")
         return True
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!gif stats": (self._matrix_stats, "show GIF request statistics"),
+        }
+
+    def _matrix_stats(self, args: str) -> str:
+        requested = self.get_state("gifs_requested", 0)
+        found = self.get_state("gifs_found", 0)
+        rate = (found / requested * 100) if requested > 0 else 0
+        return f"GIF stats: {found}/{requested} successful ({rate:.1f}% success rate)."

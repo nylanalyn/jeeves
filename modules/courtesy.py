@@ -200,6 +200,54 @@ class Courtesy(SimpleCommandModule):
         self.safe_reply(connection, event, f"Blocked titles list reloaded ({len(self._blocked_titles)} entries).")
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!setgender":    (self._matrix_setgender,    "!setgender <nick> <gender>"),
+            "!setpronouns":  (self._matrix_setpronouns,  "!setpronouns <nick> <pronouns>"),
+            "!settitle":     (self._matrix_settitle,     "!settitle <nick> <title>"),
+            "!reloadtitles": (self._matrix_reloadtitles, "reload blocked titles list"),
+        }
+
+    def _matrix_setgender(self, args: str) -> str:
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: !setgender <nick> <gender>"
+        nick, gender_str = parts
+        user_id = self.bot.get_user_id(nick)
+        title = self._normalize_gender_to_title(gender_str.strip())
+        self._set_user_profile(user_id, title=title)
+        return f"{nick}'s title set to {self.bot.title_for(nick)}."
+
+    def _matrix_setpronouns(self, args: str) -> str:
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: !setpronouns <nick> <pronouns>"
+        nick, pronouns_str = parts
+        user_id = self.bot.get_user_id(nick)
+        pronouns = self._normalize_pronouns(pronouns_str.strip())
+        self._set_user_profile(user_id, pronouns=pronouns)
+        return f"{nick}'s pronouns set to {pronouns}."
+
+    def _matrix_settitle(self, args: str) -> str:
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: !settitle <nick> <title>"
+        nick, title_str = parts
+        user_id = self.bot.get_user_id(nick)
+        rejection = self._validate_title_reason(title_str.strip())
+        if rejection:
+            return f"Rejected: {rejection}"
+        title = self._validate_title(title_str.strip())
+        self._set_user_profile(user_id, title=title)
+        return f"{nick}'s title set to {self.bot.title_for(nick)}."
+
+    def _matrix_reloadtitles(self, args: str) -> str:
+        self._blocked_titles = self._load_blocked_titles()
+        return f"Blocked titles list reloaded ({len(self._blocked_titles)} entries)."
+
     def _cmd_whoami(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
         self._display_profile(connection, event, username, user_id)

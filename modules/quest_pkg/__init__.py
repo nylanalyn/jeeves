@@ -898,3 +898,301 @@ class Quest(SimpleCommandModule):
     def _cmd_boss_buff(self, connection, event, msg, username, match):
         """Admin command to toggle boss buff."""
         return quest_boss_hunt.cmd_boss_buff(self, connection, event, msg, username, match)
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!quest reload":                    (self._matrix_quest_reload,        "reload quest content from quest_content.json"),
+            "!quest challenge list":            (self._matrix_challenge_list,      "list available challenge paths"),
+            "!quest challenge reload":          (self._matrix_challenge_reload,    "reload challenge paths from file"),
+            "!quest challenge activate":        (self._matrix_challenge_activate,  "!quest challenge activate <path_id>"),
+            "!quest challenge deactivate":      (self._matrix_challenge_deactivate,"deactivate the current challenge path"),
+            "!quest admin ability grant":       (self._matrix_ability_grant,       "!quest admin ability grant <nick> <ability_id>"),
+            "!quest admin ability revoke":      (self._matrix_ability_revoke,      "!quest admin ability revoke <nick> <ability_id>"),
+            "!quest admin ability list":        (self._matrix_ability_list,        "!quest admin ability list <nick>"),
+            "!quest admin path set":            (self._matrix_path_set,            "!quest admin path set <nick> <path_id>"),
+            "!quest admin path clear":          (self._matrix_path_clear,          "!quest admin path clear <nick>"),
+            "!quest admin injury add":          (self._matrix_injury_add,          "!quest admin injury add <nick> [injury_name]"),
+            "!quest admin injury clear":        (self._matrix_injury_clear,        "!quest admin injury clear <nick>"),
+            "!quest admin injury list":         (self._matrix_injury_list,         "!quest admin injury list <nick>"),
+            "!quest admin boss spawn":          (self._matrix_boss_spawn,          "!quest admin boss spawn [#channel]"),
+            "!quest admin boss damage":         (self._matrix_boss_damage,         "!quest admin boss damage <amount> [#channel]"),
+            "!quest admin boss buff":           (self._matrix_boss_buff,           "!quest admin boss buff <on|off|status> [#channel]"),
+        }
+
+    def _matrix_quest_reload(self, args: str) -> str:
+        self.quest_content = quest_core.load_content(self)
+        return "Quest content reloaded from quest_content.json."
+
+    def _matrix_challenge_list(self, args: str) -> str:
+        paths = self.challenge_paths.get("paths", {})
+        if not paths:
+            return "No challenge paths defined."
+        active_path = self.challenge_paths.get("active_path")
+        lines = ["Available challenge paths:"]
+        for path_id, path_data in paths.items():
+            marker = " [ACTIVE]" if path_id == active_path else ""
+            lines.append(f"  {path_id}: {path_data.get('name', path_id)}{marker}")
+        return "\n".join(lines)
+
+    def _matrix_challenge_reload(self, args: str) -> str:
+        self.challenge_paths = quest_core.load_challenge_paths(self)
+        return "Challenge paths reloaded from challenge_paths.json."
+
+    def _matrix_challenge_activate(self, args: str) -> str:
+        path_id = args.strip()
+        if not path_id:
+            return "Usage: !quest challenge activate <path_id>"
+        if path_id not in self.challenge_paths.get("paths", {}):
+            return f"Challenge path '{path_id}' not found."
+        self.challenge_paths["active_path"] = path_id
+        quest_core.save_challenge_paths(self)
+        name = self.challenge_paths["paths"][path_id].get("name", path_id)
+        return f"Challenge path '{name}' activated."
+
+    def _matrix_challenge_deactivate(self, args: str) -> str:
+        self.challenge_paths["active_path"] = None
+        quest_core.save_challenge_paths(self)
+        return "Challenge path deactivated."
+
+    def _matrix_ability_grant(self, args: str) -> str:
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: !quest admin ability grant <nick> <ability_id>"
+        nick, ability_id = parts
+        target_id = self.bot.get_user_id(nick)
+        abilities = self.challenge_paths.get("abilities", {})
+        if ability_id not in abilities:
+            return f"Ability '{ability_id}' not found. Available: {', '.join(abilities.keys())}"
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        player = players[target_id]
+        player.setdefault("unlocked_abilities", [])
+        if ability_id in player["unlocked_abilities"]:
+            return f"{nick} already has the {ability_id} ability."
+        player["unlocked_abilities"].append(ability_id)
+        self.set_state("players", players)
+        self.save_state()
+        name = abilities[ability_id].get("name", ability_id)
+        return f"Granted {name} ability to {nick}."
+
+    def _matrix_ability_revoke(self, args: str) -> str:
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: !quest admin ability revoke <nick> <ability_id>"
+        nick, ability_id = parts
+        target_id = self.bot.get_user_id(nick)
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        player = players[target_id]
+        unlocked = player.get("unlocked_abilities", [])
+        if ability_id not in unlocked:
+            return f"{nick} doesn't have the {ability_id} ability."
+        unlocked.remove(ability_id)
+        player["unlocked_abilities"] = unlocked
+        self.set_state("players", players)
+        self.save_state()
+        abilities = self.challenge_paths.get("abilities", {})
+        name = abilities.get(ability_id, {}).get("name", ability_id)
+        return f"Revoked {name} ability from {nick}."
+
+    def _matrix_ability_list(self, args: str) -> str:
+        nick = args.strip()
+        if not nick:
+            return "Usage: !quest admin ability list <nick>"
+        target_id = self.bot.get_user_id(nick)
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        unlocked = players[target_id].get("unlocked_abilities", [])
+        if not unlocked:
+            return f"{nick} has no unlocked abilities."
+        abilities = self.challenge_paths.get("abilities", {})
+        names = [abilities.get(a, {}).get("name", a) for a in unlocked]
+        return f"{nick}'s abilities: {', '.join(names)}"
+
+    def _matrix_path_set(self, args: str) -> str:
+        parts = args.split(None, 1)
+        if len(parts) < 2:
+            return "Usage: !quest admin path set <nick> <path_id>"
+        nick, path_id = parts
+        target_id = self.bot.get_user_id(nick)
+        paths = self.challenge_paths.get("paths", {})
+        if path_id not in paths:
+            return f"Path '{path_id}' not found. Available: {', '.join(paths.keys())}"
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        player = players[target_id]
+        old_path = player.get("challenge_path")
+        player["challenge_path"] = path_id
+        player["challenge_stats"] = {"medkits_used_this_prestige": 0}
+        self.set_state("players", players)
+        self.save_state()
+        new_name = paths[path_id].get("name", path_id)
+        if old_path:
+            old_name = paths.get(old_path, {}).get("name", old_path)
+            return f"Changed {nick}'s path from {old_name} to {new_name}."
+        return f"Set {nick}'s challenge path to {new_name}."
+
+    def _matrix_path_clear(self, args: str) -> str:
+        nick = args.strip()
+        if not nick:
+            return "Usage: !quest admin path clear <nick>"
+        target_id = self.bot.get_user_id(nick)
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        player = players[target_id]
+        old_path = player.get("challenge_path")
+        if not old_path:
+            return f"{nick} is not on a challenge path."
+        player["challenge_path"] = None
+        player["challenge_stats"] = {"medkits_used_this_prestige": 0}
+        self.set_state("players", players)
+        self.save_state()
+        paths = self.challenge_paths.get("paths", {})
+        old_name = paths.get(old_path, {}).get("name", old_path)
+        return f"Cleared {nick}'s challenge path ({old_name})."
+
+    def _matrix_injury_add(self, args: str) -> str:
+        import types as _types
+        parts = args.split(None, 1)
+        if not parts:
+            return "Usage: !quest admin injury add <nick> [injury_name]"
+        nick = parts[0]
+        injury_name = parts[1].strip() if len(parts) > 1 else None
+        channel = self.bot.primary_channel
+        match = _types.SimpleNamespace(
+            group=lambda n: nick if n == 1 else injury_name,
+            lastindex=2 if injury_name else 1
+        )
+        event = _types.SimpleNamespace(target=channel, source="matrix!admin@matrix")
+        # Delegate to the existing IRC handler logic via a string-capture approach
+        # We replicate the core logic directly to return a string.
+        target_id = self.bot.get_user_id(nick)
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        injury_config = self.get_injury_config(channel)
+        possible_injuries = injury_config.get("injuries", [])
+        if not possible_injuries:
+            return "No injuries are configured."
+        if injury_name:
+            injury = next((i for i in possible_injuries if i.get("name", "").lower() == injury_name.lower()), None)
+            if not injury:
+                available = ", ".join(i.get("name", "") for i in possible_injuries)
+                return f"Injury '{injury_name}' not found. Available: {available}"
+        else:
+            import random as _random
+            injury = _random.choice(possible_injuries)
+        player = players[target_id]
+        if "active_injury" in player:
+            player["active_injuries"] = [player.pop("active_injury")]
+        player.setdefault("active_injuries", [])
+        if sum(1 for i in player["active_injuries"] if i["name"] == injury["name"]) >= 2:
+            return f"{nick} already has 2 {injury['name']} injuries (max)."
+        from datetime import datetime as _dt, timedelta as _td
+        expires_at = _dt.now(constants.UTC) + _td(hours=injury.get("duration_hours", 1))
+        player["active_injuries"].append({
+            "name": injury["name"],
+            "description": injury["description"],
+            "expires_at": expires_at.isoformat(),
+            "effects": injury.get("effects", {}),
+        })
+        self.set_state("players", players)
+        self.save_state()
+        return f"Added {injury['name']} to {nick} (duration: {injury.get('duration_hours', 1)}h)."
+
+    def _matrix_injury_clear(self, args: str) -> str:
+        nick = args.strip()
+        if not nick:
+            return "Usage: !quest admin injury clear <nick>"
+        target_id = self.bot.get_user_id(nick)
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        player = players[target_id]
+        if "active_injury" in player:
+            player["active_injuries"] = [player.pop("active_injury")]
+        injuries = player.get("active_injuries", [])
+        if not injuries:
+            return f"{nick} has no active injuries."
+        names = [i["name"] for i in injuries]
+        player["active_injuries"] = []
+        self.set_state("players", players)
+        self.save_state()
+        return f"Cleared {len(names)} injury/injuries from {nick}: {', '.join(names)}."
+
+    def _matrix_injury_list(self, args: str) -> str:
+        nick = args.strip()
+        if not nick:
+            return "Usage: !quest admin injury list <nick>"
+        target_id = self.bot.get_user_id(nick)
+        players = self.get_state("players", {})
+        if target_id not in players:
+            return f"Player '{nick}' has not started playing yet."
+        player = players[target_id]
+        if "active_injury" in player:
+            player["active_injuries"] = [player.pop("active_injury")]
+        injuries = player.get("active_injuries", [])
+        if not injuries:
+            return f"{nick} has no active injuries."
+        from datetime import datetime as _dt
+        details = []
+        for inj in injuries:
+            expires_str = inj.get("expires_at", "")
+            if expires_str:
+                try:
+                    expires_at = _dt.fromisoformat(expires_str)
+                    time_left = quest_utils.format_timedelta(expires_at)
+                    details.append(f"{inj['name']} (expires in {time_left})")
+                except (ValueError, TypeError):
+                    details.append(inj["name"])
+            else:
+                details.append(inj["name"])
+        return f"{nick}'s injuries: {', '.join(details)}"
+
+    def _matrix_boss_spawn(self, args: str) -> str:
+        import types as _types
+        channel = args.strip() or self.bot.primary_channel
+        event = _types.SimpleNamespace(target=channel, source="matrix!admin@matrix")
+        quest_boss_hunt.cmd_boss_spawn(self, self.bot.connection, event, "", "matrix-admin", None)
+        return f"Boss spawned in {channel}."
+
+    def _matrix_boss_damage(self, args: str) -> str:
+        import types as _types
+        parts = args.split()
+        channel = self.bot.primary_channel
+        if parts and parts[-1].startswith("#"):
+            channel = parts[-1]
+            parts = parts[:-1]
+        if not parts:
+            return "Usage: !quest admin boss damage <amount> [#channel]"
+        try:
+            damage = int(parts[0])
+        except ValueError:
+            return "Usage: !quest admin boss damage <amount> [#channel]"
+        event = _types.SimpleNamespace(target=channel, source="matrix!admin@matrix")
+        match = _types.SimpleNamespace(group=lambda n: str(damage) if n == 1 else None, lastindex=1)
+        quest_boss_hunt.cmd_boss_damage(self, self.bot.connection, event, "", "matrix-admin", match)
+        return f"Dealt {damage} damage to boss in {channel}."
+
+    def _matrix_boss_buff(self, args: str) -> str:
+        import types as _types
+        parts = args.split()
+        channel = self.bot.primary_channel
+        if parts and parts[-1].startswith("#"):
+            channel = parts[-1]
+            parts = parts[:-1]
+        action = parts[0].lower() if parts else "status"
+        if action not in ("on", "off", "status"):
+            return "Usage: !quest admin boss buff <on|off|status> [#channel]"
+        event = _types.SimpleNamespace(target=channel, source="matrix!admin@matrix")
+        match = _types.SimpleNamespace(group=lambda n: action if n == 1 else None, lastindex=1)
+        quest_boss_hunt.cmd_boss_buff(self, self.bot.connection, event, "", "matrix-admin", match)
+        return f"Boss buff '{action}' applied in {channel}."

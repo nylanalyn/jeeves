@@ -118,3 +118,24 @@ class Flirt(SimpleCommandModule):
         self.save_state()
         self.safe_reply(connection, event, "Flirt cooldowns have been reset.")
         return True
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!flirt stats": (self._matrix_stats, "show flirt statistics"),
+            "!flirt reset": (self._matrix_reset_cooldowns, "reset all flirt cooldowns"),
+        }
+
+    def _matrix_stats(self, args: str) -> str:
+        total = self.get_state("total_flirts_received", 0)
+        responded = self.get_state("responses_given", 0)
+        rate = (responded / total * 100) if total > 0 else 0
+        return f"Flirt stats: Received={total}, Responded={responded} ({rate:.1f}% response rate)."
+
+    def _matrix_reset_cooldowns(self, args: str) -> str:
+        self.set_state("last_global_response", 0.0)
+        self.set_state("user_last_response", {})
+        self.save_state()
+        return "Flirt cooldowns reset."

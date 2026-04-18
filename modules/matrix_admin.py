@@ -216,35 +216,77 @@ class MatrixAdmin(SimpleCommandModule):
 
     # ── Command dispatch ──────────────────────────────────────
 
+    # Built-in commands: { "!cmd": (handler, description) }
+    # Handler signature: (args: str) -> None
+    @property
+    def _builtin_routes(self) -> dict:
+        return {
+            "!modules":      (lambda a: self._cmd_modules(),          "list loaded modules"),
+            "!reload":       (lambda a: self._cmd_reload(),           "reload all modules"),
+            "!load":         (lambda a: self._cmd_load(a),            "!load <module>"),
+            "!unload":       (lambda a: self._cmd_unload(a),          "!unload <module>"),
+            "!join":         (lambda a: self._cmd_join(a),            "!join <#channel>"),
+            "!part":         (lambda a: self._cmd_part(a),            "!part <#channel> [msg]"),
+            "!say":          (lambda a: self._cmd_say(a),             "!say <#channel> <message>"),
+            "!debug":        (lambda a: self._cmd_debug(a),           "!debug <on|off> [module]"),
+            "!config":       (lambda a: self._cmd_config(a),          "!config reload"),
+            "!kill":         (lambda a: self._cmd_kill(),             "shut down the bot"),
+            "!status":       (lambda a: self._cmd_status(),           "connection status"),
+            "!help":         (lambda a: self._cmd_help(),             "this message"),
+        }
+
+    def _plugin_commands(self) -> dict:
+        """Collect matrix_admin_commands from all loaded plugins.
+
+        Each plugin may expose:
+            matrix_admin_commands = {
+                "!cmd prefix": (handler_fn, "description"),
+                ...
+            }
+        where handler_fn(args: str) -> str returns the reply text.
+        """
+        cmds: dict = {}
+        for plugin in self.bot.pm.plugins.values():
+            contrib = getattr(plugin, "matrix_admin_commands", None)
+            if isinstance(contrib, dict):
+                cmds.update(contrib)
+        return cmds
+
     def _dispatch(self, text: str) -> None:
+        text_lower = text.lower()
+
+        # Built-ins: single-word match on first token
         parts = text.split(None, 1)
         cmd = parts[0].lower()
         args = parts[1].strip() if len(parts) > 1 else ""
 
-        routes = {
-            "!modules":       lambda a: self._cmd_modules(),
-            "!reload":        lambda a: self._cmd_reload(),
-            "!load":          lambda a: self._cmd_load(a),
-            "!unload":        lambda a: self._cmd_unload(a),
-            "!join":          lambda a: self._cmd_join(a),
-            "!part":          lambda a: self._cmd_part(a),
-            "!say":           lambda a: self._cmd_say(a),
-            "!debug":         lambda a: self._cmd_debug(a),
-            "!config":        lambda a: self._cmd_config(a),
-            "!kill":          lambda a: self._cmd_kill(),
-            "!status":        lambda a: self._cmd_status(),
-            "!help":          lambda a: self._cmd_help(),
-        }
-
-        handler = routes.get(cmd)
-        if handler:
+        builtin = self._builtin_routes.get(cmd)
+        if builtin:
+            handler, _ = builtin
             try:
                 handler(args)
             except Exception as e:
                 self.log_debug(f"[matrix_admin] command error ({cmd}): {e}")
                 self._send(f"Error executing {cmd}: {e}")
-        else:
-            self._send(f"Unknown command: {cmd}. Send !help for available commands.")
+            return
+
+        # Plugin commands: longest-prefix match (supports multi-word keys)
+        plugin_cmds = self._plugin_commands()
+        for key in sorted(plugin_cmds.keys(), key=len, reverse=True):
+            key_lower = key.lower()
+            if text_lower == key_lower or text_lower.startswith(key_lower + " "):
+                remaining = text[len(key):].strip()
+                handler, _ = plugin_cmds[key]
+                try:
+                    result = handler(remaining)
+                    if result:
+                        self._send(result)
+                except Exception as e:
+                    self.log_debug(f"[matrix_admin] plugin command error ({key}): {e}")
+                    self._send(f"Error executing {key}: {e}")
+                return
+
+        self._send(f"Unknown command: {cmd}. Send !help for available commands.")
 
     # ── Command handlers ──────────────────────────────────────
 
@@ -358,19 +400,15 @@ class MatrixAdmin(SimpleCommandModule):
         )
 
     def _cmd_help(self) -> None:
-        self._send(
-            "Jeeves admin commands via Matrix:\n"
-            "!status — connection status\n"
-            "!modules — list loaded modules\n"
-            "!reload — reload all modules\n"
-            "!load <module> — load a module\n"
-            "!unload <module> — unload a module\n"
-            "!config reload — reload config.yaml\n"
-            "!join <#channel> — join a channel\n"
-            "!part <#channel> [msg] — leave a channel\n"
-            "!say <#channel> <message> — speak in a channel\n"
-            "!debug <on|off> — toggle global debug\n"
-            "!debug <module> <on|off> — toggle module debug\n"
-            "!kill — shut down the bot\n"
-            "!help — this message"
-        )
+        lines = ["Jeeves admin commands via Matrix:"]
+        for cmd, (_, desc) in sorted(self._builtin_routes.items()):
+            lines.append(f"{cmd} — {desc}")
+
+        plugin_cmds = self._plugin_commands()
+        if plugin_cmds:
+            lines.append("")
+            lines.append("Module commands:")
+            for cmd, (_, desc) in sorted(plugin_cmds.items()):
+                lines.append(f"{cmd} — {desc}")
+
+        self._send("\n".join(lines))

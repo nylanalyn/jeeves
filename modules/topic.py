@@ -294,3 +294,28 @@ class TopicOracle(SimpleCommandModule):
             f"Last topics: {'; '.join(parts)}. Next rotation scheduled at {next_run}.",
         )
         return True
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!topic refresh": (self._matrix_refresh, "regenerate and apply topics for all channels"),
+            "!topic status":  (self._matrix_status,  "show last topic per channel and next rotation time"),
+        }
+
+    def _matrix_refresh(self, args: str) -> str:
+        updated = self._refresh_topics(reason="manual:matrix")
+        if not updated:
+            return "No topics updated. Check logs for details."
+        return "Updated topics: " + "; ".join(f"{chan}: {topic}" for chan, topic in updated)
+
+    def _matrix_status(self, args: str) -> str:
+        state = self.get_state()
+        next_run = state.get("next_run", "unknown")
+        last_topics = state.get("last_topics", {})
+        if not last_topics:
+            return f"No topic history yet. Next run at {next_run}."
+        parts = [f"{ch}: {d.get('topic','?')} (at {d.get('timestamp','unknown')})"
+                 for ch, d in last_topics.items()]
+        return f"Last topics: {'; '.join(parts)}. Next rotation at {next_run}."

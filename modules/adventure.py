@@ -239,6 +239,50 @@ class Adventure(SimpleCommandModule):
             self.safe_reply(connection, event, "There is no adventure in this channel to modify.")
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!adventure cancel":  (self._matrix_cancel,  "cancel the current adventure"),
+            "!adventure shorten": (self._matrix_shorten, "!adventure shorten <seconds>"),
+            "!adventure extend":  (self._matrix_extend,  "!adventure extend <seconds>"),
+        }
+
+    def _matrix_cancel(self, args: str) -> str:
+        current = self.get_state("current")
+        if not current:
+            return "No adventure is currently in progress."
+        room = current.get("room", "unknown")
+        self._close_adventure_round()
+        return f"Adventure cancelled (was in {room})."
+
+    def _matrix_shorten(self, args: str) -> str:
+        try:
+            secs = int(args.strip())
+        except (ValueError, AttributeError):
+            return "Usage: !adventure shorten <seconds>"
+        current = self.get_state("current")
+        if not current:
+            return "No adventure in progress."
+        current["close_epoch"] = float(current.get("close_epoch", 0)) - secs
+        self.set_state("current", current)
+        self.save_state()
+        return f"Adventure timer shortened by {secs}s."
+
+    def _matrix_extend(self, args: str) -> str:
+        try:
+            secs = int(args.strip())
+        except (ValueError, AttributeError):
+            return "Usage: !adventure extend <seconds>"
+        current = self.get_state("current")
+        if not current:
+            return "No adventure in progress."
+        current["close_epoch"] = float(current.get("close_epoch", 0)) + secs
+        self.set_state("current", current)
+        self.save_state()
+        return f"Adventure timer extended by {secs}s."
+
     def _get_two_places(self) -> Tuple[str, str]:
         return tuple(random.sample(self.PLACES, 2))
 

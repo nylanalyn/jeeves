@@ -1251,6 +1251,24 @@ class Fishing(SimpleCommandModule):
         )
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!fish bless": (self._matrix_bless, "!fish bless <nick> — guarantee rare/legendary next catch"),
+        }
+
+    def _matrix_bless(self, args: str) -> str:
+        nick = args.strip()
+        if not nick:
+            return "Usage: !fish bless <nick>"
+        target_id = self.bot.get_user_id(nick)
+        player = self._get_player(target_id)
+        player["force_rare_legendary"] = True
+        self._save_player(target_id, player)
+        return f"Blessed {nick} — their next catch will be rare or legendary."
+
     def _cmd_fishing_stats(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False

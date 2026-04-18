@@ -372,3 +372,26 @@ class Roadtrip(SimpleCommandModule):
         else:
             self._open_rsvp_window(connection, event)
         return True
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!roadtrip stats":   (self._matrix_stats,   "roadtrip stats and pending reports"),
+            "!roadtrip trigger": (self._matrix_trigger, "!roadtrip trigger [#channel] — start a roadtrip"),
+        }
+
+    def _matrix_stats(self, args: str) -> str:
+        stats = self.get_state()
+        return (f"Roadtrip stats: {len(stats.get('pending_reports', []))} reports pending. "
+                f"Message counts: {stats.get('messages_since_last', {})}")
+
+    def _matrix_trigger(self, args: str) -> str:
+        import types
+        channel = args.strip() or self.bot.primary_channel
+        if self.get_state("current_rsvp"):
+            return "An RSVP is already in progress."
+        event = types.SimpleNamespace(target=channel)
+        self._open_rsvp_window(self.bot.connection, event)
+        return f"Roadtrip triggered in {channel}."

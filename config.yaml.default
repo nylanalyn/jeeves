@@ -1,6 +1,18 @@
 # Jeeves Bot Configuration
 # This is the central configuration file for Jeeves.
 
+# --- Matrix Admin Bridge ---
+# Optional: lets you send admin commands from a Matrix room.
+# Leave homeserver empty to disable the bridge.
+matrix:
+  homeserver: ""                    # e.g. "https://matrix.example.com"
+  room_id: ""                       # e.g. "!abc123:example.com"
+  access_token: "${MATRIX_ACCESS_TOKEN}"  # preferred — set env var
+  # OR use username + password instead of access_token:
+  # username: "${MATRIX_USERNAME}"
+  # password: "${MATRIX_PASSWORD}"
+  admin_user: ""                    # optional: "@you:example.com" — only accept commands from this user
+
 # --- Core Settings ---
 core:
     # A list of nicknames that are considered administrators.

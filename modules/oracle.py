@@ -182,3 +182,23 @@ class Oracle(SimpleCommandModule):
         self.safe_reply(connection, event, "System prompt and parameters have been reloaded from disk.")
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!oracle reset":  (self._matrix_reset,  "!oracle reset [#channel] — clear conversation history"),
+            "!oracle reload": (self._matrix_reload, "reload system prompt from disk"),
+        }
+
+    def _matrix_reset(self, args: str) -> str:
+        channel = args.strip() or self.bot.primary_channel
+        if channel in self.history:
+            self.history[channel].clear()
+            return f"Conversation history cleared for {channel}."
+        return f"No history to clear for {channel}."
+
+    def _matrix_reload(self, args: str) -> str:
+        self._load_prompt_and_params()
+        return "System prompt and parameters reloaded from disk."
+

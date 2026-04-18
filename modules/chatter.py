@@ -193,3 +193,33 @@ class Chatter(SimpleCommandModule):
         self._say_weekly()
         self.safe_reply(connection, event, "Weekly message triggered.")
         return True
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!chatter stats":       (self._matrix_stats,       "show chatter statistics"),
+            "!chatter test daily":  (self._matrix_test_daily,  "trigger a daily chatter message"),
+            "!chatter test weekly": (self._matrix_test_weekly, "trigger a weekly chatter message"),
+        }
+
+    def _matrix_stats(self, args: str) -> str:
+        stats = self.get_state()
+        lines = [
+            f"Daily messages sent: {stats.get('daily_count', 0)}",
+            f"Weekly messages sent: {stats.get('weekly_count', 0)}",
+            f"Last daily: {stats.get('last_daily', 'Never')}",
+            f"Last weekly: {stats.get('last_weekly', 'Never')}",
+            f"Response counts: {dict(stats.get('response_counts', {}))}",
+            f"Next schedules: {dict(stats.get('schedule_times', {}))}",
+        ]
+        return "Chatter stats:\n" + "\n".join(lines)
+
+    def _matrix_test_daily(self, args: str) -> str:
+        self._say_daily()
+        return "Daily message triggered."
+
+    def _matrix_test_weekly(self, args: str) -> str:
+        self._say_weekly()
+        return "Weekly message triggered."

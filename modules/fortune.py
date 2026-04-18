@@ -58,6 +58,19 @@ class Fortune(SimpleCommandModule):
         self.safe_reply(connection, event, f"Fortune files reloaded. {total_loaded} fortunes available.")
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!fortune reload": (self._matrix_reload, "reload fortune files from disk"),
+        }
+
+    def _matrix_reload(self, args: str) -> str:
+        self._load_all_fortunes()
+        total = sum(len(f) for f in self._fortunes.values())
+        return f"Fortune files reloaded. {total} fortunes available."
+
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target): return False
 

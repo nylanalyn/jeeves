@@ -172,3 +172,18 @@ class Arithmetic(SimpleCommandModule):
             f"Observed reliability: {reliability:.1f}%."
         )
         return True
+
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!arithmetic stats": (self._matrix_stats, "show arithmetic reliability statistics"),
+        }
+
+    def _matrix_stats(self, args: str) -> str:
+        total = self.get_state("calculations_performed", 0)
+        whimsical = self.get_state("whimsical_results", 0)
+        reliability = ((total - whimsical) / total * 100) if total > 0 else 100
+        return (f"Arithmetic: {total} calculations, {whimsical} whimsical "
+                f"({reliability:.1f}% reliable).")

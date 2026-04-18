@@ -203,6 +203,62 @@ class Ideas(ModuleBase):
         self.safe_reply(connection, event, f"Removed winner: \"{removed['idea']}\" by {removed['username']}.")
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!idea-poll":      (self._matrix_poll,          "!idea-poll [#channel] — start idea poll"),
+            "!winners delete": (self._matrix_delete_winner, "!winners delete <number|all>"),
+        }
+
+    def _matrix_poll(self, args: str) -> str:
+        channel = args.strip() or self.bot.primary_channel
+        if self._active_poll:
+            return "A poll is already in progress."
+        ideas = self.get_state("ideas", [])
+        if not ideas:
+            return "There are no pending ideas to vote on."
+        poll_duration_minutes = self.get_config_value("poll_duration_minutes", channel, default=10)
+        self._active_poll = {
+            "ideas": ideas.copy(),
+            "channel": channel,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_by": "matrix-admin",
+        }
+        self._votes = {}
+        self.set_state("ideas", [])
+        self.save_state()
+        poll_duration_seconds = poll_duration_minutes * 60
+        schedule.every(poll_duration_seconds).seconds.do(self._end_poll).tag(f"{self.name}-poll")
+        self.safe_say(f"The idea poll is now open! {poll_duration_minutes} min to vote. Use !vote <number>.", target=channel)
+        for i, idea in enumerate(self._active_poll["ideas"], 1):
+            self.safe_say(f"{i}. {idea['username']}: \"{idea['idea']}\"", target=channel)
+        return f"Poll started in {channel} with {len(ideas)} ideas ({poll_duration_minutes} min)."
+
+    def _matrix_delete_winner(self, args: str) -> str:
+        target = args.strip().lower()
+        if not target:
+            return "Usage: !winners delete <number|all>"
+        winners = self.get_state("winners", [])
+        if not winners:
+            return "There are no winners to delete."
+        if target == "all":
+            count = len(winners)
+            self.set_state("winners", [])
+            self.save_state()
+            return f"All {count} winner(s) cleared."
+        try:
+            index = int(target)
+        except ValueError:
+            return "Please specify a number or 'all'."
+        if index < 1 or index > len(winners):
+            return f"Invalid number. Choose between 1 and {len(winners)}."
+        removed = winners.pop(index - 1)
+        self.set_state("winners", winners)
+        self.save_state()
+        return f"Removed: \"{removed['idea']}\" by {removed['username']}."
+
     # --- Poll Management ---
 
     def _end_poll(self):

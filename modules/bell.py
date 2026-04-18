@@ -171,3 +171,19 @@ class Bell(SimpleCommandModule):
         self.safe_reply(connection, event, "As you wish. The bell has been rung.")
         return True
 
+    # ── Matrix admin integration ──────────────────────────────
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!bell ring": (self._matrix_ring, "force the service bell to ring immediately"),
+        }
+
+    def _matrix_ring(self, args: str) -> str:
+        if self.get_state("active_bell"):
+            return "The bell is already ringing."
+        import schedule
+        schedule.clear(f"{self.name}-ring")
+        self._ring_the_bell()
+        return "The bell has been rung."
+

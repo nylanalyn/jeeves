@@ -33,13 +33,6 @@ class Darts(SimpleCommandModule):
         "The oche holds {title} as the dart flies...",
     ]
 
-    BUST_MESSAGES: List[str] = [
-        "Bust! {title} threw {points} but only needed {remaining}. No score this turn.",
-        "Overcooked! {title} needed {remaining} but threw {points}. The oche is a cruel place.",
-        "Ah, too much! {title} had {remaining} left but scored {points}. Score stands.",
-        "So close, yet so far — {title} overshot with {points} when {remaining} was needed.",
-    ]
-
     WIN_MESSAGES: List[str] = [
         "Magnificent! {title} has reached zero with the precision of a Swiss timepiece! The household rises in applause!",
         "A masterful checkout! {title} hits the mark with unerring accuracy! I shall inform the press at once.",
@@ -158,7 +151,7 @@ class Darts(SimpleCommandModule):
             else:
                 bust_msg = f"Bust! {title} threw {points} but only needed {remaining}. No score this turn."
             
-            throw_template = random.choice(self.THROW_MESSAGES)
+            throw_template = random.choice(self.THROW_MESSAGES).format(title=title)
             self.safe_reply(connection, event, f"{throw_template} {label} ({points} points). {bust_msg}")
             return True
 
@@ -169,7 +162,7 @@ class Darts(SimpleCommandModule):
         # Check for win
         if new_remaining == 0:
             win_msg = random.choice(self.WIN_MESSAGES).format(title=title)
-            throw_template = random.choice(self.THROW_MESSAGES)
+            throw_template = random.choice(self.THROW_MESSAGES).format(title=title)
             self.safe_reply(
                 connection,
                 event,
@@ -184,7 +177,7 @@ class Darts(SimpleCommandModule):
             return True
 
         # Normal throw - show remaining
-        throw_template = random.choice(self.THROW_MESSAGES)
+        throw_template = random.choice(self.THROW_MESSAGES).format(title=title)
         self.safe_reply(
             connection,
             event,
@@ -220,7 +213,7 @@ class Darts(SimpleCommandModule):
 
         score_parts = []
         for user_id, data in sorted_players:
-            nick = self.bot.get_nick_for_id(user_id)
+            nick = self.bot.get_user_nick(user_id)
             if nick:
                 score_parts.append(f"{self.bot.title_for(nick)}: {data['remaining']}")
 

@@ -423,12 +423,6 @@ class Fishing(SimpleCommandModule):
             description="[Admin] Guarantee a user's next catch is rare or legendary"
         )
         self.register_command(
-            r'^\s*!real\s*$',
-            self._cmd_real,
-            name="real",
-            description="Share a spooky but true fact"
-        )
-        self.register_command(
             r'^\s*!lure\s*$',
             self._cmd_lure,
             name="lure",
@@ -1673,14 +1667,6 @@ class Fishing(SimpleCommandModule):
             connection, event,
             f"{self.bot.title_for(username)}, I've sent you the fishing guide."
         )
-        return True
-
-    def _cmd_real(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
-        if not self.is_enabled(event.target):
-            return False
-
-        fact = random.choice(REAL_FACTS)
-        self.safe_reply(connection, event, f"Real fact: {fact}")
         return True
 
     def _cmd_lure(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:

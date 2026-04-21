@@ -752,8 +752,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_cast(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         user_id = self.bot.get_user_id(username)
         active_casts = self.get_state("active_casts", {})
@@ -877,8 +875,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_reel(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         user_id = self.bot.get_user_id(username)
         active_casts = self.get_state("active_casts", {})
@@ -907,9 +903,6 @@ class Fishing(SimpleCommandModule):
         self.set_state("active_casts", active_casts)
         self.save_state()
 
-        # boomer gets a little cosmic luck. quietly.
-        is_boomer = username.lower() == "boomer"
-
         # Get active event
         active_event = self._get_active_event(location_name)
 
@@ -918,18 +911,13 @@ class Fishing(SimpleCommandModule):
         if active_event and active_event.get("effect") == "time_boost":
             effective_wait = wait_hours / active_event.get("multiplier", 1.0)
 
-        # boomer always gets treated as if they waited the sweet spot
-        if is_boomer:
-            effective_wait = random.uniform(18.0, 22.0)
-            wait_hours = effective_wait
-
         # Too early - nothing caught
-        if effective_wait < self.MIN_WAIT_HOURS and not is_boomer:
+        if effective_wait < self.MIN_WAIT_HOURS:
             self.safe_reply(connection, event, random.choice(TOO_EARLY_MESSAGES))
             return True
 
         # Danger zone - chance of bad outcome
-        if wait_hours > self.DANGER_THRESHOLD_HOURS and not forced_rare_flag and not is_boomer:
+        if wait_hours > self.DANGER_THRESHOLD_HOURS and not forced_rare_flag:
             hours_over = wait_hours - self.DANGER_THRESHOLD_HOURS
             bad_chance = min(0.1 + (hours_over * 0.05), 0.9)
 
@@ -977,7 +965,7 @@ class Fishing(SimpleCommandModule):
 
         # Junk check (base chance, boosted by murky waters)
         if not forced_rare_flag:
-            junk_chance = 0.02 if is_boomer else 0.10
+            junk_chance = 0.10
             if active_event and active_event.get("effect") == "junk_boost":
                 junk_chance *= active_event.get("multiplier", 1.0)
             # Apply artifact junk shield
@@ -1023,9 +1011,6 @@ class Fishing(SimpleCommandModule):
         artifact_rarity_boost = 0.0
         if artifact and artifact.get("bonus_type") == "rarity":
             artifact_rarity_boost = artifact.get("bonus_value", 0.0)
-        # boomer has inexplicably good rarity luck
-        if is_boomer:
-            artifact_rarity_boost += 0.35
         champion_bonuses = self._get_champion_bonuses(user_id)
         lure_rarity_boost = 0.40 if lure_type == "rarity" else 0.0
         rarity = self._select_rarity(effective_wait, active_event, artifact_rarity_boost, champion_bonuses["rarity"], lure_rarity_boost)
@@ -1077,7 +1062,7 @@ class Fishing(SimpleCommandModule):
                 self.save_state()
 
         # Line break check - bigger fish = higher chance
-        if not forced_rare_applied and not is_boomer:
+        if not forced_rare_applied:
             break_chance = 0.02 + (weight / 1000) * 0.15
             if random.random() < break_chance:
                 player["lines_broken"] += 1
@@ -1168,10 +1153,6 @@ class Fishing(SimpleCommandModule):
             )
 
         total_xp = xp_gain + extra_xp
-
-        # boomer's cosmic luck extends to XP, quietly
-        if is_boomer:
-            total_xp = int(total_xp * 1.25)
 
         # Traveler champion XP bonus — reuse champion_bonuses fetched earlier
         if champion_bonuses["xp"] > 0:
@@ -1272,8 +1253,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_fishing_stats(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         target_nick = match.group(1)
         if target_nick:
@@ -1312,8 +1291,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_fishing_top(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         players = self.get_state("players", {})
@@ -1360,8 +1337,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_fishing_champions(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         champions = self.get_state("fishing_champions", {})
@@ -1412,12 +1387,12 @@ class Fishing(SimpleCommandModule):
         players = self.get_state("players", {})
         user_map = self.bot.get_module_state("users").get("user_map", {})
 
-        # Exclude known trollbots from championship consideration.
-        # They keep their cosmic luck all year — they just don't get to win.
-        CHAMPION_EXCLUDED_NICKS = {"boomer"}
+        # Exclude configured nicks from championship consideration.
+        # Managed via the "champion_excluded_nicks" state key (list of lowercase nicks).
+        excluded_nicks = {n.lower() for n in self.get_state("champion_excluded_nicks", [])}
         excluded_ids = {
             uid for uid, info in user_map.items()
-            if info.get("canonical_nick", "").lower() in CHAMPION_EXCLUDED_NICKS
+            if info.get("canonical_nick", "").lower() in excluded_nicks
         }
         eligible_players = {uid: p for uid, p in players.items() if uid not in excluded_ids}
 
@@ -1501,8 +1476,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_fishing_location(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id)
@@ -1542,8 +1515,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_aquarium(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id)
@@ -1582,8 +1553,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_fishinfo(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         user_id = self.bot.get_user_id(username)
@@ -1675,8 +1644,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_fishing_help(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         help_lines = [
             "Fishing Commands:",
@@ -1711,8 +1678,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_real(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         fact = random.choice(REAL_FACTS)
         self.safe_reply(connection, event, f"Real fact: {fact}")
@@ -1720,8 +1685,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_lure(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         user_id = self.bot.get_user_id(username)
@@ -1754,8 +1717,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_chum(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         chum_state = self.get_state("chum_state")
@@ -1814,8 +1775,6 @@ class Fishing(SimpleCommandModule):
     def _cmd_discard(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
             return False
-        if username.lower() == "boomer":
-            return False
 
         user_id = self.bot.get_user_id(username)
         player = self._get_player(user_id)
@@ -1841,8 +1800,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_dynamite(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         user_id = self.bot.get_user_id(username)
@@ -1998,8 +1955,6 @@ class Fishing(SimpleCommandModule):
 
     def _cmd_water(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self.is_enabled(event.target):
-            return False
-        if username.lower() == "boomer":
             return False
 
         user_id = self.bot.get_user_id(username)

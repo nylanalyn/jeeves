@@ -15,22 +15,10 @@ def setup(bot: Any) -> "Roll":
 class Roll(SimpleCommandModule):
     name = "roll"
     version = "1.0.0"
-    description = "Roll dice of any denomination, flip coins, or throw darts."
+    description = "Roll dice of any denomination, flip coins, and other fair gambling."
 
     COIN_SIDES = ["heads", "tails"]
 
-    DARTBOARD = [
-        (20, 50, "Bullseye"),
-        ...,
-    ]
-
-    DART_MESSAGES = [
-        "{title} throws a dart and it lands in the... {result} — {flavor}",
-        "The dart slices through the air and finds the {result}. {flavor}",
-        "Not bad, {title}. {result}. {flavor}",
-        "A wobbly throw, but it sticks: {result}. {flavor}",
-        "A masterful toss, {title} — {result}. {flavor}",
-    ]
 
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
@@ -48,12 +36,7 @@ class Roll(SimpleCommandModule):
             name="flip",
             description="Flip a coin.",
         )
-        self.register_command(
-            r'^\s*!darts\s*$',
-            self._cmd_darts,
-            name="darts",
-            description="Throw a dart at the board.",
-        )
+        
 
     def _cmd_roll(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         spec = match.group(1) if match.group(1) else "d20"
@@ -156,43 +139,4 @@ class Roll(SimpleCommandModule):
                 f"{self.bot.title_for(username)} flips a coin: **{result}**. "
                 f"The humble side, but no less important."
             )
-        return True
-
-    def _cmd_darts(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
-        # Simulate a dart throw: pick a score and a zone
-        score = random.choices(
-            population=list(range(1, 21)) + [25, 0],
-            weights=[2] * 20 + [1, 2],  # bullseye and miss slightly weighted
-            k=1,
-        )[0]
-
-        if score == 25:
-            result = "Bullseye"
-            flavor = "Fifty points. The crowd murmurs in awe."
-        elif score == 0:
-            result = "the floor"
-            flavor = "It sticks, briefly, then falls."
-        else:
-            multiplier = random.choices(["", "double ", "triple "], weights=[20, 6, 3], k=1)[0]
-            result = f"{multiplier}{score}"
-            point_value = score
-            if multiplier == "double ":
-                point_value = score * 2
-            elif multiplier == "triple ":
-                point_value = score * 3
-            if multiplier == "triple " and score == 20:
-                flavor = "A maximum! The butler quietly applauds."
-            elif point_value >= 30:
-                flavor = f"{point_value} points — a fine throw, {self.bot.title_for(username)}."
-            elif point_value <= 10:
-                flavor = "A modest effort, but every board needs a warmup round."
-            else:
-                flavor = f"Solid. {point_value} points."
-
-        template = random.choice(self.DART_MESSAGES)
-        self.safe_reply(
-            connection,
-            event,
-            template.format(title=self.bot.title_for(username), result=result, flavor=flavor),
-        )
         return True

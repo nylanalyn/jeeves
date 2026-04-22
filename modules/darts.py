@@ -140,6 +140,16 @@ class Darts(SimpleCommandModule):
         # Simulate throw
         label, points = self._simulate_throw()
 
+        # Check for miss (hit nothing)
+        if points == 0:
+            throw_template = random.choice(self.THROW_MESSAGES).format(title=title)
+            self.safe_reply(
+                connection,
+                event,
+                f"{throw_template} ... and misses the board entirely. {title} has {remaining} remaining."
+            )
+            return True
+
         # Check for bust
         if points > remaining:
             # Bust - score unchanged

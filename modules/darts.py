@@ -75,10 +75,10 @@ class Darts(SimpleCommandModule):
 
     def _register_commands(self) -> None:
         self.register_command(
-            r"^\s*!darts\s*$",
+            r"^\s*!darts(?:\s+(\d))?\s*$",
             self._cmd_throw,
             name="darts",
-            description="Throw a dart in the 301 game",
+            description="Throw 1-3 darts in the 301 game",
         )
         self.register_command(
             r"^\s*!darts\s+score\s*$",
@@ -125,32 +125,19 @@ class Darts(SimpleCommandModule):
         points = points_map[chosen_label]
         return chosen_label, points
 
-    def _finish_throw(
-        self,
-        connection: Any,
-        event: Any,
-        channel: str,
-        game: Dict[str, Any],
-        cooldowns: Dict,
-        throw_counts: Dict,
-        user_id: str,
-        now: float,
-        current_count: int,
-    ) -> None:
-        """Apply cooldown if turn is complete, then persist game state."""
-        if current_count >= self.MAX_THROWS_PER_TURN:
-            cooldowns[user_id] = now + self.COOLDOWN_SECONDS
-            throw_counts[user_id] = 0
-            self.safe_reply(connection, event, "That's 3 darts — 30-minute cooldown begins. Another player throwing will cancel it!")
-        game["cooldowns"] = cooldowns
-        game["throw_counts"] = throw_counts
-        self._save_game(channel, game)
-
     def _cmd_throw(self, connection: Any, event: Any, msg: str, username: str, match) -> bool:
-        """Handle !darts command - throw a dart."""
+        """Handle !darts command - throw 1-3 darts."""
         channel = event.target
         user_id = self.bot.get_user_id(username)
         title = self.bot.title_for(username)
+
+        # Parse optional dart count
+        count_str = match.group(1)
+        requested = int(count_str) if count_str else 1
+
+        if requested < 1 or requested > 3:
+            self.safe_reply(connection, event, "Choose 1, 2, or 3 darts.")
+            return True
 
         # Get or create game
         game = self._get_or_create_game(channel)
@@ -201,48 +188,117 @@ class Darts(SimpleCommandModule):
             game["cooldowns"] = cooldowns
             self._save_game(channel, game)
 
-        # Increment throw count for this user
-        current_count = throw_counts.get(user_id, 0) + 1
-        throw_counts[user_id] = current_count
+        previous_count = throw_counts.get(user_id, 0)
+        if previous_count >= self.MAX_THROWS_PER_TURN:
+            previous_count = 0
+            throw_counts[user_id] = 0
 
-        # Simulate throw
-        label, points = self._simulate_throw()
+        darts_remaining_in_turn = self.MAX_THROWS_PER_TURN - previous_count
+
+        if requested > darts_remaining_in_turn:
+            plural = "darts" if darts_remaining_in_turn != 1 else "dart"
+            self.safe_reply(
+                connection,
+                event,
+                f"You only have {darts_remaining_in_turn} {plural} left this turn."
+            )
+            return True
+
+        # Simulate darts
         throw_template = random.choice(self.THROW_MESSAGES).format(title=title)
+        dart_details: List[Tuple[str, int, str]] = []
+        darts_thrown = 0
+        turn_over = False
+        game_won = False
 
-        # Check for miss (hit nothing)
-        if points == 0:
-            self.safe_reply(
-                connection,
-                event,
-                f"{throw_template} ... and misses the board entirely. {title} has {remaining} remaining."
-            )
-            self._finish_throw(connection, event, channel, game, cooldowns, throw_counts, user_id, now, current_count)
-            return True
+        for _ in range(requested):
+            label, points = self._simulate_throw()
+            darts_thrown += 1
 
-        # Check for bust
-        if points > remaining:
-            if remaining <= 5:
-                bust_msg = f"So very close! {title} needed exactly {remaining} but scored {points}. Agony."
-            elif remaining <= 20:
-                bust_msg = f"Overcooked! {title} needed {remaining} but threw {points}. The oche is a cruel place."
+            if points == 0:
+                dart_details.append((label, points, "miss"))
+                turn_over = True
+                break
+
+            if points > remaining:
+                dart_details.append((label, points, "bust"))
+                turn_over = True
+                break
+
+            new_remaining = remaining - points
+            remaining = new_remaining
+            player["remaining"] = new_remaining
+
+            if new_remaining == 0:
+                dart_details.append((label, points, "win"))
+                turn_over = True
+                game_won = True
+                break
+
+            dart_details.append((label, points, "normal"))
+
+        # Build and send response
+        if requested == 1:
+            # Single-dart backward-compatible output
+            label, points, outcome = dart_details[0]
+            if outcome == "miss":
+                self.safe_reply(
+                    connection,
+                    event,
+                    f"{throw_template} ... and misses the board entirely. {title} has {remaining} remaining."
+                )
+            elif outcome == "bust":
+                if remaining <= 5:
+                    bust_msg = f"So very close! {title} needed exactly {remaining} but scored {points}. Agony."
+                elif remaining <= 20:
+                    bust_msg = f"Overcooked! {title} needed {remaining} but threw {points}. The oche is a cruel place."
+                else:
+                    bust_msg = f"Bust! {title} threw {points} but only needed {remaining}. No score this turn."
+                self.safe_reply(
+                    connection,
+                    event,
+                    f"{throw_template} {label} ({points} points). {bust_msg}"
+                )
+            elif outcome == "win":
+                win_msg = random.choice(self.WIN_MESSAGES).format(title=title)
+                self.safe_reply(
+                    connection,
+                    event,
+                    f"{throw_template} {label} ({points} points). EXACTLY ZERO!\n{win_msg}"
+                )
             else:
-                bust_msg = f"Bust! {title} threw {points} but only needed {remaining}. No score this turn."
-            self.safe_reply(connection, event, f"{throw_template} {label} ({points} points). {bust_msg}")
-            self._finish_throw(connection, event, channel, game, cooldowns, throw_counts, user_id, now, current_count)
-            return True
+                self.safe_reply(
+                    connection,
+                    event,
+                    f"{throw_template} {label} ({points} points). {title} has {remaining} remaining."
+                )
+        else:
+            # Multi-dart compact output
+            parts: List[str] = []
+            for label, points, outcome in dart_details:
+                if outcome == "miss":
+                    parts.append("miss (0 pts)")
+                elif outcome == "bust":
+                    if remaining <= 5:
+                        bust_msg = f"So very close! {title} needed exactly {remaining} but scored {points}. Agony."
+                    elif remaining <= 20:
+                        bust_msg = f"Overcooked! {title} needed {remaining} but threw {points}. The oche is a cruel place."
+                    else:
+                        bust_msg = f"Bust! {title} threw {points} but only needed {remaining}. No score this turn."
+                    parts.append(f"{label} ({points} pts). {bust_msg}")
+                elif outcome == "win":
+                    win_msg = random.choice(self.WIN_MESSAGES).format(title=title)
+                    parts.append(f"{label} ({points} pts). EXACTLY ZERO!\n{win_msg}")
+                else:
+                    parts.append(f"{label} ({points} pts)")
 
-        # Deduct points
-        new_remaining = remaining - points
-        player["remaining"] = new_remaining
+            message = throw_template + " " + " · ".join(parts)
+            if not turn_over:
+                message += f". {title} has {remaining} remaining."
+            self.safe_reply(connection, event, message)
 
-        # Check for win
-        if new_remaining == 0:
-            win_msg = random.choice(self.WIN_MESSAGES).format(title=title)
-            self.safe_reply(
-                connection,
-                event,
-                f"{throw_template} {label} ({points} points). EXACTLY ZERO!\n{win_msg}"
-            )
+        # Handle game win
+        if game_won:
             games = self.get_state("games", {})
             if channel in games:
                 del games[channel]
@@ -250,15 +306,25 @@ class Darts(SimpleCommandModule):
                 self.save_state()
             return True
 
-        # Normal throw - show remaining
-        self.safe_reply(
-            connection,
-            event,
-            f"{throw_template} {label} ({points} points). {title} has {new_remaining} remaining."
-        )
-        self._finish_throw(connection, event, channel, game, cooldowns, throw_counts, user_id, now, current_count)
-        return True
+        # Update throw counts and cooldowns
+        new_count = previous_count + darts_thrown
+        if new_count >= self.MAX_THROWS_PER_TURN:
+            cooldowns[user_id] = now + self.COOLDOWN_SECONDS
+            throw_counts[user_id] = 0
+            self.safe_reply(
+                connection,
+                event,
+                "That's 3 darts — 30-minute cooldown begins. Another player throwing will cancel it!"
+            )
+        elif turn_over:
+            throw_counts[user_id] = 0
+        else:
+            throw_counts[user_id] = new_count
 
+        game["cooldowns"] = cooldowns
+        game["throw_counts"] = throw_counts
+        self._save_game(channel, game)
+        return True
 
     def _cmd_score(self, connection: Any, event: Any, msg: str, username: str, match) -> bool:
         """Handle !darts score - show scoreboard."""

@@ -25,7 +25,6 @@ class Darts(SimpleCommandModule):
 
     # Dartboard segments: (label, point_value, weight)
     # Built at class initialization
-    DARTBOARD_SEGMENTS: List[Tuple[str, int, int]] = []
 
     # Flavor message pools
     THROW_MESSAGES: List[str] = [
@@ -47,6 +46,7 @@ class Darts(SimpleCommandModule):
     def __init__(self, bot: Any) -> None:
         super().__init__(bot)
         # Build dartboard segments at init
+        self.DARTBOARD_SEGMENTS: List[Tuple[str, int, int]] = []
         self._build_dartboard()
         # State: { channel: { players: { user_id: { remaining: int, joined_at: float } }, created_at: float } }
         self.set_state("games", self.get_state("games", {}))
@@ -75,7 +75,7 @@ class Darts(SimpleCommandModule):
 
     def _register_commands(self) -> None:
         self.register_command(
-            r"^\s*!darts(?:\s+(\d))?\s*$",
+            r"^\s*!darts(?:\s+(\d+))?\s*$",
             self._cmd_throw,
             name="darts",
             description="Throw 1-3 darts in the 301 game",
@@ -105,7 +105,6 @@ class Darts(SimpleCommandModule):
                 "cooldowns": {},
             }
             self.set_state("games", games)
-            self.save_state()
         return games[channel]
 
     def _save_game(self, channel: str, game: Dict[str, Any]) -> None:
@@ -149,10 +148,6 @@ class Darts(SimpleCommandModule):
                 "remaining": self.STARTING_SCORE,
                 "joined_at": time.time(),
             }
-            games = self.get_state("games", {})
-            games[channel] = game
-            self.set_state("games", games)
-            self.save_state()
 
         player = players[user_id]
         remaining = player["remaining"]
@@ -316,8 +311,6 @@ class Darts(SimpleCommandModule):
                 event,
                 "That's 3 darts — 30-minute cooldown begins. Another player throwing will cancel it!"
             )
-        elif turn_over:
-            throw_counts[user_id] = 0
         else:
             throw_counts[user_id] = new_count
 

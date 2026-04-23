@@ -288,7 +288,7 @@ class Darts(SimpleCommandModule):
                     parts.append(f"{label} ({points} pts)")
 
             message = throw_template + " " + " · ".join(parts)
-            if not turn_over:
+            if not turn_over or dart_details[-1][2] == "miss":
                 message += f". {title} has {remaining} remaining."
             self.safe_reply(connection, event, message)
 

@@ -181,7 +181,7 @@ class Weather(SimpleCommandModule):
 
                 humidity_str = f" Humidity: {int(humidity_pct)}%." if humidity_pct is not None else ""
 
-            report = f"{summary}. Temp: {temp_str}.{feels_like_str}{humidity_str} Wind: {wind_mph} mph / {wind_kph} k/mh."
+            report = f"{summary}. Temp: {temp_str}.{feels_like_str}{humidity_str} Wind: {wind_mph} mph / {wind_kph} km/h."
 
             if self.has_flavor_enabled(requester):
                 requester_title = self.bot.title_for(requester)

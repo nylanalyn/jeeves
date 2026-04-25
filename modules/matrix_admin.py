@@ -44,7 +44,7 @@ class MatrixAdmin(SimpleCommandModule):
         super().__init__(bot)
         self._access_token: str = ""
         self._since: str = ""
-        self._txn_id: int = 0
+        self._txn_id: int = int(time.time() * 1000)
         self._poll_thread: threading.Thread | None = None
         self._start_matrix()
 

@@ -6,8 +6,12 @@ import re
 import math
 import random
 import threading
-from typing import Optional
+from typing import Any, Optional
 from .base import SimpleCommandModule, admin_required
+
+
+def setup(bot: Any) -> "WeirdWeather":
+    return WeirdWeather(bot)
 
 
 class WeirdWeather(SimpleCommandModule):
@@ -278,6 +282,63 @@ class WeirdWeather(SimpleCommandModule):
             self.save_state()
             self._uninstall_hooks()
             self.safe_reply(connection, event, "🌡️ WEIRD WEATHER: OFF (forced).| Use !weird to toggle.")
+
+    # ------------------------------------------------------------------
+    #  Matrix admin integration
+    # ------------------------------------------------------------------
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!weird on":     (self._matrix_weird_on,     "!weird on [#channel] — enable absurd weather units"),
+            "!weird off":    (self._matrix_weird_off,    "!weird off [#channel] — disable absurd weather units"),
+            "!weird status": (self._matrix_weird_status, "show per-channel weird weather state"),
+        }
+
+    def _matrix_weird_on(self, args: str) -> str:
+        channel = args.strip()
+        channels = self.get_state("enabled_channels", {})
+        if channel:
+            channels[channel] = True
+            self.set_state("enabled_channels", channels)
+            self.save_state()
+            self._install_hooks()
+            return f"Weird weather ON for {channel}."
+        else:
+            joined = sorted(getattr(self.bot, "joined_channels", []))
+            for ch in joined:
+                channels[ch] = True
+            self.set_state("enabled_channels", channels)
+            self.save_state()
+            self._install_hooks()
+            return f"Weird weather ON for all channels: {', '.join(joined) or '(none joined)'}."
+
+    def _matrix_weird_off(self, args: str) -> str:
+        channel = args.strip()
+        channels = self.get_state("enabled_channels", {})
+        if channel:
+            channels[channel] = False
+            self.set_state("enabled_channels", channels)
+            self.save_state()
+            if not any(channels.values()):
+                self._uninstall_hooks()
+            return f"Weird weather OFF for {channel}."
+        else:
+            for ch in list(channels.keys()):
+                channels[ch] = False
+            self.set_state("enabled_channels", channels)
+            self.save_state()
+            self._uninstall_hooks()
+            return "Weird weather OFF for all channels."
+
+    def _matrix_weird_status(self, args: str) -> str:
+        channels = self.get_state("enabled_channels", {})
+        if not channels:
+            return "Weird weather has never been configured for any channel."
+        lines = [f"  {ch}: {'ON' if v else 'OFF'}" for ch, v in sorted(channels.items())]
+        return "Weird weather status:\n" + "\n".join(lines)
+
+    # ------------------------------------------------------------------
 
     def on_module_loaded(self):
         """Re-apply hooks on restart if any channel(s) were left weird."""

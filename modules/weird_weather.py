@@ -112,13 +112,15 @@ class WeirdWeather(SimpleCommandModule):
             return f"{val} knots"
         if lbl == "Mach (sea level)":
             return f"Mach {val}"
+        if lbl == "Beaufort":
+            return f"Beaufort {val}"
         return f"{val} {lbl}"
 
     def _pick_humidity(self, temp_c: float, rh: float) -> str:
         lbl, fn, desc = random.choice(self.ABSURD_HUMIDITIES)
         val = fn(temp_c, rh)
-        if lbl == "dew gap":
-            return f"{val}"
+        if lbl == "gr/ft³":
+            return f"{val} gr/ft³"
         return f"{val}"
 
     # ------------------------------------------------------------------
@@ -132,8 +134,8 @@ class WeirdWeather(SimpleCommandModule):
         out = report
         if temp_c is not None:
             weird = self._pick_temp(temp_c)
-            out = re.sub(r'Temp: [^\.]+\.',  f'Temp: {weird}.', out)
-            out = re.sub(r'Feels like: [^\.]+\.', f'Feels like: {weird}.', out)
+            out = re.sub(r'Temp: .+?\.(?= |$)',       f'Temp: {weird}.', out)
+            out = re.sub(r'Feels like: .+?\.(?= |$)', f'Feels like: {weird}.', out)
         if wind_mph is not None:
             weird = self._pick_wind(wind_mph)
             out = re.sub(r'Wind: [^\.]+\.', f'Wind: {weird}.', out)

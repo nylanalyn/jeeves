@@ -164,7 +164,7 @@ class WeirdWeather(SimpleCommandModule):
         _ctx = threading.local()
         _ctx.channel = None
 
-        def _weird_reply(self, connection, event, location_obj, requester, target_user=None):
+        def _weird_reply(connection, event, location_obj, requester, target_user=None):
             channel = event.target
             location_name = (
                 location_obj.get('user_input')

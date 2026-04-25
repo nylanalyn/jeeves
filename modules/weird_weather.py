@@ -132,14 +132,14 @@ class WeirdWeather(SimpleCommandModule):
         out = report
         if temp_c is not None:
             weird = self._pick_temp(temp_c)
-            out = re.sub(r'Temp: .+?\.(?=\s|$)',  f'Temp: {weird}.', out)
-            out = re.sub(r'Feels like: .+?\.(?=\s|$)', f'Feels like: {weird}.', out)
+            out = re.sub(r'Temp: [^\.]+\.',  f'Temp: {weird}.', out)
+            out = re.sub(r'Feels like: [^\.]+\.', f'Feels like: {weird}.', out)
         if wind_mph is not None:
             weird = self._pick_wind(wind_mph)
-            out = re.sub(r'Wind: .+?\.(?=\s|$)', f'Wind: {weird}.', out)
+            out = re.sub(r'Wind: [^\.]+\.', f'Wind: {weird}.', out)
         if humidity_pct is not None and temp_c is not None:
             weird = self._pick_humidity(temp_c, humidity_pct)
-            out = re.sub(r'Humidity: .+?\.(?=\s|$)', f'Humidity: {weird}.', out)
+            out = re.sub(r'Humidity: [^\.]+\.', f'Humidity: {weird}.', out)
         return out
 
     # ------------------------------------------------------------------

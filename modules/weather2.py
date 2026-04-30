@@ -77,8 +77,7 @@ class Weather2(SimpleCommandModule):
                 self.set_state("user_locations", dict(old_locations))
                 self.save_state()
                 self.log_debug(
-                    "Migrated %d user locations from weather module",
-                    len(old_locations),
+                    f"Migrated {len(old_locations)} user locations from weather module"
                 )
 
         name_pat = self.bot.JEEVES_NAME_RE

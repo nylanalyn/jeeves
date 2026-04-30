@@ -3,7 +3,7 @@
 
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from .base import SimpleCommandModule
@@ -45,6 +45,7 @@ WMO_CODES: Dict[int, str] = {
 
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_GEO_URL = "https://geocoding-api.open-meteo.com/v1/search"
+NWS_ALERTS_URL = "https://api.weather.gov/alerts/active"
 
 CURRENT_PARAMS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,"
@@ -197,7 +198,7 @@ class Weather2(SimpleCommandModule):
         """Look up a place via the Open-Meteo geocoding API.
 
         Returns a dict with keys ``lat``, ``lon``, ``short_name``,
-        ``display_name``, ``country_code``, ``user_input``, or None.
+        ``display_name``, ``user_input``, or None.
         """
         if self.http is None:
             self._record_error("HTTP client not available for geocoding")
@@ -246,8 +247,6 @@ class Weather2(SimpleCommandModule):
             "lon": lon,
             "short_name": short_name,
             "display_name": display_name,
-            "country_code": country_code,
-            "timezone": result.get("timezone", "UTC"),
             "user_input": query,
         }
 
@@ -337,6 +336,8 @@ class Weather2(SimpleCommandModule):
             feels_like_c = current.get("apparent_temperature")
             weather_code = current.get("weather_code")
             wind_kph = float(current.get("wind_speed_10m", 0))
+            raw_gust = current.get("wind_gusts_10m")
+            wind_gusts_kph = float(raw_gust) if raw_gust is not None else None
         except (TypeError, ValueError):
             return self._error_msg(requester)
 
@@ -355,7 +356,14 @@ class Weather2(SimpleCommandModule):
             parts.append(f"Humidity: {int(humidity)}%.")
         if wind_kph >= 0:
             wind_mph = self._kph_to_mph(wind_kph)
-            parts.append(f"Wind: {wind_mph} mph / {int(round(wind_kph))} km/h.")
+            if wind_gusts_kph is not None:
+                gust_mph = self._kph_to_mph(wind_gusts_kph)
+                parts.append(
+                    f"Wind: {wind_mph} mph / {int(round(wind_kph))} km/h "
+                    f"(gusts {gust_mph} mph / {int(round(wind_gusts_kph))} km/h)."
+                )
+            else:
+                parts.append(f"Wind: {wind_mph} mph / {int(round(wind_kph))} km/h.")
 
         report = " ".join(parts)
 
@@ -383,6 +391,7 @@ class Weather2(SimpleCommandModule):
             codes = daily.get("weather_code", [])
             highs_c = daily.get("temperature_2m_max", [])
             lows_c = daily.get("temperature_2m_min", [])
+            precip = daily.get("precipitation_sum", [])
         except (TypeError, ValueError):
             return self._error_msg(requester)
 
@@ -399,6 +408,9 @@ class Weather2(SimpleCommandModule):
 
             condition = self._describe_weather_code(codes[i]) if i < len(codes) else "Unknown"
 
+            precip_mm = precip[i] if i < len(precip) and precip[i] is not None else None
+            precip_str = f" {int(precip_mm)}mm" if precip_mm and precip_mm > 0 else ""
+
             high_c = highs_c[i] if i < len(highs_c) and highs_c[i] is not None else None
             low_c = lows_c[i] if i < len(lows_c) and lows_c[i] is not None else None
 
@@ -412,7 +424,7 @@ class Weather2(SimpleCommandModule):
             else:
                 temp_str = "N/A"
 
-            lines.append(f"{day_name}: {condition}, {temp_str}")
+            lines.append(f"{day_name}: {condition}{precip_str}, {temp_str}")
 
         forecast_text = " | ".join(lines)
 
@@ -428,6 +440,81 @@ class Weather2(SimpleCommandModule):
                 "I could not format the weather report."
             )
         return "Could not format weather report."
+
+    # ------------------------------------------------------------------
+    # Alerts
+    # ------------------------------------------------------------------
+
+    def _fetch_alerts(self, lat: str, lon: str) -> list:
+        """Fetch active weather alerts from the US NWS API.
+
+        Returns a list of alert property dicts with severity Severe or
+        Extreme, or an empty list on failure / no alerts.
+        """
+        if self.http is None:
+            self._record_error("HTTP client not available for alerts")
+            return []
+
+        try:
+            data = self.http.get_json(
+                NWS_ALERTS_URL,
+                params={
+                    "point": f"{lat},{lon}",
+                    "status": "actual",
+                    "message_type": "alert",
+                },
+                headers={
+                    "User-Agent": "(jeeves-irc-bot)",
+                    "Accept": "application/json",
+                },
+            )
+        except Exception as exc:
+            self._record_error(f"Alerts request failed: {exc}")
+            return []
+
+        features = data.get("features", [])
+        if not features:
+            return []
+
+        severe = []
+        for feat in features:
+            props = feat.get("properties", {})
+            severity = props.get("severity", "")
+            if severity in ("Severe", "Extreme"):
+                severe.append(props)
+
+        return severe
+
+    def _format_alerts(self, alerts: list, requester: str) -> str:
+        """Format active alerts into concise warning.
+
+        Returns empty string if no alerts to report.
+        """
+        if not alerts:
+            return ""
+
+        seen = set()
+        events = []
+        for a in alerts:
+            event = a.get("event", "Weather Alert")
+            if event not in seen:
+                seen.add(event)
+                events.append(event)
+
+        if not events:
+            return ""
+
+        if len(events) == 1:
+            events_str = events[0]
+        elif len(events) == 2:
+            events_str = f"{events[0]} and {events[1]}"
+        else:
+            events_str = ", ".join(events[:-1]) + f", and {events[-1]}"
+
+        if self.has_flavor_enabled(requester):
+            title = self.bot.title_for(requester)
+            return f"Take care, {title}! {events_str} in your area."
+        return f"URGENT: {events_str} for your location."
 
     # ------------------------------------------------------------------
     # Async reply helpers
@@ -449,6 +536,14 @@ class Weather2(SimpleCommandModule):
             report = self._format_current(
                 current, location_name, requester, target_user
             )
+
+            alerts = self._fetch_alerts(
+                location_obj["lat"], location_obj["lon"]
+            )
+            alert_msg = self._format_alerts(alerts, requester)
+            if alert_msg:
+                report += "\n" + alert_msg
+
             self.safe_reply(connection, event, report)
             achievement_hooks.record_weather_check(self.bot, requester)
         else:
@@ -476,6 +571,14 @@ class Weather2(SimpleCommandModule):
         daily = self._fetch_forecast(location_obj["lat"], location_obj["lon"])
         if daily:
             report = self._format_forecast(daily, location_name, requester)
+
+            alerts = self._fetch_alerts(
+                location_obj["lat"], location_obj["lon"]
+            )
+            alert_msg = self._format_alerts(alerts, requester)
+            if alert_msg:
+                report += "\n" + alert_msg
+
             self.safe_reply(connection, event, report)
         else:
             if self.has_flavor_enabled(requester):

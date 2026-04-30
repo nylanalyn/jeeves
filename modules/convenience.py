@@ -263,8 +263,9 @@ class Convenience(ModuleBase):
     def _cmd_google(self, connection, event, msg, username, match):
         query = match.group(1).strip()
         encoded_query = quote_plus(query)
+        searxng_base = self.get_config_value("searxng_url", default="https://hosted.nylan.cat/search").rstrip("/")
         sassy_chance = self.get_config_value("sassy_google_chance", event.target, default=0.1)
-        fallback_url = self._get_short_url(f"https://duckduckgo.com/?q={encoded_query}")
+        fallback_url = self._get_short_url(f"{searxng_base}/search?q={encoded_query}")
 
         if random.random() < sassy_chance:
             if self.has_flavor_enabled(username):
@@ -273,7 +274,7 @@ class Convenience(ModuleBase):
                 self.safe_reply(connection, event, f"https://letmegooglethat.com/?q={encoded_query}")
             return True
 
-        search_result = self._perform_duckduckgo_search(query)
+        search_result = self._perform_searxng_search(query)
         if search_result:
             display_url = self._get_short_url(search_result["url"])
             snippet = search_result.get("snippet", "")
@@ -284,7 +285,7 @@ class Convenience(ModuleBase):
             if self.has_flavor_enabled(username):
                 title = self.bot.title_for(username)
                 snippet_part = f" — {snippet}" if snippet else ""
-                self.safe_reply(connection, event, f"{title}, DuckDuckGo offers \"{search_result['title']}\" for '{query}'{snippet_part}")
+                self.safe_reply(connection, event, f"{title}, I found \"{search_result['title']}\" for '{query}'{snippet_part}")
                 self.safe_reply(connection, event, display_url)
             else:
                 response = f"{search_result['title']} - {display_url}"
@@ -294,7 +295,7 @@ class Convenience(ModuleBase):
             return True
 
         if self.has_flavor_enabled(username):
-            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, DuckDuckGo is speechless—here's a direct link instead: {fallback_url}")
+            self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I couldn't find a good answer, so here's a direct search link: {fallback_url}")
         else:
             self.safe_reply(connection, event, fallback_url)
         return True
@@ -521,52 +522,39 @@ class Convenience(ModuleBase):
     
     # --- Helper Methods ---
 
-    def _perform_duckduckgo_search(self, query: str) -> Optional[Dict[str, str]]:
-        """Use DuckDuckGo's Instant Answer API to grab a quick hit."""
-        endpoint = "https://api.duckduckgo.com/"
-        params = {
-            "q": query,
-            "format": "json",
-            "no_redirect": "1",
-            "no_html": "1",
-            "skip_disambig": "1"
-        }
+    def _perform_searxng_search(self, query: str) -> Optional[Dict[str, str]]:
+        """Query the self-hosted SearXNG instance for a quick answer."""
+        base_url = self.get_config_value(
+            "searxng_url", default="https://hosted.nylan.cat/search"
+        )
+        endpoint = f"{base_url.rstrip('/')}/search"
+        params = {"q": query, "format": "json"}
+        headers = {"User-Agent": "JeevesIRCBot/1.0 (IRC Bot)"}
 
         try:
-            response = self.http_session.get(endpoint, params=params, timeout=6)
+            response = self.http_session.get(
+                endpoint, params=params, headers=headers, timeout=8
+            )
             response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
-            self._record_error(f"DuckDuckGo search failed: {exc}")
+            self._record_error(f"SearXNG search failed: {exc}")
             return None
         except ValueError as exc:
-            self._record_error(f"DuckDuckGo returned invalid JSON: {exc}")
+            self._record_error(f"SearXNG returned invalid JSON: {exc}")
             return None
 
-        if data.get("AbstractText") and data.get("AbstractURL"):
-            return {
-                "title": data.get("Heading") or "Result",
-                "url": data.get("AbstractURL"),
-                "snippet": data.get("AbstractText")
-            }
-
-        related_topics = data.get("RelatedTopics", [])
-        for topic in related_topics:
-            if isinstance(topic, dict) and topic.get("FirstURL") and topic.get("Text"):
+        results = data.get("results", [])
+        for result in results:
+            url = result.get("url", "")
+            title = result.get("title", "")
+            snippet = result.get("content", "")
+            if url and title:
                 return {
-                    "title": topic.get("Text"),
-                    "url": topic.get("FirstURL"),
-                    "snippet": ""
+                    "title": title,
+                    "url": url,
+                    "snippet": snippet,
                 }
-            if isinstance(topic, dict) and topic.get("Topics"):
-                subtopics = topic.get("Topics", [])
-                for sub in subtopics:
-                    if sub.get("FirstURL") and sub.get("Text"):
-                        return {
-                            "title": sub.get("Text"),
-                            "url": sub.get("FirstURL"),
-                            "snippet": ""
-                        }
 
         return None
 

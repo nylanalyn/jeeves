@@ -154,6 +154,7 @@ convenience:
     youtube_cooldown: 15.0
     # Chance (0.0 to 1.0) of using a "Let Me Google That" link.
     sassy_google_chance: 0.1
+    searxng_url: "https://hosted.nylan.cat/search"  # Self-hosted SearXNG instance for !g
     # Chance (0.0 to 1.0) of using a sassy response for Wikipedia.
     sassy_wiki_chance: 0.1
     # Chance (0.0 to 1.0) of looking up a sassy term instead.

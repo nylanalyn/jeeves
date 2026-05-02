@@ -14,6 +14,42 @@ from . import achievement_hooks
 
 UTC = timezone.utc
 
+# Quarter boundary dates for seasonal reset scheduling
+QUARTER_STARTS = [(1, 1), (4, 1), (7, 1), (10, 1)]  # month, day
+
+
+def _next_quarter_start(now: datetime) -> datetime:
+    """Return the next quarter boundary datetime after `now`."""
+    for month, day in QUARTER_STARTS:
+        candidate = datetime(now.year, month, day, tzinfo=UTC)
+        if candidate > now:
+            return candidate
+    return datetime(now.year + 1, 1, 1, tzinfo=UTC)
+
+
+def _compute_reset_season(reset_date: Optional[datetime] = None) -> str:
+    """Compute the concluded season label from a reset date.
+
+    A reset on Jan 1 concludes Q4 of the previous year.
+    A reset on Apr 1 concludes Q1.
+    A reset on Jul 1 concludes Q2.
+    A reset on Oct 1 concludes Q3.
+    """
+    if reset_date is None:
+        reset_date = datetime.now(UTC)
+    month = reset_date.month
+    year = reset_date.year
+    if month == 1:
+        return f"Q4 {year - 1}"
+    elif month == 4:
+        return f"Q1 {year}"
+    elif month == 7:
+        return f"Q2 {year}"
+    elif month == 10:
+        return f"Q3 {year}"
+    # Fallback — should not occur if called at a quarter boundary
+    return f"Q? {year}"
+
 
 def setup(bot: Any) -> 'Fishing':
     return Fishing(bot)
@@ -322,30 +358,28 @@ class Fishing(SimpleCommandModule):
         self.save_state()
 
     def _schedule_next_reset(self) -> None:
-        """Cancel any existing reset jobs and schedule the next April 1st midnight UTC."""
+        """Cancel any existing reset jobs and schedule the next quarterly reset at midnight UTC."""
         for job in schedule.get_jobs():
             if any(tag.startswith(f"{self.name}-") for tag in job.tags):
                 schedule.cancel_job(job)
 
         now = datetime.now(UTC)
-        next_reset = datetime(now.year, 4, 1, 0, 0, 0, tzinfo=UTC)
-        if now >= next_reset:
-            next_reset = datetime(now.year + 1, 4, 1, 0, 0, 0, tzinfo=UTC)
+        next_reset = _next_quarter_start(now)
 
         seconds_until = (next_reset - now).total_seconds()
         (
             schedule.every(seconds_until)
             .seconds
             .do(self._reset_and_reschedule)
-            .tag(f"{self.name}-annual-reset")
+            .tag(f"{self.name}-season-reset")
         )
 
     def _reset_and_reschedule(self):
-        """Fire the annual reset then schedule the next one. Returns CancelJob to stop repeating."""
+        """Fire the seasonal reset then schedule the next one. Returns CancelJob to stop repeating."""
         try:
-            self._run_annual_reset()
+            self._run_season_reset()
         except Exception as e:
-            self.log_debug(f"Annual reset failed: {e}")
+            self.log_debug(f"Seasonal reset failed: {e}")
         finally:
             self._schedule_next_reset()
         return schedule.CancelJob
@@ -490,8 +524,8 @@ class Fishing(SimpleCommandModule):
         self.save_state()
 
     @staticmethod
-    def _compute_annual_champions(players: Dict[str, Any]) -> Dict[str, Any]:
-        """Compute the three annual champions from player data. Pure function."""
+    def _compute_season_champions(players: Dict[str, Any]) -> Dict[str, Any]:
+        """Compute the three season champions from player data. Pure function."""
         def best(key_fn, filter_fn=None):
             candidates = [(uid, p) for uid, p in players.items() if filter_fn is None or filter_fn(p)]
             if not candidates:
@@ -1337,15 +1371,15 @@ class Fishing(SimpleCommandModule):
         if not champions or not any(champions.get(k) for k in ("traveler", "caster", "collector")):
             self.safe_reply(
                 connection, event,
-                "No champions yet — the first reset is on April 1st!"
+                "No champions yet — the first champions will be crowned at the next season reset!"
             )
             return True
 
-        year = champions.get("year", "?")
+        season = champions.get("season", "?")
         players = self.get_state("players", {})
         user_map = self.bot.get_module_state("users").get("user_map", {})
 
-        parts = [f"Fishing Champions ({year}):"]
+        parts = [f"Fishing Champions ({season}):"]
 
         traveler_id = champions.get("traveler")
         if traveler_id:
@@ -1373,10 +1407,10 @@ class Fishing(SimpleCommandModule):
         self.safe_reply(connection, event, " | ".join(parts))
         return True
 
-    def _run_annual_reset(self, reset_year: Optional[int] = None) -> None:
-        """Execute the annual reset: crown champions, announce, wipe player data."""
-        if reset_year is None:
-            reset_year = datetime.now(UTC).year - 1  # Season just ended: reset fires April 1st of year N, so the concluded season is N-1
+    def _run_season_reset(self, reset_season: Optional[str] = None) -> None:
+        """Execute the seasonal reset: crown champions, announce, wipe player data."""
+        if reset_season is None:
+            reset_season = _compute_reset_season()
 
         players = self.get_state("players", {})
         user_map = self.bot.get_module_state("users").get("user_map", {})
@@ -1391,11 +1425,11 @@ class Fishing(SimpleCommandModule):
         eligible_players = {uid: p for uid, p in players.items() if uid not in excluded_ids}
 
         # Compute champions from eligible player data
-        champion_ids = self._compute_annual_champions(eligible_players)
+        champion_ids = self._compute_season_champions(eligible_players)
 
         # Snapshot winning stats before wiping players
         champions = {
-            "year": reset_year,
+            "season": reset_season,
             "traveler": champion_ids["traveler"],
             "caster": champion_ids["caster"],
             "collector": champion_ids["collector"],
@@ -1420,7 +1454,7 @@ class Fishing(SimpleCommandModule):
         self.set_state("fishing_champions", champions)
 
         # Build announcement lines
-        lines = [f"** APRIL 1ST FISHING RESET ** The sea has been cleared! {reset_year} champions:"]
+        lines = [f"** SEASON RESET ** The sea has been cleared! {reset_season} champions:"]
 
         if traveler_id:
             name = user_map.get(traveler_id, {}).get("canonical_nick", traveler_id)
@@ -1428,10 +1462,10 @@ class Fishing(SimpleCommandModule):
             level = champions.get("traveler_level", 0)
             lines.append(
                 f"the Traveler: {name} (reached {loc_name}, level {level}) "
-                "— carries a +20% XP blessing into the new year"
+                "— carries a +20% XP blessing into the new season"
             )
         else:
-            lines.append("the Traveler: unclaimed (no one leveled up this year)")
+            lines.append("the Traveler: unclaimed (no one leveled up this season)")
 
         if caster_id:
             name = user_map.get(caster_id, {}).get("canonical_nick", caster_id)
@@ -1441,7 +1475,7 @@ class Fishing(SimpleCommandModule):
                 "— carries a +20% distance blessing"
             )
         else:
-            lines.append("the Caster: unclaimed (no casts recorded this year)")
+            lines.append("the Caster: unclaimed (no casts recorded this season)")
 
         if collector_id:
             name = user_map.get(collector_id, {}).get("canonical_nick", collector_id)
@@ -1451,7 +1485,7 @@ class Fishing(SimpleCommandModule):
                 "— carries a +20% rare blessing"
             )
         else:
-            lines.append("the Collector: unclaimed (no rare catches this year)")
+            lines.append("the Collector: unclaimed (no rare catches this season)")
 
         lines.append("Good luck to all in the new season!")
 

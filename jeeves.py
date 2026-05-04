@@ -418,6 +418,9 @@ class Jeeves(SingleServerIRCBot):
         """Redact sensitive information from log messages."""
         # Patterns for sensitive data
         patterns = [
+            # Redact super-admin password commands before generic token patterns.
+            (r'((?:^|:\s*|\s)[!,]pass\s+)(.+)$', r'\1[REDACTED]'),
+            (r'((?:^|:\s*)identify\s+)(.+)$', r'\1[REDACTED]'),
             (r'(super_admin_password_hash["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
             (r'(password_hash["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),
             (r'(password["\']?\s*[:=]\s*["\']?)([^"\'}\s,]+)(["\']?)', r'\1[REDACTED]\3'),

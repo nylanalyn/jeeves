@@ -77,6 +77,28 @@ class Memos(SimpleCommandModule):
         self.register_command(r"^\s*!tell\s+(\S+)\s+(.+)$", self._cmd_memo, name="tell", description="Alias for !memo.")
         self.register_command(r"^\s*!memos\s+mine\s*$", self._cmd_memos_mine, name="memos mine", description="Show your pending messages.")
 
+    def _pending_count(self) -> int:
+        pending = self.get_state("pending", {})
+        total = 0
+        for channel_memos in pending.values():
+            if isinstance(channel_memos, dict):
+                total += sum(len(bucket) for bucket in channel_memos.values() if isinstance(bucket, list))
+        return total
+
+    def house_status(self, channel: str = None) -> str:
+        count = self._pending_count()
+        if count <= 0:
+            return ""
+        return f"Memos: {count} pending."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Leave notes for absent guests with !memo nick message; check yours with !memos mine."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\b(memo|memos|note|tell)\b", msg, re.IGNORECASE):
+            return "You can leave a message for someone with !memo nick message."
+        return None
+
     def on_ambient_message(self, connection, event, msg, username):
         if not self.is_enabled(event.target): return False
 

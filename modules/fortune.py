@@ -35,6 +35,21 @@ class Fortune(SimpleCommandModule):
                               name="fortune", description="Get a fortune. Use !fortune [category] for specific fortunes.")
         self.register_command(r"^\s*!fortune\s+reload\s*$", self._cmd_reload,
                               name="fortune reload", admin_only=True, description="Reload fortune files.")
+
+    def house_status(self, channel: str = None) -> str:
+        total = sum(len(fortunes) for fortunes in self._fortunes.values())
+        if total <= 0:
+            return ""
+        return f"Fortunes: {total} available."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        categories = ", ".join(self.CATEGORIES)
+        return f"Ask for !fortune, or !fortune category. Categories: {categories}."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\bfortune\b", msg, re.IGNORECASE):
+            return "Use !fortune for a random fortune, or !fortune spooky for a category."
+        return None
     
     def _cmd_fortune(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         user_id = self.bot.get_user_id(username)

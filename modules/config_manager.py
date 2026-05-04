@@ -1,9 +1,6 @@
-"""
-Centralized configuration management utilities.
-Eliminates duplicate configuration access patterns across modules.
-"""
+"""Centralized configuration helpers for Jeeves' current config layout."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .exception_utils import (
     ConfigurationException,
@@ -88,22 +85,45 @@ class ConfigManager:
         Returns:
             Module configuration dictionary
         """
-        module_config = self._get_nested_value(f"modules.{module}", {})
+        module_config = self._get_nested_value(module, _MISSING)
+        found = module_config is not _MISSING
+        if not found:
+            # Compatibility with the older nested `modules.<name>` layout.
+            module_config = self._get_nested_value(f"modules.{module}", {})
+            found = bool(module_config)
+        if not isinstance(module_config, dict):
+            module_config = {}
         
         log_module_event("config_manager", "module_config_accessed", {
             "module": module,
-            "config_keys": len(module_config)
+            "config_keys": len(module_config),
+            "found": found,
         })
         
         return module_config
     
+    def get_connection_config(self) -> Dict[str, Any]:
+        """Get IRC connection configuration from the modern `connection` section."""
+        connection_config = self._get_nested_value("connection", {})
+        if not isinstance(connection_config, dict):
+            connection_config = {}
+
+        log_module_event("config_manager", "connection_config_accessed", {
+            "config_keys": len(connection_config)
+        })
+
+        return connection_config
+
     def get_irc_config(self) -> Dict[str, Any]:
         """Get IRC configuration.
         
         Returns:
             IRC configuration dictionary
         """
-        irc_config = self._get_nested_value("irc", {})
+        irc_config = self.get_connection_config()
+        if not irc_config:
+            legacy_irc_config = self._get_nested_value("irc", {})
+            irc_config = legacy_irc_config if isinstance(legacy_irc_config, dict) else {}
         
         log_module_event("config_manager", "irc_config_accessed", {
             "config_keys": len(irc_config)
@@ -111,13 +131,29 @@ class ConfigManager:
         
         return irc_config
     
-    def get_admin_users(self) -> list:
+    def get_core_config(self) -> Dict[str, Any]:
+        """Get core bot configuration."""
+        core_config = self._get_nested_value("core", {})
+        if not isinstance(core_config, dict):
+            core_config = {}
+
+        log_module_event("config_manager", "core_config_accessed", {
+            "config_keys": len(core_config)
+        })
+
+        return core_config
+
+    def get_admin_users(self) -> List[str]:
         """Get list of admin users.
         
         Returns:
             List of admin usernames
         """
-        admin_users = self._get_nested_value("irc.admins", [])
+        admin_users = self._get_nested_value("core.admins", _MISSING)
+        if admin_users is _MISSING:
+            admin_users = self._get_nested_value("irc.admins", [])
+        if not isinstance(admin_users, list):
+            admin_users = []
         
         log_module_event("config_manager", "admin_users_accessed", {
             "count": len(admin_users)

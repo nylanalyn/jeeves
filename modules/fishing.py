@@ -394,6 +394,31 @@ class Fishing(SimpleCommandModule):
             if any(tag.startswith(f"{self.name}-") for tag in job.tags):
                 schedule.cancel_job(job)
 
+    def house_status(self, channel: str = None) -> str:
+        players = self.get_state("players", {})
+        active_casts = self.get_state("active_casts", {})
+        champions = self.get_state("fishing_champions", {})
+
+        parts = []
+        season = champions.get("season")
+        if season:
+            parts.append(f"season {season}")
+        if isinstance(players, dict) and players:
+            parts.append(f"{len(players)} fishers")
+        if isinstance(active_casts, dict) and active_casts:
+            parts.append(f"{len(active_casts)} lines out")
+        if not parts:
+            return ""
+        return "Fishing: " + ", ".join(parts) + "."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Fish with !cast and !reel; see !fishing, !fishing top, and !fishing champions."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\b(fish|fishing|reel|cast)\b", msg, re.IGNORECASE):
+            return "Fishing starts with !cast. Come back later and use !reel."
+        return None
+
     def _register_commands(self) -> None:
         self.register_command(
             r'^\s*!cast(?:\s+(.+))?\s*$',

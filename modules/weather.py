@@ -36,6 +36,21 @@ class Weather(SimpleCommandModule):
         self.register_command(r"^\s*!wf\s*$", self._cmd_forecast_self, name="forecast", description="Get weather forecast for your location")
         self.register_command(r"^\s*!wf\s+(.+)$", self._cmd_forecast_other, name="forecast other", description="Get weather forecast for a location")
 
+    def house_status(self, channel: str = None) -> str:
+        locations = self.get_state("user_locations", {})
+        count = len(locations) if isinstance(locations, dict) else 0
+        if count <= 0:
+            return ""
+        return f"Weather: {count} saved locations."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Set a default place with !location city, then use !weather or !wf."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\b(weather|forecast)\b", msg, re.IGNORECASE):
+            return "Set your default location with !location city, then use !weather or !wf."
+        return None
+
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         if not self.is_enabled(event.target):
             return False

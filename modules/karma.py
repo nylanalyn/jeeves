@@ -38,6 +38,21 @@ class Karma(SimpleCommandModule):
             description="Check karma score for yourself or another user"
         )
 
+    def house_status(self, channel: str = None) -> str:
+        scores = self.get_state("karma_scores", {})
+        count = len(scores) if isinstance(scores, dict) else 0
+        if count <= 0:
+            return ""
+        return f"Karma: {count} people scored."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Give lightweight kudos with nick++ and check scores with !karma nick."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\bkarma\b|\b(kudos|thanks)\b", msg, re.IGNORECASE):
+            return "You can give karma with nick++ and check it with !karma nick."
+        return None
+
     def on_ambient_message(self, connection: Any, event: Any, msg: str, username: str) -> bool:
         """Listen for karma modifications in channel messages."""
         if not self.is_enabled(event.target):

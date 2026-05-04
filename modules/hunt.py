@@ -308,6 +308,36 @@ class Hunt(SimpleCommandModule):
             self._schedule_next_spawn()
         self._resume_reminder_scheduler()
 
+    def house_status(self, channel: str = None) -> str:
+        active_animals = self.get_state("active_animals", [])
+        scores = self.get_state("scores", {})
+        event = self.get_state("event")
+
+        if active_animals:
+            first = active_animals[0]
+            display_name = self._get_animal_display_name(first).lower()
+            count = len(active_animals)
+            if count == 1:
+                return f"Hunt: a {display_name} is loose."
+            return f"Hunt: {count} {self._pluralize(display_name, count).lower()} are loose."
+
+        if event and event.get("active"):
+            remaining = sum(int(v or 0) for v in (event.get("remaining") or {}).values())
+            return f"Hunt: migration event active, {remaining} animals still to release."
+
+        participants = len(scores) if isinstance(scores, dict) else 0
+        if participants > 0:
+            return f"Hunt: {participants} guests have animal records."
+        return ""
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "When animals appear, use !hunt, !hug, or !bang. Check standings with !hunt top."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\b(hunt|hug|animal|animals)\b", msg, re.IGNORECASE):
+            return "When an animal is loose, use !hunt to catch it or !hug to befriend it."
+        return None
+
     def _clear_scheduled_jobs(self, *tags: str) -> int:
         if not tags:
             tags = (f"{self.name}-spawn", f"{self.name}-event_spawn", self._reminder_tag(), self.name)

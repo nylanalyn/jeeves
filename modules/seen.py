@@ -29,6 +29,23 @@ class Seen(SimpleCommandModule):
         self.register_command(r"^\s*!seen\s+(\S+)\s*$", self._cmd_seen,
                               name="seen", description="Reports when a user was last seen speaking in this channel.")
 
+    def house_status(self, channel: str = None) -> str:
+        if not channel:
+            return ""
+        channel_data = self.get_state("last_seen", {}).get(channel, {})
+        count = len(channel_data) if isinstance(channel_data, dict) else 0
+        if count <= 0:
+            return ""
+        return f"Seen: {count} people tracked in this room."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Find out when someone last spoke here with !seen nick."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> str:
+        if re.search(r"\bseen\b|\bwhere(?:'s| is)\b|\bhas anyone seen\b", msg, re.IGNORECASE):
+            return "Use !seen nick to check when someone last spoke in this room."
+        return ""
+
     def on_ambient_message(self, connection, event, msg: str, username: str) -> bool:
         """Records the last message from a user in a channel."""
         if not self.is_enabled(event.target):

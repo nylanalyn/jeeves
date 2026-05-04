@@ -51,9 +51,9 @@ def _player(level=0, furthest_cast=0.0, rare_catches=None, total_fish=0):
     }
 
 
-class TestComputeAnnualChampions(unittest.TestCase):
+class TestComputeSeasonChampions(unittest.TestCase):
     def test_returns_null_champions_when_no_players(self):
-        result = Fishing._compute_annual_champions({})
+        result = Fishing._compute_season_champions({})
         self.assertIsNone(result["traveler"])
         self.assertIsNone(result["caster"])
         self.assertIsNone(result["collector"])
@@ -63,7 +63,7 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(level=9),
             "bob": _player(level=5),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["traveler"], "alice")
 
     def test_caster_is_highest_furthest_cast(self):
@@ -71,7 +71,7 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(furthest_cast=100.0),
             "bob": _player(furthest_cast=4999.9),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["caster"], "bob")
 
     def test_collector_is_most_rare_catches(self):
@@ -79,7 +79,7 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(rare_catches=[{"name": "Fish"}] * 3),
             "bob": _player(rare_catches=[{"name": "Fish"}] * 10),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["collector"], "bob")
 
     def test_traveler_tiebreak_by_total_fish(self):
@@ -87,7 +87,7 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(level=9, total_fish=50),
             "bob": _player(level=9, total_fish=100),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["traveler"], "bob")
 
     def test_caster_tiebreak_by_total_fish(self):
@@ -95,7 +95,7 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(furthest_cast=500.0, total_fish=10),
             "bob": _player(furthest_cast=500.0, total_fish=99),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["caster"], "bob")
 
     def test_collector_tiebreak_by_total_fish(self):
@@ -103,7 +103,7 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(rare_catches=[{}] * 5, total_fish=5),
             "bob": _player(rare_catches=[{}] * 5, total_fish=20),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["collector"], "bob")
 
     def test_collector_ignores_players_with_no_rare_catches(self):
@@ -111,21 +111,21 @@ class TestComputeAnnualChampions(unittest.TestCase):
             "alice": _player(rare_catches=[]),
             "bob": _player(rare_catches=[]),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertIsNone(result["collector"])
 
     def test_traveler_requires_level_above_zero(self):
         players = {
             "alice": _player(level=0, total_fish=100),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertIsNone(result["traveler"])
 
     def test_all_three_can_be_same_player(self):
         players = {
             "alice": _player(level=9, furthest_cast=9999.0, rare_catches=[{}] * 20, total_fish=100),
         }
-        result = Fishing._compute_annual_champions(players)
+        result = Fishing._compute_season_champions(players)
         self.assertEqual(result["traveler"], "alice")
         self.assertEqual(result["caster"], "alice")
         self.assertEqual(result["collector"], "alice")
@@ -253,7 +253,7 @@ class TestCollectorBonus(unittest.TestCase):
         self.assertGreater(rare_with, rare_without)
 
 
-class TestAnnualReset(unittest.TestCase):
+class TestSeasonReset(unittest.TestCase):
     def _make_fishing_with_players(self):
         players = {
             "alice": {
@@ -294,16 +294,16 @@ class TestAnnualReset(unittest.TestCase):
 
     def test_reset_updates_fishing_champions(self):
         f = self._make_fishing_with_players()
-        f._run_annual_reset(2025)
+        f._run_season_reset("2025-Q1")
         champions = f.get_state("fishing_champions", {})
-        self.assertEqual(champions["year"], 2025)
+        self.assertEqual(champions["season"], "2025-Q1")
         self.assertEqual(champions["traveler"], "alice")
         self.assertEqual(champions["caster"], "alice")
         self.assertEqual(champions["collector"], "alice")
 
     def test_reset_stores_snapshot_stats(self):
         f = self._make_fishing_with_players()
-        f._run_annual_reset(2025)
+        f._run_season_reset("2025-Q1")
         champions = f.get_state("fishing_champions", {})
         self.assertEqual(champions["traveler_level"], 9)
         self.assertEqual(champions["traveler_location"], "The Void")
@@ -312,22 +312,22 @@ class TestAnnualReset(unittest.TestCase):
 
     def test_reset_wipes_players(self):
         f = self._make_fishing_with_players()
-        f._run_annual_reset(2025)
+        f._run_season_reset("2025-Q1")
         self.assertEqual(f.get_state("players", {}), {})
 
     def test_reset_clears_active_casts(self):
         f = self._make_fishing_with_players()
-        f._run_annual_reset(2025)
+        f._run_season_reset("2025-Q1")
         self.assertEqual(f.get_state("active_casts", {}), {})
 
     def test_reset_clears_active_event(self):
         f = self._make_fishing_with_players()
-        f._run_annual_reset(2025)
+        f._run_season_reset("2025-Q1")
         self.assertIsNone(f.get_state("active_event"))
 
     def test_reset_sends_announcement(self):
         f = self._make_fishing_with_players()
-        f._run_annual_reset(2025)
+        f._run_season_reset("2025-Q1")
         self.assertTrue(len(f._messages_sent) > 0)
         combined = " ".join(f._messages_sent)
         self.assertIn("RESET", combined)
@@ -370,19 +370,19 @@ class TestFishingChampionsCommand(unittest.TestCase):
         self._call_cmd(f)
         self.assertEqual(len(f._replies), 1)
         self.assertIn("No champions yet", f._replies[0])
-        self.assertIn("April 1st", f._replies[0])
+        self.assertIn("next season reset", f._replies[0])
 
     def test_no_champions_when_state_key_missing(self):
         """fishing_champions key not present at all → no-champions message."""
         f = self._make_champions_fishing(state={})
         self._call_cmd(f)
-        self.assertIn("first reset", f._replies[0])
+        self.assertIn("season reset", f._replies[0])
 
     def test_no_champions_when_all_slots_null(self):
         """fishing_champions exists but all slots are None → treated as no champions."""
         f = self._make_champions_fishing(state={
             "fishing_champions": {
-                "year": 2025,
+                "season": "2025-Q1",
                 "traveler": None,
                 "caster": None,
                 "collector": None,
@@ -401,7 +401,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": "alice",
                     "caster": None,
                     "collector": None,
@@ -424,7 +424,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": None,
                     "caster": "bob",
                     "collector": None,
@@ -444,7 +444,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": None,
                     "caster": None,
                     "collector": "carol",
@@ -465,7 +465,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": "alice",
                     "caster": None,
                     "collector": None,
@@ -488,7 +488,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": None,
                     "caster": "bob",
                     "collector": None,
@@ -509,7 +509,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": None,
                     "caster": None,
                     "collector": "carol",
@@ -537,7 +537,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": "alice",
                     "caster": None,
                     "collector": None,
@@ -557,7 +557,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": None,
                     "caster": "bob",
                     "collector": None,
@@ -576,7 +576,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": None,
                     "caster": "bob",
                     "collector": None,
@@ -590,15 +590,15 @@ class TestFishingChampionsCommand(unittest.TestCase):
         self.assertNotIn("the Collector", reply)
 
     # ------------------------------------------------------------------
-    # Test 4: year is displayed in output
+    # Test 4: season is displayed in output
     # ------------------------------------------------------------------
 
-    def test_year_appears_in_output(self):
-        """The champions year is included in the reply header."""
+    def test_season_appears_in_output(self):
+        """The champions season is included in the reply header."""
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2024,
+                    "season": "2024-Q4",
                     "traveler": "alice",
                     "caster": None,
                     "collector": None,
@@ -609,14 +609,14 @@ class TestFishingChampionsCommand(unittest.TestCase):
             user_map={"alice": {"canonical_nick": "Alice"}},
         )
         self._call_cmd(f)
-        self.assertIn("2024", f._replies[0])
+        self.assertIn("2024-Q4", f._replies[0])
 
-    def test_year_question_mark_when_missing(self):
-        """When year key is absent from champions dict, '?' is displayed."""
+    def test_season_question_mark_when_missing(self):
+        """When season key is absent from champions dict, '?' is displayed."""
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    # no 'year' key
+                    # no 'season' key
                     "traveler": "alice",
                     "caster": None,
                     "collector": None,
@@ -638,7 +638,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": "uid_xyz",
                     "caster": None,
                     "collector": None,
@@ -657,7 +657,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": "unknown_uid",
                     "caster": None,
                     "collector": None,
@@ -675,7 +675,7 @@ class TestFishingChampionsCommand(unittest.TestCase):
         f = self._make_champions_fishing(
             state={
                 "fishing_champions": {
-                    "year": 2025,
+                    "season": "2025-Q1",
                     "traveler": "alice",
                     "caster": "bob",
                     "collector": "carol",

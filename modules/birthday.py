@@ -66,6 +66,47 @@ class Birthday(SimpleCommandModule):
             description="List everyone with a birthday today."
         )
 
+    def _birthday_summary(self) -> Optional[str]:
+        birthdays = self.get_state("birthdays", {})
+        if not birthdays:
+            return None
+
+        today = datetime.now(timezone.utc).date()
+        todays = [
+            user_id for user_id, entry in birthdays.items()
+            if entry.get("month") == today.month and entry.get("day") == today.day
+        ]
+        if todays:
+            return f"Birthdays: {len(todays)} today."
+
+        soonest_days = None
+        for entry in birthdays.values():
+            try:
+                next_bday = date_type(today.year, entry["month"], entry["day"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if next_bday <= today:
+                next_bday = date_type(today.year + 1, entry["month"], entry["day"])
+            days = (next_bday - today).days
+            if soonest_days is None or days < soonest_days:
+                soonest_days = days
+
+        if soonest_days is None:
+            return None
+        day_word = "day" if soonest_days == 1 else "days"
+        return f"Birthdays: next one in {soonest_days} {day_word}."
+
+    def house_status(self, channel: str = None) -> str:
+        return self._birthday_summary() or ""
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Store your birthday with !birthday MM-DD, or check upcoming birthdays with !birthdays."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\bbirthday\b", msg, re.IGNORECASE):
+            return "You can set your birthday with !birthday MM-DD."
+        return None
+
     def _cmd_set_full(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         """Set birthday with year: YYYY-MM-DD"""
         date_str = match.group(1)

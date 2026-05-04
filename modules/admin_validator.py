@@ -1,9 +1,6 @@
-"""
-Centralized admin validation utilities.
-Eliminates duplicate admin permission checks across modules.
-"""
+"""Centralized admin validation utilities."""
 
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from .exception_utils import (
     PermissionException,
@@ -13,15 +10,34 @@ from .exception_utils import (
 
 
 class AdminValidator:
-    """Centralized admin validation with standardized permission checks."""
+    """Centralized admin validation with standardized permission checks.
+
+    Prefer passing `bot` when available so validation uses the same hostname-aware
+    logic as `Jeeves.is_admin()`. Passing a config dict or list still works for
+    lightweight tests and non-IRC contexts.
+    """
     
-    def __init__(self, admin_users: Optional[List[str]] = None):
+    def __init__(
+        self,
+        admin_users: Optional[List[str]] = None,
+        config: Optional[Dict[str, Any]] = None,
+        bot: Optional[Any] = None,
+    ):
         """Initialize admin validator.
         
         Args:
             admin_users: List of admin usernames
+            config: Jeeves config dict using `core.admins`
+            bot: Optional Jeeves instance for full admin checks
         """
-        self.admin_users = admin_users or []
+        self.bot = bot
+        if admin_users is None and config:
+            admin_users = config.get("core", {}).get("admins", [])
+        self.admin_users = [user for user in (admin_users or []) if isinstance(user, str)]
+
+    @staticmethod
+    def _nick_from_source(username_or_source: str) -> str:
+        return str(username_or_source).split("!", 1)[0].strip()
     
     def is_admin(self, username: str) -> bool:
         """Check if user is an admin.
@@ -32,7 +48,12 @@ class AdminValidator:
         Returns:
             True if user is admin, False otherwise
         """
-        is_admin = username.lower() in [user.lower() for user in self.admin_users]
+        if self.bot is not None and "!" in str(username):
+            is_admin = bool(self.bot.is_admin(username))
+        else:
+            nick = self._nick_from_source(username).lower()
+            admin_nicks = {user.strip().lower() for user in self.admin_users}
+            is_admin = nick in admin_nicks
         
         if is_admin:
             log_module_event("admin_validator", "admin_check", {
@@ -86,6 +107,10 @@ class AdminValidator:
         })
 
 
-def create_admin_validator(admin_users: List[str]) -> AdminValidator:
+def create_admin_validator(
+    admin_users: Optional[List[str]] = None,
+    config: Optional[Dict[str, Any]] = None,
+    bot: Optional[Any] = None,
+) -> AdminValidator:
     """Create an admin validator with the specified admin users."""
-    return AdminValidator(admin_users=admin_users)
+    return AdminValidator(admin_users=admin_users, config=config, bot=bot)

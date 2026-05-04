@@ -136,6 +136,33 @@ class Quest(SimpleCommandModule):
     def on_unload(self):
         super().on_unload()
         schedule.clear(self.name)
+        schedule.clear(f"{self.name}-mob_close")
+        schedule.clear(f"{self.name}-energy_regen")
+
+    def house_status(self, channel: str = None) -> str:
+        players = self.get_state("players", {})
+        active_mob = self.get_state("active_mob")
+        parts = []
+        if isinstance(players, dict) and players:
+            parts.append(f"{len(players)} adventurers")
+        if active_mob:
+            participants = active_mob.get("participants") or []
+            parts.append(f"mob open with {len(participants)} joined")
+        active_path = self.challenge_paths.get("active_path") if isinstance(self.challenge_paths, dict) else None
+        if active_path:
+            path_data = self.challenge_paths.get("paths", {}).get(active_path, {})
+            parts.append(f"challenge {path_data.get('name', active_path)}")
+        if not parts:
+            return ""
+        return "Quest: " + ", ".join(parts) + "."
+
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Quest with !quest, join mobs with !quest join, and check inventory with !inventory."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\b(quest|dungeon|mob|adventure)\b", msg, re.IGNORECASE):
+            return "Use !quest to see your adventurer, or !dungeon for a dungeon run."
+        return None
 
     def _schedule_energy_regen(self):
         energy_enabled = self.get_config_value("energy_system.enabled", default=True)

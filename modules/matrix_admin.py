@@ -45,6 +45,7 @@ class MatrixAdmin(SimpleCommandModule):
         self._access_token: str = ""
         self._since: str = ""
         self._txn_id: int = int(time.time() * 1000)
+        self._started_at_ms: int = int(time.time() * 1000)
         self._poll_thread: threading.Thread | None = None
         self._start_matrix()
 
@@ -132,6 +133,37 @@ class MatrixAdmin(SimpleCommandModule):
 
     # ── Poll loop ─────────────────────────────────────────────
 
+    def _sync_filter(self, timeline_limit: int = 0) -> str:
+        """Return a Matrix sync filter that minimizes room timeline backfill."""
+        return json.dumps({"room": {"timeline": {"limit": timeline_limit}}})
+
+    def _initial_sync(self, homeserver: str, headers: dict) -> bool:
+        """Establish the sync token used as the startup watermark."""
+        try:
+            resp = requests.get(
+                f"{homeserver}/_matrix/client/v3/sync",
+                headers=headers,
+                params={"timeout": 0, "filter": self._sync_filter(0)},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            self._since = resp.json().get("next_batch", "")
+            if not self._since:
+                self.log_debug("[matrix_admin] initial sync missing next_batch")
+                return False
+            self.log_debug("[matrix_admin] initial sync complete")
+            return True
+        except Exception as e:
+            self.log_debug(f"[matrix_admin] initial sync failed: {e}")
+            return False
+
+    def _is_fresh_event(self, event: dict) -> bool:
+        """Only accept events created after this module instance started."""
+        origin_server_ts = event.get("origin_server_ts")
+        if not isinstance(origin_server_ts, int):
+            return False
+        return origin_server_ts >= self._started_at_ms
+
     def _poll_loop(self) -> None:
         cfg = self._matrix_config()
         homeserver = cfg.get("homeserver", "").rstrip("/")
@@ -142,23 +174,13 @@ class MatrixAdmin(SimpleCommandModule):
         headers = {"Authorization": f"Bearer {self._access_token}"}
 
         # Initial sync — skip old messages
-        try:
-            resp = requests.get(
-                f"{homeserver}/_matrix/client/v3/sync",
-                headers=headers,
-                params={"timeout": 0, "filter": json.dumps({"room": {"timeline": {"limit": 0}}})},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            self._since = resp.json().get("next_batch", "")
-            self.log_debug("[matrix_admin] initial sync complete")
-        except Exception as e:
-            self.log_debug(f"[matrix_admin] initial sync failed: {e}")
+        while not self._initial_sync(homeserver, headers):
+            time.sleep(5)
 
         backoff = 5
         while True:
             try:
-                params: dict = {"timeout": 30000}
+                params: dict = {"timeout": 30000, "filter": self._sync_filter(50)}
                 if self._since:
                     params["since"] = self._since
 
@@ -189,6 +211,8 @@ class MatrixAdmin(SimpleCommandModule):
                 joined = data.get("rooms", {}).get("join", {})
                 room_data = joined.get(room_id, {})
                 for event in room_data.get("timeline", {}).get("events", []):
+                    if not self._is_fresh_event(event):
+                        continue
                     if event.get("type") != "m.room.message":
                         continue
                     content = event.get("content", {})

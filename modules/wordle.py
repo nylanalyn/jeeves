@@ -52,6 +52,7 @@ class Wordle(SimpleCommandModule):
         self.set_state("used_words", self.get_state("used_words", []))
         self.set_state("today", self.get_state("today", None))
         self.set_state("stats", self.get_state("stats", {}))
+        self.set_state("yesterday", self.get_state("yesterday", None))
         self.save_state()
 
     def _register_commands(self) -> None:
@@ -124,6 +125,9 @@ class Wordle(SimpleCommandModule):
         if not force_new and isinstance(today, dict) and today.get("date") == date:
             return today
 
+        yesterday = self._yesterday_from_today(today, date)
+        if yesterday:
+            self.set_state("yesterday", yesterday)
         if not self.answer_words:
             return None
 
@@ -147,6 +151,20 @@ class Wordle(SimpleCommandModule):
         self.set_state("today", today)
         self.save_state()
         return today
+
+    def _yesterday_from_today(self, today: Any, current_date: str) -> Optional[Dict[str, Any]]:
+        if not isinstance(today, dict):
+            return None
+        previous_date = today.get("date")
+        previous_word = today.get("word")
+        if not previous_date or previous_date == current_date or not previous_word:
+            return None
+        return {
+            "date": str(previous_date),
+            "word": str(previous_word).lower(),
+            "solved": bool(today.get("solved")),
+            "solved_by": today.get("solved_by"),
+        }
 
     def _normalized_used_words(self) -> Set[str]:
         raw = self.get_state("used_words", [])
@@ -275,6 +293,26 @@ class Wordle(SimpleCommandModule):
         user_stats["wins"] = int(user_stats.get("wins", 0)) + 1
         user_stats.setdefault("games_played", 0)
         self.set_state("stats", stats)
+
+    def house_status(self, channel: str = None) -> str:
+        if channel and not self._channel_available(channel):
+            return ""
+        today = self._ensure_today()
+        if not today:
+            return ""
+
+        if today.get("solved"):
+            status = f"solved; the word was {str(today.get('word', '')).upper()}"
+        else:
+            status = "currently not solved"
+
+        yesterday = self.get_state("yesterday")
+        if isinstance(yesterday, dict) and yesterday.get("word"):
+            yesterday_text = f" Yesterday's word was {str(yesterday['word']).upper()}."
+        else:
+            yesterday_text = " Yesterday's word is not yet on record."
+
+        return f"Wordle: {status}.{yesterday_text}"
 
     def _cmd_status(self, connection: Any, event: Any, msg: str, username: str, match: re.Match) -> bool:
         if not self._channel_available(event.target):

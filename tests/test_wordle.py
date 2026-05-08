@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from modules.wordle import Wordle
+from modules.house import House
 
 
 class FakeConnection:
@@ -225,6 +226,15 @@ class TestWordleCommands(unittest.TestCase):
                 today = harness.module._ensure_today()
             self.assertEqual(today["word"], "castle")
             self.assertEqual(harness.bot.module_states["wordle"]["used_words"], ["anchor", "castle"])
+            self.assertEqual(
+                harness.bot.module_states["wordle"]["yesterday"],
+                {
+                    "date": "2000-01-01",
+                    "word": "anchor",
+                    "solved": False,
+                    "solved_by": None,
+                },
+            )
         finally:
             harness.close()
 
@@ -259,6 +269,85 @@ class TestWordleCommands(unittest.TestCase):
             self.assertTrue(harness.dispatch("!word top", username="Alice"))
             self.assertIn("Bob (5)", harness.replies[-1])
             self.assertIn("Alice (2)", harness.replies[-1])
+        finally:
+            harness.close()
+
+    def test_house_status_reports_current_and_yesterday_wordle(self):
+        state = {
+            "used_words": ["anchor"],
+            "today": {
+                "date": "2000-01-01",
+                "word": "anchor",
+                "solved": False,
+                "solved_by": None,
+                "guesses": {},
+                "discovered": {"correct": [None] * 6, "present": [], "absent": []},
+            },
+            "yesterday": {"date": "1999-12-31", "word": "castle"},
+            "stats": {},
+        }
+        harness = WordleHarness(words=["anchor", "police"], dictionary=[], state=state)
+        try:
+            today = harness.module.get_state("today")
+            today["date"] = harness.module._today_date()
+            harness.module.set_state("today", today)
+            harness.module.save_state()
+
+            self.assertEqual(
+                harness.module.house_status("#test"),
+                "Wordle: currently not solved. Yesterday's word was CASTLE.",
+            )
+
+            today = harness.module.get_state("today")
+            today["solved"] = True
+            today["word"] = "police"
+            harness.module.set_state("today", today)
+            harness.module.save_state()
+
+            self.assertEqual(
+                harness.module.house_status("#test"),
+                "Wordle: solved; the word was POLICE. Yesterday's word was CASTLE.",
+            )
+        finally:
+            harness.close()
+
+    def test_house_command_includes_wordle_status_when_loaded(self):
+        state = {
+            "used_words": ["anchor"],
+            "today": {
+                "date": "2000-01-01",
+                "word": "anchor",
+                "solved": False,
+                "solved_by": None,
+                "guesses": {},
+                "discovered": {"correct": [None] * 6, "present": [], "absent": []},
+            },
+            "yesterday": {"date": "1999-12-31", "word": "castle"},
+            "stats": {},
+        }
+        harness = WordleHarness(words=["anchor", "police"], dictionary=[], state=state)
+        try:
+            today = harness.module.get_state("today")
+            today["date"] = harness.module._today_date()
+            harness.module.set_state("today", today)
+            harness.module.save_state()
+
+            harness.bot.pm.plugins["wordle"] = harness.module
+            house = House(harness.bot)
+            connection = FakeConnection()
+
+            handled = house._cmd_house(connection, harness.event(), "!house", "Alice", None)
+
+            self.assertTrue(handled)
+            self.assertEqual(
+                connection.messages,
+                [
+                    (
+                        "#test",
+                        "Household report: Wordle: currently not solved. Yesterday's word was CASTLE.",
+                    )
+                ],
+            )
         finally:
             harness.close()
 

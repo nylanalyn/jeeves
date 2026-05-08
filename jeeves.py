@@ -75,6 +75,7 @@ class MultiFileStateManager:
         'roadtrip': 'games',
         'fishing': 'games',
         'darts': 'games',
+        'wordle': 'games',
         # User data modules
         'users': 'users',
         'weather': 'users',

@@ -115,6 +115,13 @@ bell:
     allowed_channels:
         - "#your-channel"
 
+wordle:
+    allowed_channels:
+        - "#your-channel"
+    max_attempts_per_user: 3
+    word_list_file: "wordle-six-letter-words.txt"
+    dictionary_file: "/usr/share/dict/words"
+
 chatter:
     cooldowns:
         animal: 3600

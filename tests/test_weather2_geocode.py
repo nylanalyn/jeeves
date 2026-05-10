@@ -104,6 +104,30 @@ class TestWeather2Geocoding(unittest.TestCase):
         self.assertEqual(params["name"], "oviedo")
         self.assertEqual(params["count"], 100)
 
+    def test_usa_query_searches_city_and_filters_country(self):
+        _, weather = make_weather([SPAIN_OVIEDO, FLORIDA_OVIEDO])
+
+        geo = weather._geocode("oviedo USA")
+
+        self.assertIsNotNone(geo)
+        self.assertEqual(geo["short_name"], "Oviedo, Florida, US")
+        self.assertEqual(geo["user_input"], "oviedo USA")
+        _, params, _ = weather.http.calls[-1]
+        self.assertEqual(params["name"], "oviedo")
+        self.assertEqual(params["count"], 100)
+
+    def test_comma_us_query_searches_city_and_filters_country(self):
+        _, weather = make_weather([SPAIN_OVIEDO, FLORIDA_OVIEDO])
+
+        geo = weather._geocode("oviedo, us")
+
+        self.assertIsNotNone(geo)
+        self.assertEqual(geo["short_name"], "Oviedo, Florida, US")
+        _, params, _ = weather.http.calls[-1]
+        self.assertEqual(params["name"], "oviedo")
+        self.assertEqual(params["count"], 100)
+
+
     def test_unqualified_query_keeps_open_meteo_top_result(self):
         _, weather = make_weather([SPAIN_OVIEDO, FLORIDA_OVIEDO])
 

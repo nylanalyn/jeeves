@@ -220,6 +220,39 @@ class Weather2(SimpleCommandModule):
             return None
         return place, state_name
 
+    @staticmethod
+    def _split_us_country_query(query: str) -> Optional[str]:
+        """Return the place name for queries qualified with US/USA."""
+        cleaned = query.strip()
+        if not cleaned:
+            return None
+
+        qualifiers = (
+            "united states of america",
+            "united states",
+            "u.s.a.",
+            "u.s.a",
+            "usa",
+            "u.s.",
+            "u.s",
+            "us",
+        )
+        lowered = re.sub(r"\s+", " ", cleaned.casefold())
+
+        if "," in cleaned:
+            place, qualifier = cleaned.rsplit(",", 1)
+            compact = qualifier.strip().casefold()
+            if compact in qualifiers:
+                place = place.strip()
+                return place or None
+            return None
+
+        for qualifier in qualifiers:
+            suffix = f" {qualifier}"
+            if lowered.endswith(suffix):
+                return cleaned[: -len(suffix)].strip() or None
+        return None
+
     # ------------------------------------------------------------------
 
     def _geocode(self, query: str) -> Optional[Dict[str, Any]]:
@@ -233,8 +266,13 @@ class Weather2(SimpleCommandModule):
             return None
 
         state_query = self._split_us_state_query(query)
-        lookup_name = state_query[0] if state_query else query
-        result_count = 100 if state_query else 1
+        country_query = None if state_query else self._split_us_country_query(query)
+        lookup_name = (
+            state_query[0] if state_query
+            else country_query if country_query
+            else query
+        )
+        result_count = 100 if state_query or country_query else 1
 
         try:
             data = self.http.get_json(
@@ -261,6 +299,16 @@ class Weather2(SimpleCommandModule):
                     item for item in results
                     if item.get("country_code", "").upper() == "US"
                     and (item.get("admin1") or "").casefold() == state_name
+                ),
+                None,
+            )
+            if result is None:
+                return None
+        elif country_query:
+            result = next(
+                (
+                    item for item in results
+                    if item.get("country_code", "").upper() == "US"
                 ),
                 None,
             )

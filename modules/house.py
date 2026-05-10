@@ -18,6 +18,8 @@ class House(SimpleCommandModule):
     version = "1.0.0"
     description = "Provides a concise report on the currently loaded household services."
 
+    STATUS_PRIORITY = ("wordle",)
+
     QUIET_LINES = [
         "The house is quiet at present.",
         "All appears orderly for the moment.",
@@ -48,9 +50,17 @@ class House(SimpleCommandModule):
             return None
         return str(result).strip()
 
+    def _status_sort_key(self, module_name: str) -> tuple:
+        if module_name in self.STATUS_PRIORITY:
+            return (0, self.STATUS_PRIORITY.index(module_name), module_name)
+        return (1, len(self.STATUS_PRIORITY), module_name)
+
     def _collect_status_lines(self, channel: str) -> List[str]:
         lines: List[str] = []
-        for module_name, module in sorted(self.bot.pm.plugins.items()):
+        for module_name, module in sorted(
+            self.bot.pm.plugins.items(),
+            key=lambda item: self._status_sort_key(item[0]),
+        ):
             if module_name == self.name:
                 continue
             hook = getattr(module, "house_status", None)

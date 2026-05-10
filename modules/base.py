@@ -104,7 +104,34 @@ class ModuleBase(ABC):
     name = "base"
     version = "2.1.0" # Updated to use http_utils
     description = "Base module class"
-    
+
+    # US state abbreviations for geocoding expansion
+    STATE_ABBREVS = {
+        'al': 'alabama', 'ak': 'alaska', 'az': 'arizona', 'ar': 'arkansas',
+        'ca': 'california', 'co': 'colorado', 'ct': 'connecticut', 'de': 'delaware',
+        'fl': 'florida', 'ga': 'georgia', 'hi': 'hawaii', 'id': 'idaho',
+        'il': 'illinois', 'in': 'indiana', 'ia': 'iowa', 'ks': 'kansas',
+        'ky': 'kentucky', 'la': 'louisiana', 'me': 'maine', 'md': 'maryland',
+        'ma': 'massachusetts', 'mi': 'michigan', 'mn': 'minnesota', 'ms': 'mississippi',
+        'mo': 'missouri', 'mt': 'montana', 'ne': 'nebraska', 'nv': 'nevada',
+        'nh': 'new hampshire', 'nj': 'new jersey', 'nm': 'new mexico', 'ny': 'new york',
+        'nc': 'north carolina', 'nd': 'north dakota', 'oh': 'ohio', 'ok': 'oklahoma',
+        'or': 'oregon', 'pa': 'pennsylvania', 'ri': 'rhode island', 'sc': 'south carolina',
+        'sd': 'south dakota', 'tn': 'tennessee', 'tx': 'texas', 'ut': 'utah',
+        'vt': 'vermont', 'va': 'virginia', 'wa': 'washington', 'wv': 'west virginia',
+        'wi': 'wisconsin', 'wy': 'wyoming', 'dc': 'district of columbia',
+    }
+
+    def _expand_state_abbrevs(self, location: str) -> str:
+        """Expand trailing US state abbreviations in location queries."""
+        parts = [p.strip() for p in location.split(',')]
+        if len(parts) >= 2:
+            state_part = parts[-1].strip().lower().rstrip('.')
+            if state_part in self.STATE_ABBREVS:
+                parts[-1] = self.STATE_ABBREVS[state_part]
+                return ', '.join(parts)
+        return location
+
     def __init__(self, bot):
         self.bot = bot
         self._state_cache = {}
@@ -160,12 +187,17 @@ class ModuleBase(ABC):
     def _get_geocode_data(self, location: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
         """Fetches geographic coordinates and structured address for a location string."""
         geo_url = "https://nominatim.openstreetmap.org/search"
+        expanded = self._expand_state_abbrevs(location)
         params = {
-            "q": location,
+            "q": expanded,
             "format": "json",
             "limit": 1,
-            "addressdetails": 1
+            "addressdetails": 1,
+            "accept-language": "en-US,en",
         }
+        # Bias toward US results when the query contains a US state
+        if any(v in expanded.lower() for v in self.STATE_ABBREVS.values()):
+            params["countrycodes"] = "us"
         
         try:
             if self.http:
@@ -180,7 +212,7 @@ class ModuleBase(ABC):
                 return None
             return (geo_data[0]["lat"], geo_data[0]["lon"], geo_data[0])
         except Exception as e:
-            self._record_error(f"Geocoding request failed for '{location}': {e}")
+            self._record_error(f"Geocoding request failed for '{location}' (expanded: '{expanded}'): {e}")
             return None
 
     def _format_location_name(self, geo_data: Dict[str, Any]) -> str:
@@ -188,7 +220,7 @@ class ModuleBase(ABC):
         address = geo_data.get("address", {})
         parts = []
         
-        place = address.get("city") or address.get("town") or address.get("village") or address.get("hamlet")
+        place = address.get("city") or address.get("town") or address.get("village") or address.get("hamlet") or address.get("suburb")
         if place:
             parts.append(place)
         

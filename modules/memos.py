@@ -1,9 +1,10 @@
 # modules/memos.py
 # Memo delivery with butler flair.
+import hashlib
 import re
 import random
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, List, Optional, Tuple
 from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
@@ -76,6 +77,11 @@ class Memos(SimpleCommandModule):
         self.register_command(r"^\s*!note\s+(\S+)\s+(.+)$", self._cmd_memo, name="note", description="Alias for !memo.")
         self.register_command(r"^\s*!tell\s+(\S+)\s+(.+)$", self._cmd_memo, name="tell", description="Alias for !memo.")
         self.register_command(r"^\s*!memos\s+mine\s*$", self._cmd_memos_mine, name="memos mine", description="Show your pending messages.")
+        self.register_command(r"^\s*!memos\s+admin\s+summary\s*$", self._cmd_admin_summary, name="memos admin summary", admin_only=True, description="[Admin] Summarize pending memos.")
+        self.register_command(r"^\s*!memos\s+admin\s+list(?:\s+(.+))?\s*$", self._cmd_admin_list, name="memos admin list", admin_only=True, description="[Admin] List pending memos privately.")
+        self.register_command(r"^\s*!memos\s+admin\s+show\s+([0-9a-f]{10})\s*$", self._cmd_admin_show, name="memos admin show", admin_only=True, description="[Admin] Show one pending memo privately.")
+        self.register_command(r"^\s*!memos\s+admin\s+clear\s+([0-9a-f]{10})\s*$", self._cmd_admin_clear, name="memos admin clear", admin_only=True, description="[Admin] Clear one pending memo.")
+        self.register_command(r"^\s*!memos\s+admin\s+clear-recipient\s+(\S+)(?:\s+(\S+))?\s*$", self._cmd_admin_clear_recipient, name="memos admin clear recipient", admin_only=True, description="[Admin] Clear pending memos for a recipient.")
 
     def _pending_count(self) -> int:
         pending = self.get_state("pending", {})
@@ -84,6 +90,239 @@ class Memos(SimpleCommandModule):
             if isinstance(channel_memos, dict):
                 total += sum(len(bucket) for bucket in channel_memos.values() if isinstance(bucket, list))
         return total
+
+    def _user_display_name(self, user_id: str) -> str:
+        users_module = getattr(getattr(self.bot, "pm", None), "plugins", {}).get("users")
+        if users_module:
+            user_map = users_module.get_state("user_map", {})
+            profile = user_map.get(user_id, {}) if isinstance(user_map, dict) else {}
+            nick = profile.get("canonical_nick") if isinstance(profile, dict) else None
+            if nick:
+                return str(nick)
+        return user_id
+
+    def _memo_id(self, channel: str, user_id: str, index: int, memo: Dict[str, Any]) -> str:
+        payload = "\x1f".join(
+            [
+                channel,
+                user_id,
+                str(index),
+                str(memo.get("when", "")),
+                str(memo.get("from", "")),
+                str(memo.get("text", "")),
+            ]
+        )
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:10]
+
+    def _iter_pending_memos(self) -> List[Dict[str, Any]]:
+        pending = self.get_state("pending", {})
+        entries: List[Dict[str, Any]] = []
+        if not isinstance(pending, dict):
+            return entries
+        for channel, channel_memos in sorted(pending.items()):
+            if not isinstance(channel_memos, dict):
+                continue
+            for user_id, bucket in sorted(channel_memos.items()):
+                if not isinstance(bucket, list):
+                    continue
+                for index, memo in enumerate(bucket):
+                    if not isinstance(memo, dict):
+                        continue
+                    entries.append(
+                        {
+                            "id": self._memo_id(channel, user_id, index, memo),
+                            "channel": channel,
+                            "recipient_id": user_id,
+                            "recipient": self._user_display_name(user_id),
+                            "index": index,
+                            "from": str(memo.get("from", "?")),
+                            "when": str(memo.get("when", "")),
+                            "text": str(memo.get("text", "")),
+                        }
+                    )
+        return entries
+
+    def _format_memo_entry(self, entry: Dict[str, Any], include_text: bool = False) -> str:
+        when = (entry.get("when") or "")[:16].replace("T", " ")
+        text = entry.get("text", "")
+        if not include_text and len(text) > 80:
+            text = text[:77] + "..."
+        return (
+            f"{entry['id']} {entry['channel']} -> {entry['recipient']} "
+            f"from {entry['from']} at {when or '?'} UTC: {text}"
+        )
+
+    def _memo_summary_text(self) -> str:
+        entries = self._iter_pending_memos()
+        if not entries:
+            return "No pending memos."
+        channels: Dict[str, int] = {}
+        recipients: Dict[str, int] = {}
+        for entry in entries:
+            channels[entry["channel"]] = channels.get(entry["channel"], 0) + 1
+            recipients[entry["recipient"]] = recipients.get(entry["recipient"], 0) + 1
+        channel_bits = ", ".join(f"{channel}: {count}" for channel, count in sorted(channels.items()))
+        stale = sorted(recipients.items(), key=lambda item: (-item[1], item[0]))[:5]
+        stale_bits = ", ".join(f"{recipient}: {count}" for recipient, count in stale)
+        return f"{len(entries)} pending memo(s). By channel: {channel_bits}. Top recipients: {stale_bits}."
+
+    def _parse_admin_list_args(self, raw_args: Optional[str]) -> Tuple[Optional[str], int]:
+        channel = None
+        limit = 10
+        if not raw_args:
+            return channel, limit
+        for part in raw_args.split():
+            if part.startswith("#"):
+                channel = part
+            elif part.isdigit():
+                limit = max(1, min(int(part), 50))
+        return channel, limit
+
+    def _list_memos_text(self, raw_args: Optional[str] = None) -> str:
+        channel, limit = self._parse_admin_list_args(raw_args)
+        entries = self._iter_pending_memos()
+        if channel:
+            entries = [entry for entry in entries if entry["channel"] == channel]
+        if not entries:
+            scope = f" in {channel}" if channel else ""
+            return f"No pending memos{scope}."
+        shown = entries[:limit]
+        lines = [self._format_memo_entry(entry) for entry in shown]
+        remaining = len(entries) - len(shown)
+        if remaining > 0:
+            lines.append(f"...and {remaining} more. Use !memos admin list [#channel] [limit] to page manually.")
+        return "\n".join(lines)
+
+    def _find_memo_entry(self, memo_id: str) -> Optional[Dict[str, Any]]:
+        for entry in self._iter_pending_memos():
+            if entry["id"] == memo_id:
+                return entry
+        return None
+
+    def _remove_memo_by_id(self, memo_id: str) -> Optional[Dict[str, Any]]:
+        entry = self._find_memo_entry(memo_id)
+        if not entry:
+            return None
+        pending = self.get_state("pending", {})
+        channel = entry["channel"]
+        user_id = entry["recipient_id"]
+        index = entry["index"]
+        bucket = pending.get(channel, {}).get(user_id, [])
+        if index >= len(bucket):
+            return None
+        del bucket[index]
+        if not bucket:
+            del pending[channel][user_id]
+        if channel in pending and not pending[channel]:
+            del pending[channel]
+        self.set_state("pending", pending)
+        self.save_state()
+        return entry
+
+    def _clear_recipient(self, recipient: str, channel: Optional[str] = None) -> int:
+        pending = self.get_state("pending", {})
+        if not isinstance(pending, dict):
+            return 0
+        user_id = self._resolve_recipient_id(recipient, pending)
+        removed = 0
+        channels = [channel] if channel else list(pending.keys())
+        for current_channel in channels:
+            channel_memos = pending.get(current_channel)
+            if not isinstance(channel_memos, dict):
+                continue
+            bucket = channel_memos.pop(user_id, [])
+            if isinstance(bucket, list):
+                removed += len(bucket)
+            if not channel_memos:
+                pending.pop(current_channel, None)
+        if removed:
+            self.set_state("pending", pending)
+            self.save_state()
+        return removed
+
+    def _resolve_recipient_id(self, recipient: str, pending: Dict[str, Any]) -> str:
+        recipient_lower = recipient.lower()
+        recipient_ids = set()
+        for channel_memos in pending.values():
+            if isinstance(channel_memos, dict):
+                recipient_ids.update(channel_memos.keys())
+        if recipient in recipient_ids:
+            return recipient
+        for user_id in recipient_ids:
+            if self._user_display_name(user_id).lower() == recipient_lower:
+                return user_id
+        return self.bot.get_user_id(recipient)
+
+    @property
+    def matrix_admin_commands(self) -> dict:
+        return {
+            "!memos admin summary": (lambda args: self._memo_summary_text(), "summarize pending memos"),
+            "!memos admin list": (lambda args: self._list_memos_text(args), "!memos admin list [#channel] [limit]"),
+            "!memos admin show": (self._matrix_admin_show, "!memos admin show <memo_id>"),
+            "!memos admin clear": (self._matrix_admin_clear, "!memos admin clear <memo_id>"),
+            "!memos admin clear-recipient": (self._matrix_admin_clear_recipient, "!memos admin clear-recipient <nick|user_id> [#channel]"),
+        }
+
+    def _matrix_admin_show(self, args: str) -> str:
+        memo_id = args.strip().lower()
+        entry = self._find_memo_entry(memo_id)
+        if not entry:
+            return f"No pending memo found for id {memo_id}."
+        return self._format_memo_entry(entry, include_text=True)
+
+    def _matrix_admin_clear(self, args: str) -> str:
+        memo_id = args.strip().lower()
+        entry = self._remove_memo_by_id(memo_id)
+        if not entry:
+            return f"No pending memo found for id {memo_id}."
+        return f"Cleared memo {memo_id} for {entry['recipient']} in {entry['channel']}."
+
+    def _matrix_admin_clear_recipient(self, args: str) -> str:
+        parts = args.split()
+        if not parts:
+            return "Usage: !memos admin clear-recipient <nick|user_id> [#channel]"
+        recipient = parts[0]
+        channel = parts[1] if len(parts) > 1 else None
+        removed = self._clear_recipient(recipient, channel)
+        scope = f" in {channel}" if channel else ""
+        return f"Cleared {removed} pending memo(s) for {recipient}{scope}."
+
+    def _cmd_admin_summary(self, connection, event, msg, username, match):
+        self.safe_reply(connection, event, self._memo_summary_text())
+        return True
+
+    def _cmd_admin_list(self, connection, event, msg, username, match):
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent the pending memo ledger privately.")
+        for line in self._list_memos_text(match.group(1)).splitlines():
+            self.safe_privmsg(username, line)
+        return True
+
+    def _cmd_admin_show(self, connection, event, msg, username, match):
+        memo_id = match.group(1).lower()
+        entry = self._find_memo_entry(memo_id)
+        if not entry:
+            self.safe_reply(connection, event, f"No pending memo found for id {memo_id}.")
+            return True
+        self.safe_reply(connection, event, f"{self.bot.title_for(username)}, I have sent that memo privately.")
+        self.safe_privmsg(username, self._format_memo_entry(entry, include_text=True))
+        return True
+
+    def _cmd_admin_clear(self, connection, event, msg, username, match):
+        memo_id = match.group(1).lower()
+        entry = self._remove_memo_by_id(memo_id)
+        if not entry:
+            self.safe_reply(connection, event, f"No pending memo found for id {memo_id}.")
+            return True
+        self.safe_reply(connection, event, f"Cleared memo {memo_id} for {entry['recipient']} in {entry['channel']}.")
+        return True
+
+    def _cmd_admin_clear_recipient(self, connection, event, msg, username, match):
+        recipient = match.group(1)
+        channel = match.group(2)
+        removed = self._clear_recipient(recipient, channel)
+        scope = f" in {channel}" if channel else ""
+        self.safe_reply(connection, event, f"Cleared {removed} pending memo(s) for {recipient}{scope}.")
+        return True
 
     def house_status(self, channel: str = None) -> str:
         count = self._pending_count()

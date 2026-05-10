@@ -332,22 +332,30 @@ class TestWordleCommands(unittest.TestCase):
             harness.module.set_state("today", today)
             harness.module.save_state()
 
-            harness.bot.pm.plugins["wordle"] = harness.module
+            harness.bot.pm.plugins.update(
+                {
+                    "birthday": SimpleNamespace(house_status=lambda channel: "Birthdays: next one in 7 days."),
+                    "fishing": SimpleNamespace(house_status=lambda channel: "Fishing: 31 fishers, 20 lines out."),
+                    "fortune": SimpleNamespace(house_status=lambda channel: "Fortunes: 681 available."),
+                    "hunt": SimpleNamespace(house_status=lambda channel: "Hunt: 151 guests have animal records."),
+                    "karma": SimpleNamespace(house_status=lambda channel: "Karma: 165 people scored."),
+                    "memos": SimpleNamespace(house_status=lambda channel: "Memos: 19 pending."),
+                    "wordle": harness.module,
+                }
+            )
             house = House(harness.bot)
             connection = FakeConnection()
 
             handled = house._cmd_house(connection, harness.event(), "!house", "Alice", None)
 
             self.assertTrue(handled)
-            self.assertEqual(
-                connection.messages,
-                [
-                    (
-                        "#test",
-                        "Household report: Wordle: currently not solved. Yesterday's word was CASTLE.",
-                    )
-                ],
-            )
+            self.assertEqual(len(connection.messages), 1)
+            report = connection.messages[0][1]
+            self.assertIn("Wordle: currently not solved. Yesterday's word was CASTLE.", report)
+            self.assertIn("Birthdays: next one in 7 days.", report)
+            self.assertIn("Memos: 19 pending.", report)
+            self.assertNotIn("Hunt: 151 guests have animal records.", report)
+            self.assertNotIn("Karma: 165 people scored.", report)
         finally:
             harness.close()
 

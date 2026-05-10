@@ -194,6 +194,34 @@ class Weather2(SimpleCommandModule):
     # Open-Meteo API calls
     # ------------------------------------------------------------------
 
+    @classmethod
+    def _split_us_state_query(cls, query: str) -> Optional[tuple[str, str]]:
+        """Return ``(place, state_name)`` for US state-qualified queries."""
+        cleaned = query.strip()
+        if not cleaned:
+            return None
+
+        place = ""
+        qualifier = ""
+        if "," in cleaned:
+            place, qualifier = cleaned.rsplit(",", 1)
+        else:
+            match = re.match(r"^(.+?)\s+([A-Za-z]{2})\.?$", cleaned)
+            if match:
+                place, qualifier = match.groups()
+
+        place = place.strip()
+        qualifier = qualifier.strip().lower().rstrip(".")
+        state_name = cls.STATE_ABBREVS.get(qualifier)
+        if state_name is None and qualifier in cls.STATE_ABBREVS.values():
+            state_name = qualifier
+
+        if not place or state_name is None:
+            return None
+        return place, state_name
+
+    # ------------------------------------------------------------------
+
     def _geocode(self, query: str) -> Optional[Dict[str, Any]]:
         """Look up a place via the Open-Meteo geocoding API.
 
@@ -204,12 +232,16 @@ class Weather2(SimpleCommandModule):
             self._record_error("HTTP client not available for geocoding")
             return None
 
+        state_query = self._split_us_state_query(query)
+        lookup_name = state_query[0] if state_query else query
+        result_count = 100 if state_query else 1
+
         try:
             data = self.http.get_json(
                 OPEN_METEO_GEO_URL,
                 params={
-                    "name": query,
-                    "count": 1,
+                    "name": lookup_name,
+                    "count": result_count,
                     "language": "en",
                     "format": "json",
                 },
@@ -222,7 +254,20 @@ class Weather2(SimpleCommandModule):
         if not results:
             return None
 
-        result = results[0]
+        if state_query:
+            _, state_name = state_query
+            result = next(
+                (
+                    item for item in results
+                    if item.get("country_code", "").upper() == "US"
+                    and (item.get("admin1") or "").casefold() == state_name
+                ),
+                None,
+            )
+            if result is None:
+                return None
+        else:
+            result = results[0]
         lat = str(result["latitude"])
         lon = str(result["longitude"])
         country_code = result.get("country_code", "us").upper()

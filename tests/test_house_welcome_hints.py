@@ -81,6 +81,28 @@ def test_house_falls_back_to_loaded_services_when_no_status_hooks():
     assert "Available services include fortune." in connection.messages[0][1]
 
 
+def test_house_excludes_hunt_and_karma_from_status_and_fallback_services():
+    bot = BotStub(
+        {
+            "hunt": StatusPlugin(),
+            "karma": StatusPlugin(),
+            "memos": StatusPlugin(),
+            "fortune": object(),
+        }
+    )
+    house = House(bot)
+    bot.pm.plugins["house"] = house
+    connection = ConnectionStub()
+
+    house._cmd_house(connection, event(), "!house", "Alice", None)
+
+    report = connection.messages[0][1]
+    assert "Memos" in report or "Status for #test." in report
+    assert "Hunt" not in report
+    assert "Karma" not in report
+    assert "karma" not in house._loaded_services_line()
+    assert "hunt" not in house._loaded_services_line()
+
 def test_welcome_collects_loaded_module_summaries_privately():
     bot = BotStub({"sample": StatusPlugin()})
     welcome = Welcome(bot)

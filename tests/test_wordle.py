@@ -353,7 +353,9 @@ class TestWordleCommands(unittest.TestCase):
             report = connection.messages[0][1]
             self.assertIn("Wordle: currently not solved. Yesterday's word was CASTLE.", report)
             self.assertIn("Birthdays: next one in 7 days.", report)
-            self.assertNotIn("Memos: 19 pending.", report)
+            self.assertIn("Memos: 19 pending.", report)
+            self.assertNotIn("Hunt: 151 guests have animal records.", report)
+            self.assertNotIn("Karma: 165 people scored.", report)
         finally:
             harness.close()
 

@@ -19,6 +19,8 @@ class House(SimpleCommandModule):
     description = "Provides a concise report on the currently loaded household services."
 
     STATUS_PRIORITY = ("wordle",)
+    STATUS_EXCLUDED = {"hunt", "karma"}
+    LOADED_SERVICE_HIDDEN = {"admin", "base", "house", "hints", "help", "hunt", "karma", "matrix_admin", "users", "welcome"}
 
     QUIET_LINES = [
         "The house is quiet at present.",
@@ -61,7 +63,7 @@ class House(SimpleCommandModule):
             self.bot.pm.plugins.items(),
             key=lambda item: self._status_sort_key(item[0]),
         ):
-            if module_name == self.name:
+            if module_name == self.name or module_name in self.STATUS_EXCLUDED:
                 continue
             hook = getattr(module, "house_status", None)
             if not callable(hook):
@@ -72,7 +74,7 @@ class House(SimpleCommandModule):
         return lines
 
     def _loaded_services_line(self) -> str:
-        hidden = {"admin", "base", "house", "hints", "help", "matrix_admin", "users", "welcome"}
+        hidden = self.LOADED_SERVICE_HIDDEN
         names = [
             name for name in sorted(self.bot.pm.plugins.keys())
             if name not in hidden and not name.startswith("_")

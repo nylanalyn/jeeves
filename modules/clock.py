@@ -94,7 +94,7 @@ class Clock(SimpleCommandModule):
 
     def _cmd_time_self(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
-        user_locations = self.bot.get_module_state("weather").get("user_locations", {})
+        user_locations = self.bot.get_module_state("weather2").get("user_locations", {})
         user_loc = user_locations.get(user_id)
 
         if user_loc:
@@ -144,7 +144,7 @@ class Clock(SimpleCommandModule):
             target_user_id = nick_map.get(query.lower())
 
         if target_user_id:
-            user_locations = self.bot.get_module_state("weather").get("user_locations", {})
+            user_locations = self.bot.get_module_state("weather2").get("user_locations", {})
             target_user_loc = user_locations.get(target_user_id)
             if target_user_loc:
                 location_name = (

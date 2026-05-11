@@ -451,7 +451,7 @@ class Convenience(ModuleBase):
 
     def _cmd_news(self, connection, event, msg, username, match):
         user_id = self.bot.get_user_id(username)
-        location_obj = self.bot.get_module_state("weather").get("user_locations", {}).get(user_id)
+        location_obj = self.bot.get_module_state("weather2").get("user_locations", {}).get(user_id)
         has_flavor = self.has_flavor_enabled(username)
 
         # First attempt: Local news based on city/state

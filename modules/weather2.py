@@ -92,6 +92,14 @@ class Weather2(SimpleCommandModule):
     # Command registration
     # ------------------------------------------------------------------
 
+    def welcome_summary(self, channel: str = None) -> str:
+        return "Set a default place with !location city, then use !weather or !wf."
+
+    def contextual_hint(self, msg: str, username: str, channel: str) -> Optional[str]:
+        if re.search(r"\b(weather|forecast)\b", msg, re.IGNORECASE):
+            return "Set your default location with !location city, then use !weather or !wf."
+        return None
+
     def _register_commands(self):
         self.register_command(
             r"^\s*!location\s*$",

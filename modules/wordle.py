@@ -370,7 +370,7 @@ class Wordle(SimpleCommandModule):
             self.safe_reply(
                 connection,
                 event,
-                f"I'm afraid you've exhausted your three attempts for today, {title}. Perhaps tomorrow will be kinder.",
+                f"I'm afraid you've exhausted your {self.max_attempts} attempt{'s' if self.max_attempts != 1 else ''} for today, {title}. Perhaps tomorrow will be kinder.",
             )
             return True
 

@@ -46,7 +46,7 @@ class Coffee(SimpleCommandModule):
 
     def _get_user_local_hour(self, user_id: str) -> int:
         """Determines the user's local hour, falling back to server UTC hour."""
-        user_locations = self.bot.get_module_state("weather").get("user_locations", {})
+        user_locations = self.bot.get_module_state("weather2").get("user_locations", {})
         user_loc = user_locations.get(user_id)
 
         if user_loc and 'lat' in user_loc and 'lon' in user_loc:

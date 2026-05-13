@@ -14,6 +14,14 @@ from . import achievement_hooks
 
 UTC = timezone.utc
 
+XP_BONUS_SMALL_CHANCE = 0.04
+XP_BONUS_LARGE_CHANCE = 0.01
+XP_BONUS_SMALL_RANGE = (8, 20)
+XP_BONUS_LARGE_RANGE = (40, 90)
+XP_BOOST_ROD_CHANCE = 0.007
+XP_BOOST_ROD_CATCHES = 5
+ARTIFACT_CHANCE = 0.15
+
 # Quarter boundary dates for seasonal reset scheduling
 QUARTER_STARTS = [(1, 1), (4, 1), (7, 1), (10, 1)]  # month, day
 

@@ -55,282 +55,43 @@ def setup(bot: Any) -> 'Fishing':
     return Fishing(bot)
 
 
-# Fishing locations unlocked by level (0-9)
-LOCATIONS = [
-    {"name": "Puddle", "level": 0, "max_distance": 5, "type": "terrestrial"},
-    {"name": "Pond", "level": 1, "max_distance": 15, "type": "terrestrial"},
-    {"name": "Lake", "level": 2, "max_distance": 30, "type": "terrestrial"},
-    {"name": "River", "level": 3, "max_distance": 50, "type": "terrestrial"},
-    {"name": "Ocean", "level": 4, "max_distance": 100, "type": "terrestrial"},
-    {"name": "Deep Sea", "level": 5, "max_distance": 200, "type": "terrestrial"},
-    {"name": "Moon", "level": 6, "max_distance": 500, "type": "space"},
-    {"name": "Mars", "level": 7, "max_distance": 1000, "type": "space"},
-    {"name": "Jupiter", "level": 8, "max_distance": 2000, "type": "space"},
-    {"name": "The Void", "level": 9, "max_distance": 5000, "type": "space"},
-]
 
-# Fish database organized by location
-# Each fish has: name, min_weight, max_weight, rarity
-# Loaded from config/fish_database.json
-def _load_fish_database() -> Dict[str, List[Dict[str, Any]]]:
-    """Load fish database from JSON config file."""
+
+# Fishing config loaded from JSON
+def _load_fishing_config() -> Dict[str, Any]:
+    """Load fishing configuration from JSON config file."""
     config_path = os.path.join(os.path.dirname(__file__), "..", "config", "fish_database.json")
     try:
         with open(config_path, 'r') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         # Fallback to empty dict if file doesn't exist or is invalid
-        print(f"Warning: Could not load fish database from {config_path}: {e}")
+        print(f"Warning: Could not load fishing config from {config_path}: {e}")
         return {}
 
-FISH_DATABASE: Dict[str, List[Dict[str, Any]]] = _load_fish_database()
+_FISHING_CONFIG = _load_fishing_config()
 
-# Junk items by location type
-JUNK_ITEMS: Dict[str, List[str]] = {
-    "terrestrial": [
-        "Old Boot", "Rusty Tin Can", "Soggy Newspaper", "Tangled Fishing Line",
-        "Broken Sunglasses", "Waterlogged Book", "Deflated Beach Ball", "Lost Flip-Flop",
-        "Shopping Cart Wheel", "Plastic Bottle", "Tire", "Underwear", "License Plate",
-        "Broken Umbrella", "Moldy Wallet", "Damp Cigarette Pack", "Fishing Bobber",
-        "Knitting Needle", "Crochet Hook", "Tangled Yarn Ball", "Stitch Marker",
-        "Frayed Crochet Bag", "Half-Finished Scarf", "Pattern Printout",
-        "Game Controller", "Pixelated Cartridge", "Arcade Token", "Headset Mic",
-        "Trophy Cup", "Resistance Band", "Kettlebell", "Gym Towel",
-        "Protein Shaker", "Yoga Mat", "Jump Rope",
-    ],
-    "space": [
-        "Space Debris", "Frozen Oxygen Chunk", "Abandoned Satellite", "Lost Astronaut Glove",
-        "Alien Artifact", "Meteor Fragment", "Cosmic Dust Bunny", "Derelict Probe",
-        "Ancient Star Map", "Fossilized Moonrock", "Mysterious Orb", "Quantum Fluctuation",
-        "Void Crystal", "Broken Warp Core", "Lost Space Buoy", "Crystallized Stardust",
-        "Zero-G Yarn Ball", "Starlight Crochet Hook", "Orbital Knitting Needle",
-        "Cosmic Game Controller", "Nebula Cartridge", "Warped Arcade Token",
-        "Anti-Gravity Kettlebell", "Meteorite Dumbbell", "Vacuum-Sealed Gym Towel",
-        "Protein Paste Packet", "Quantum Jump Rope",
-    ],
+# Extract config sections with fallbacks
+LOCATIONS: List[Dict[str, Any]] = _FISHING_CONFIG.get("locations", [])
+JUNK_ITEMS: Dict[str, List[str]] = _FISHING_CONFIG.get("junk_items", {})
+EVENTS: Dict[str, Dict[str, Any]] = _FISHING_CONFIG.get("events", {})
+ARTIFACTS: List[Dict[str, Any]] = _FISHING_CONFIG.get("artifacts", [])
+RARITY_WEIGHTS: Dict[str, int] = _FISHING_CONFIG.get("rarity_weights", {})
+RARITY_XP_MULTIPLIER: Dict[str, int] = _FISHING_CONFIG.get("rarity_xp_multiplier", {})
+REAL_FACTS: List[str] = _FISHING_CONFIG.get("real_facts", [])
+CAST_MESSAGES: List[str] = _FISHING_CONFIG.get("cast_messages", [])
+TOO_EARLY_MESSAGES: List[str] = _FISHING_CONFIG.get("too_early_messages", [])
+DANGER_ZONE_MESSAGES: Dict[str, List[str]] = _FISHING_CONFIG.get("danger_zone_messages", {})
+
+# Build fish database from remaining top-level keys (exclude config metadata)
+_CONFIG_KEYS = {
+    "locations", "junk_items", "events", "artifacts",
+    "rarity_weights", "rarity_xp_multiplier", "real_facts",
+    "cast_messages", "too_early_messages", "danger_zone_messages",
 }
-
-# Random events that can trigger
-EVENTS: Dict[str, Dict[str, Any]] = {
-    "full_moon": {
-        "name": "Full Moon",
-        "description": "The full moon rises! Rare fish are more active.",
-        "effect": "rare_boost",
-        "multiplier": 2.0,
-        "duration_minutes": 30,
-    },
-    "solar_flare": {
-        "name": "Solar Flare",
-        "description": "A solar flare energizes the waters! Double XP!",
-        "effect": "xp_boost",
-        "multiplier": 2.0,
-        "duration_minutes": 20,
-        "locations": ["Moon", "Mars", "Jupiter", "The Void"],
-    },
-    "feeding_frenzy": {
-        "name": "Feeding Frenzy",
-        "description": "The fish are hungry! Catches are easier.",
-        "effect": "time_boost",
-        "multiplier": 0.5,  # Halves effective required time
-        "duration_minutes": 25,
-    },
-    "murky_waters": {
-        "name": "Murky Waters",
-        "description": "The waters are murky... more junk than usual.",
-        "effect": "junk_boost",
-        "multiplier": 2.0,
-        "duration_minutes": 15,
-    },
-    "meteor_shower": {
-        "name": "Meteor Shower",
-        "description": "A meteor shower brings strange creatures from beyond!",
-        "effect": "alien_fish",
-        "duration_minutes": 20,
-        "locations": ["Moon", "Mars", "Jupiter", "The Void"],
-    },
+FISH_DATABASE: Dict[str, List[Dict[str, Any]]] = {
+    k: v for k, v in _FISHING_CONFIG.items() if k not in _CONFIG_KEYS
 }
-
-# Rarity weights for fish selection
-RARITY_WEIGHTS = {
-    "common": 70,
-    "uncommon": 20,
-    "rare": 8,
-    "legendary": 2,
-}
-
-# XP multipliers by rarity
-RARITY_XP_MULTIPLIER = {
-    "common": 1,
-    "uncommon": 2,
-    "rare": 5,
-    "legendary": 20,
-}
-
-# XP bonus chances (per successful catch)
-XP_BONUS_SMALL_CHANCE = 0.04
-XP_BONUS_LARGE_CHANCE = 0.01
-XP_BOOST_ROD_CHANCE = 0.007
-XP_BOOST_ROD_CATCHES = 5
-XP_BOOST_MULTIPLIER = 2
-XP_BONUS_SMALL_RANGE = (8, 20)
-XP_BONUS_LARGE_RANGE = (40, 90)
-
-# Artifact discovery chance (portion of junk rolls that become artifacts)
-ARTIFACT_CHANCE = 0.15
-
-# Artifact pool - each modifies cast text and grants a small bonus
-ARTIFACTS = [
-    {
-        "name": "Rod of Indifference",
-        "cast_text": "You cast your line apathetically",
-        "float_text": "and floats with profound disinterest",
-        "bonus_type": "distance",
-        "bonus_value": 0.10,
-    },
-    {
-        "name": "Bobber of Passion",
-        "cast_text": "You cast your line with burning intensity",
-        "float_text": "and floats seductively",
-        "bonus_type": "rarity",
-        "bonus_value": 0.05,
-    },
-    {
-        "name": "Line of Questionable Intent",
-        "cast_text": "You cast your line suspiciously",
-        "float_text": "and floats with unclear motives",
-        "bonus_type": "junk_shield",
-        "bonus_value": 0.25,
-    },
-    {
-        "name": "Rod of Excessive Enthusiasm",
-        "cast_text": "You cast your line with WAY too much energy",
-        "float_text": "and floats aggressively",
-        "bonus_type": "distance",
-        "bonus_value": 0.15,
-    },
-    {
-        "name": "Bobber of Existential Dread",
-        "cast_text": "You cast your line into the uncaring void",
-        "float_text": "and floats, contemplating its existence",
-        "bonus_type": "xp",
-        "bonus_value": 0.10,
-    },
-    {
-        "name": "Line of Mild Disappointment",
-        "cast_text": "You cast your line with a heavy sigh",
-        "float_text": "and floats, barely trying",
-        "bonus_type": "rarity",
-        "bonus_value": 0.10,
-    },
-    {
-        "name": "Rod of Unearned Confidence",
-        "cast_text": "You cast your line like you own the place",
-        "float_text": "and floats with smug satisfaction",
-        "bonus_type": "xp",
-        "bonus_value": 0.10,
-    },
-    {
-        "name": "Bobber of Chaotic Energy",
-        "cast_text": "You cast your line in a wild frenzy",
-        "float_text": "and floats unpredictably",
-        "bonus_type": "distance",
-        "bonus_value": 0.20,
-    },
-    {
-        "name": "Line of Ancient Wisdom",
-        "cast_text": "You cast your line thoughtfully",
-        "float_text": "and floats with quiet dignity",
-        "bonus_type": "rarity",
-        "bonus_value": 0.15,
-    },
-    {
-        "name": "Rod of Procrastination",
-        "cast_text": "You eventually get around to casting your line",
-        "float_text": "and floats, putting things off",
-        "bonus_type": "junk_shield",
-        "bonus_value": 0.30,
-    },
-]
-
-# Cast flavor messages
-REAL_FACTS = [
-    "Your eyes remain the same size from birth to death. They never grow.",
-    "Sharks have existed longer than trees.",
-    "King Charles II of England used to drink alcohol mixed with crushed human skull powder.",
-    "There are more possible iterations of a game of chess than there are atoms in the observable universe.",
-    "Honey never spoils. Archaeologists have found 3000-year-old honey in Egyptian tombs that was still edible.",
-    "Octopuses have three hearts, and two of them stop beating when they swim.",
-    "A group of flamingos is called a 'flamboyance.'",
-    "Cleopatra lived closer in time to the Moon landing than to the construction of the Great Pyramid.",
-    "Oxford University is older than the Aztec Empire.",
-    "There are more trees on Earth than stars in the Milky Way.",
-    "Bananas are berries, but strawberries are not.",
-    "A day on Venus is longer than a year on Venus.",
-    "The inventor of the Pringles can is buried in one.",
-    "Humans share about 60% of their DNA with bananas.",
-    "The woolly mammoth was still alive when the Great Pyramid was being built.",
-    "Your skeleton is wet right now.",
-    "There is a species of jellyfish that is biologically immortal.",
-    "Nintendo was founded in 1889.",
-    "The lighter was invented before the match.",
-    "Scotland's national animal is the unicorn.",
-    "A single strand of spaghetti is called a 'spaghetto.'",
-    "The total weight of all ants on Earth roughly equals the total weight of all humans.",
-    "You can't hum while holding your nose.",
-    "There are more fake flamingos in the world than real ones.",
-    "The shortest war in history lasted 38 minutes, between Britain and Zanzibar.",
-    "Cows have best friends and get stressed when separated from them.",
-    "Vending machines are statistically more dangerous than sharks.",
-    "The heart of a blue whale is so large that a small child could swim through its arteries.",
-    "Some turtles can breathe through their butts.",
-    "Maine is the closest US state to Africa.",
-    "If you shuffled a deck of cards properly, the resulting order has almost certainly never existed before.",
-    "The average person walks past 36 murderers in their lifetime.",
-    "There are more ways to arrange a deck of cards than there are atoms on Earth.",
-    "Wombat poop is cube-shaped.",
-    "Dead people can get goosebumps.",
-    "Your brain uses about 20% of your total oxygen and calorie intake despite being only 2% of your body weight.",
-    "Dolphins have been observed calling each other by unique names.",
-    "The longest hiccupping spree lasted 68 years.",
-    "Astronauts' fingernails tend to fall off in space.",
-    "The smell of freshly cut grass is actually a plant distress signal.",
-]
-
-CAST_MESSAGES = [
-    "You cast your line, it goes {distance}m and floats quietly...",
-    "With a practiced flick, your line sails {distance}m into the {location}.",
-    "Your line arcs gracefully, landing {distance}m away in the {location}.",
-    "The line whips through the air, settling {distance}m out.",
-    "You send your line sailing {distance}m. Now we wait...",
-]
-
-# Reel too early messages
-TOO_EARLY_MESSAGES = [
-    "You reel in too soon - the line is empty. Perhaps patience is a virtue?",
-    "Nothing but an empty hook. The fish need more time to find your bait.",
-    "Your line comes back bare. Try waiting a bit longer next time.",
-    "Too hasty! The fish haven't even noticed your bait yet.",
-    "An empty catch. Good things come to those who wait.",
-]
-
-# Danger zone messages (over 24 hours)
-DANGER_ZONE_MESSAGES = {
-    "line_break": [
-        "The line finally snaps from the strain! It was out there too long.",
-        "Your line, weakened by time, breaks as you try to reel in.",
-        "The elements have taken their toll - your line breaks clean off!",
-    ],
-    "fish_escaped": [
-        "The fish got tired of waiting and swam away ages ago.",
-        "Whatever was on the line has long since escaped.",
-        "You reel in... nothing. The fish left hours ago.",
-    ],
-    "junk": [
-        "After all that time, you only catch some waterlogged junk.",
-        "The long wait rewards you with... garbage. How fitting.",
-    ],
-}
-
 
 class Fishing(SimpleCommandModule):
     name = "fishing"
@@ -607,6 +368,18 @@ class Fishing(SimpleCommandModule):
                 return loc
         
         return None
+
+    def _location_prep(self, location: Dict[str, Any]) -> str:
+        """Return a grammatically correct prepositional phrase for a location."""
+        name = location["name"]
+        loc_type = location.get("type", "terrestrial")
+        if loc_type == "space":
+            if name == "The Void":
+                return "into The Void"
+            if name == "Moon":
+                return "toward the Moon"
+            return f"toward {name}"
+        return f"into the {name}"
 
     def _get_xp_for_level(self, level: int) -> int:
         """Calculate XP needed for a level."""
@@ -906,13 +679,13 @@ class Fishing(SimpleCommandModule):
         # Send cast message
         if artifact:
             cast_msg = (
-                f"{artifact['cast_text']}, it sails {distance}m into the {location['name']}, "
+                f"{artifact['cast_text']}, it sails {distance}m {self._location_prep(location)}, "
                 f"{artifact['float_text']}..."
             )
         else:
             cast_msg = random.choice(CAST_MESSAGES).format(
                 distance=distance,
-                location=location["name"]
+                loc=self._location_prep(location)
             )
         self.safe_reply(connection, event, f"{self.bot.title_for(username)}, {cast_msg}")
 

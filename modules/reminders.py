@@ -4,8 +4,10 @@ import re
 import schedule
 import time
 import random
+import pytz
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, List
+from timezonefinder import TimezoneFinder
+from typing import Optional, Dict, List, Tuple
 from .base import SimpleCommandModule, admin_required
 
 UTC = timezone.utc
@@ -17,12 +19,13 @@ def setup(bot):
 class Reminders(SimpleCommandModule):
     """Handles setting, storing, and delivering timed reminders for users."""
     name = "reminders"
-    version = "1.0.0"
+    version = "1.1.0"
     description = "Set a reminder for yourself or another user."
 
     def __init__(self, bot):
         """Initializes the module's state and schedules pending reminders."""
         super().__init__(bot)
+        self.tf = TimezoneFinder()
         self.set_state("pending_reminders", self.get_state("pending_reminders", []))
         self.save_state()
 
@@ -53,11 +56,23 @@ class Reminders(SimpleCommandModule):
                 self.log_debug(f"Could not schedule reminder on load: {e} - Data: {reminder}")
 
 
+    def _get_user_tz(self, username: str) -> Tuple[pytz.BaseTzInfo, bool]:
+        """Returns (timezone, had_location). Falls back to UTC if no location set."""
+        user_id = self.bot.get_user_id(username)
+        user_locations = self.bot.get_module_state("weather2").get("user_locations", {})
+        user_loc = user_locations.get(user_id)
+        if user_loc:
+            tz_name = self.tf.timezone_at(lng=float(user_loc["lon"]), lat=float(user_loc["lat"]))
+            if tz_name:
+                try:
+                    return pytz.timezone(tz_name), True
+                except pytz.UnknownTimeZoneError:
+                    pass
+        return pytz.utc, False
+
     def _parse_timeframe(self, text: str) -> Optional[timedelta]:
-        """Parses a human-readable timeframe into a timedelta object."""
+        """Parses a relative timeframe like 'in 10 minutes' into a timedelta."""
         text = text.lower()
-        
-        # Matches "in X unit" (e.g., "in 10 minutes")
         match = re.match(r"in\s+(\d+)\s+(second|minute|hour|day|week)s?", text)
         if match:
             value, unit = int(match.group(1)), match.group(2)
@@ -66,10 +81,51 @@ class Reminders(SimpleCommandModule):
             if unit.startswith("hour"): return timedelta(hours=value)
             if unit.startswith("day"): return timedelta(days=value)
             if unit.startswith("week"): return timedelta(weeks=value)
-            
-        # Add more complex parsing for "at 5pm" or "tomorrow at 9am" here if needed
-            
         return None
+
+    def _parse_absolute_time(self, text: str, username: str) -> Tuple[Optional[datetime], Optional[str], Optional[str], bool]:
+        """
+        Parses 'at 7am', 'at 3:30pm', 'tomorrow at 9am' etc.
+        Returns (remind_at_utc, message, display_str, had_location).
+        All fields are None on no match; remind_at_utc is None on bad time value.
+        """
+        match = re.match(
+            r"^(tomorrow\s+)?at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s+(?:to\s+|that\s+)?(.*)",
+            text, re.IGNORECASE
+        )
+        if not match:
+            return None, None, None, False
+
+        tomorrow_flag, hour_str, minute_str, ampm, message = match.groups()
+        hour = int(hour_str)
+        minute = int(minute_str) if minute_str else 0
+        ampm = (ampm or "").lower()
+
+        if ampm == "pm" and hour != 12:
+            hour += 12
+        elif ampm == "am" and hour == 12:
+            hour = 0
+
+        if hour > 23 or minute > 59:
+            return None, None, None, False
+
+        user_tz, had_location = self._get_user_tz(username)
+        local_now = datetime.now(user_tz)
+        target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        if tomorrow_flag:
+            target += timedelta(days=1)
+        elif target <= local_now:
+            target += timedelta(days=1)
+
+        remind_at_utc = target.astimezone(UTC)
+        display = target.strftime("%-I:%M %p %Z").strip()
+        if tomorrow_flag:
+            display = "tomorrow at " + display
+        else:
+            display = "at " + display
+
+        return remind_at_utc, message.strip(), display, had_location
 
     def _deliver_reminder(self, reminder_id: str):
         """Finds and delivers a pending reminder, then removes it from the state."""
@@ -97,31 +153,39 @@ class Reminders(SimpleCommandModule):
     def _cmd_remind(self, connection, event, msg, username, match):
         """Handles the !remind command."""
         target, rest_of_message = match.groups()
-        
         to_user = username if target.lower() == "me" else target
-        
-        # Find the end of the timeframe part of the message
-        timeframe_match = re.match(r"^(in\s+\d+\s+\w+s?)\s+(?:to|that)?\s*(.*)", rest_of_message, re.IGNORECASE)
-        
-        if not timeframe_match:
-            self.safe_reply(connection, event, "My apologies, I do not understand that timeframe. Please use a format like 'in 10 minutes' or 'in 2 hours'.")
+
+        remind_at = None
+        reminder_message = None
+        display_str = None
+
+        # Try relative format: "in X minutes/hours/etc"
+        relative_match = re.match(r"^(in\s+\d+\s+\w+s?)\s+(?:to\s+|that\s+)?(.*)", rest_of_message, re.IGNORECASE)
+        if relative_match:
+            timeframe_str, reminder_message = relative_match.groups()
+            delta = self._parse_timeframe(timeframe_str)
+            if delta:
+                remind_at = datetime.now(UTC) + delta
+                display_str = timeframe_str
+
+        # Try absolute format: "[tomorrow] at HH[:MM][am/pm]"
+        if remind_at is None:
+            remind_at, reminder_message, display_str, had_location = self._parse_absolute_time(rest_of_message, username)
+            if remind_at is not None and not had_location:
+                self.safe_reply(connection, event, "Note: you have no location set, so I'm assuming UTC for that time.")
+
+        if remind_at is None:
+            self.safe_reply(connection, event,
+                "My apologies, I do not understand that timeframe. "
+                "Try 'in 10 minutes', 'at 7pm', or 'tomorrow at 9am'.")
             return True
-            
-        timeframe_str, reminder_message = timeframe_match.groups()
-        
+
         if not reminder_message:
             self.safe_reply(connection, event, "You must provide a message for the reminder.")
             return True
 
-        delta = self._parse_timeframe(timeframe_str)
-        if not delta:
-            self.safe_reply(connection, event, "I could not parse that timeframe. Please use units like 'seconds', 'minutes', 'hours', etc.")
-            return True
-            
         now = datetime.now(UTC)
-        remind_at = now + delta
         reminder_id = f"rem-{int(time.time())}-{random.randint(100, 999)}"
-
         new_reminder = {
             "id": reminder_id,
             "from_user": username,
@@ -137,8 +201,8 @@ class Reminders(SimpleCommandModule):
         self.set_state("pending_reminders", pending)
         self.save_state()
 
-        # Schedule the delivery
-        schedule.every(delta.total_seconds()).seconds.do(self._deliver_reminder, reminder_id=reminder_id).tag(self.name)
-        
-        self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. I shall remind {to_user} {timeframe_str}.")
+        remaining_seconds = (remind_at - now).total_seconds()
+        schedule.every(remaining_seconds).seconds.do(self._deliver_reminder, reminder_id=reminder_id).tag(self.name)
+
+        self.safe_reply(connection, event, f"Very good, {self.bot.title_for(username)}. I shall remind {to_user} {display_str}.")
         return True

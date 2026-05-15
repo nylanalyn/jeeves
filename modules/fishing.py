@@ -20,6 +20,7 @@ XP_BONUS_SMALL_RANGE = (8, 20)
 XP_BONUS_LARGE_RANGE = (40, 90)
 XP_BOOST_ROD_CHANCE = 0.007
 XP_BOOST_ROD_CATCHES = 5
+XP_BOOST_MULTIPLIER = 2.0
 ARTIFACT_CHANCE = 0.15
 
 # Quarter boundary dates for seasonal reset scheduling

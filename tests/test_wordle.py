@@ -173,7 +173,7 @@ class TestWordleCommands(unittest.TestCase):
             self.assertTrue(harness.dispatch("!word police", username="Alice"))
             self.assertTrue(harness.dispatch("!word abacus", username="Alice"))
             self.assertTrue(harness.dispatch("!word anchor", username="Alice"))
-            self.assertIn("exhausted your three attempts", harness.replies[-1])
+            self.assertIn("exhausted your 3 attempts", harness.replies[-1])
             self.assertFalse(harness.bot.module_states["wordle"]["today"]["solved"])
 
             self.assertTrue(harness.dispatch("!word anchor", username="Bob"))
@@ -207,7 +207,7 @@ class TestWordleCommands(unittest.TestCase):
         finally:
             harness.close()
 
-    def test_daily_reset_excludes_used_words(self):
+    def test_unsolved_word_carries_over_with_fresh_attempts_and_known_clues(self):
         state = {
             "used_words": ["anchor"],
             "today": {
@@ -215,8 +215,38 @@ class TestWordleCommands(unittest.TestCase):
                 "word": "anchor",
                 "solved": False,
                 "solved_by": None,
-                "guesses": {},
-                "discovered": {"correct": [None] * 6, "present": [], "absent": []},
+                "guesses": {"user:alice": ["castle", "police", "abacus"]},
+                "discovered": {"correct": ["a", None, None, None, None, None], "present": ["c"], "absent": ["e"]},
+            },
+            "stats": {},
+        }
+        harness = WordleHarness(words=["anchor", "castle"], dictionary=[], state=state)
+        try:
+            with patch("modules.wordle.random.choice", side_effect=lambda words: words[0]):
+                today = harness.module._ensure_today()
+            self.assertEqual(today["word"], "anchor")
+            self.assertEqual(today["guesses"], {})
+            self.assertEqual(today["discovered"]["correct"], ["a", None, None, None, None, None])
+            self.assertEqual(today["discovered"]["present"], ["c"])
+            self.assertEqual(today["discovered"]["absent"], ["e"])
+            self.assertEqual(harness.bot.module_states["wordle"]["used_words"], ["anchor"])
+            self.assertIsNone(harness.bot.module_states["wordle"]["yesterday"])
+
+            self.assertTrue(harness.dispatch("!word anchor", username="Alice"))
+            self.assertIn("Well deduced", harness.replies[-1])
+        finally:
+            harness.close()
+
+    def test_solved_word_advances_to_new_word_next_day(self):
+        state = {
+            "used_words": ["anchor"],
+            "today": {
+                "date": "2000-01-01",
+                "word": "anchor",
+                "solved": True,
+                "solved_by": "user:alice",
+                "guesses": {"user:alice": ["anchor"]},
+                "discovered": {"correct": list("anchor"), "present": [], "absent": []},
             },
             "stats": {},
         }
@@ -231,8 +261,8 @@ class TestWordleCommands(unittest.TestCase):
                 {
                     "date": "2000-01-01",
                     "word": "anchor",
-                    "solved": False,
-                    "solved_by": None,
+                    "solved": True,
+                    "solved_by": "user:alice",
                 },
             )
         finally:

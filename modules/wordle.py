@@ -125,6 +125,20 @@ class Wordle(SimpleCommandModule):
         if not force_new and isinstance(today, dict) and today.get("date") == date:
             return today
 
+        if (
+            not force_new
+            and isinstance(today, dict)
+            and today.get("word")
+            and not today.get("solved")
+        ):
+            today["date"] = date
+            today["guesses"] = {}
+            if not isinstance(today.get("discovered"), dict):
+                today["discovered"] = self._blank_discovered()
+            self.set_state("today", today)
+            self.save_state()
+            return today
+
         yesterday = self._yesterday_from_today(today, date)
         if yesterday:
             self.set_state("yesterday", yesterday)
@@ -204,9 +218,33 @@ class Wordle(SimpleCommandModule):
 
     def _compute_discovered(self, today: Dict[str, Any]) -> Dict[str, Any]:
         target = today.get("word", "")
-        correct: List[Optional[str]] = [None] * WORD_LENGTH
-        present_letters: Set[str] = set()
-        absent_letters: Set[str] = set()
+        stored = today.get("discovered", {})
+        if not isinstance(stored, dict):
+            stored = {}
+        stored_correct = stored.get("correct", [])
+        if not isinstance(stored_correct, list):
+            stored_correct = []
+        stored_present = stored.get("present", [])
+        if not isinstance(stored_present, list):
+            stored_present = []
+        stored_absent = stored.get("absent", [])
+        if not isinstance(stored_absent, list):
+            stored_absent = []
+        correct: List[Optional[str]] = [
+            str(letter).lower() if letter else None
+            for letter in stored_correct[:WORD_LENGTH]
+        ]
+        correct.extend([None] * (WORD_LENGTH - len(correct)))
+        present_letters: Set[str] = {
+            str(letter).lower()
+            for letter in stored_present
+            if isinstance(letter, str) and len(letter) == 1
+        }
+        absent_letters: Set[str] = {
+            str(letter).lower()
+            for letter in stored_absent
+            if isinstance(letter, str) and len(letter) == 1
+        }
 
         guesses = today.get("guesses", {})
         if not isinstance(guesses, dict):

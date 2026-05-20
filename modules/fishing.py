@@ -305,6 +305,7 @@ class Fishing(SimpleCommandModule):
                 "artifact": None,
                 "junk_curse_date": None,
                 "active_lure": None,
+                "dynamite_hands_lost": 0,
                 "dynamite_banned_until": None,
             }
             self.set_state("players", players)
@@ -614,13 +615,13 @@ class Fishing(SimpleCommandModule):
                 days_left = (ban_dt - datetime.now(UTC)).days + 1
                 stump_messages = [
                     f"{self.bot.title_for(username)} stares at the fishing hole wistfully, "
-                    f"wiggling the stump where their hand used to be. ({days_left} day(s) remaining on the ban)",
+                    f"with no hands left to hold a rod. ({days_left} day(s) remaining on the ban)",
                     f"{self.bot.title_for(username)} gazes longingly at the water, "
-                    f"a single tear rolling down their cheek. The stump itches. ({days_left} day(s) remaining)",
-                    f"{self.bot.title_for(username)} approaches the water's edge, holds up the stump "
+                    f"a single tear rolling down their cheek. The stumps itch. ({days_left} day(s) remaining)",
+                    f"{self.bot.title_for(username)} approaches the water's edge, holds up both stumps "
                     f"in quiet contemplation, and shuffles back home. ({days_left} day(s) remaining)",
-                    f"{self.bot.title_for(username)} tries to grip a rod with the stump. "
-                    f"It doesn't work. It never works. ({days_left} day(s) remaining)",
+                    f"{self.bot.title_for(username)} tries to grip a rod with no hands at all. "
+                    f"The physics are not promising. ({days_left} day(s) remaining)",
                 ]
                 self.safe_reply(connection, event, random.choice(stump_messages))
                 return True
@@ -1640,8 +1641,8 @@ class Fishing(SimpleCommandModule):
                 days_left = (ban_dt - datetime.now(UTC)).days + 1
                 self.safe_reply(
                     connection, event,
-                    f"{self.bot.title_for(username)} reaches into the tackle box with the stump. "
-                    f"There's no dynamite there. There's no hand either. ({days_left} day(s) remaining)"
+                    f"{self.bot.title_for(username)} reaches into the tackle box with no hands left. "
+                    f"There's no dynamite there. There's no plausible way to light it either. ({days_left} day(s) remaining)"
                 )
                 return True
             else:
@@ -1747,10 +1748,28 @@ class Fishing(SimpleCommandModule):
             self.safe_say(response, target=event.target)
             return True
 
-        # 70% — catastrophic failure, 7-day ban
+        # 70% — catastrophic failure. The first costs a hand; the second costs fishing access.
+        hands_lost = int(player.get("dynamite_hands_lost", 0) or 0)
+        player["dynamite_hands_lost"] = min(hands_lost + 1, 2)
+
+        if hands_lost < 1:
+            self._save_player(user_id, player)
+            first_hand_lines = [
+                f"💀 {self.bot.title_for(username)} lights the dynamite. The dynamite does not wait. "
+                "There is a flash, a bang, and suddenly one hand is a matter for historians. "
+                "The other hand remains available for poor decisions.",
+                f"🤦 {self.bot.title_for(username)} fumbles the dynamite. "
+                "It goes off immediately. In their hand. "
+                "The fish are fine. The hand is not. One hand left.",
+                f"🧨 The fuse on {self.bot.title_for(username)}'s dynamite is shorter than expected. "
+                "Much shorter. The resulting lesson costs exactly one hand. "
+                "Fishing privileges remain, technically.",
+            ]
+            self.safe_say(random.choice(first_hand_lines), target=event.target)
+            return True
+
         ban_until = datetime.now(UTC) + timedelta(days=7)
         player["dynamite_banned_until"] = ban_until.isoformat()
-        # Remove any active cast
         active_casts = self.get_state("active_casts", {})
         if user_id in active_casts:
             del active_casts[user_id]
@@ -1758,24 +1777,14 @@ class Fishing(SimpleCommandModule):
         self._save_player(user_id, player)
 
         disaster_lines = [
-            f"💀 {self.bot.title_for(username)} lights the dynamite. The dynamite does not wait. "
-            "There is a flash. A bang. A smell of singed eyebrows and regret. "
-            "The hand is gone. A 7-day fishing ban has been issued by the local authority. "
-            "Please reflect on your choices.",
-            f"🤦 {self.bot.title_for(username)} fumbles the dynamite. "
-            "It goes off immediately. In their hand. "
-            "The fish are fine. The hand is not. "
-            "Banned from fishing for 7 days. The stump will serve as a reminder.",
-            f"💥 A detonation occurs. It is not in the water. "
-            f"{self.bot.title_for(username)} stares at the smoking crater where their hand was. "
-            "A duck watches from a safe distance, unimpressed. "
-            "7-day ban. No appeals.",
-            f"🧨 The fuse on {self.bot.title_for(username)}'s dynamite is... shorter than expected. "
-            "Much shorter. Comically, tragically shorter. "
-            "7-day fishing ban. The stump is now their most interesting feature.",
-            f"📛 {self.bot.title_for(username)} has made a terrible mistake. "
-            "The fish know. The lake knows. Everyone within earshot knows. "
-            "7 days, no fishing, no exceptions. Touch grass (carefully, with the remaining hand).",
+            f"💀 {self.bot.title_for(username)} lights the dynamite with their remaining hand. "
+            "There is a flash. A bang. A full accounting of previous warnings. "
+            "No hands remain. A 7-day fishing ban has been issued by the local authority.",
+            f"🤦 {self.bot.title_for(username)} fumbles the dynamite again. "
+            "It goes off immediately. In the only hand they had left. "
+            "The fish are fine. The hands are gone. Banned from fishing for 7 days.",
+            f"📛 {self.bot.title_for(username)} has made the same terrible mistake twice. "
+            "The lake files the paperwork. No hands left, no fishing for 7 days, no exceptions.",
         ]
         self.safe_say(random.choice(disaster_lines), target=event.target)
         return True

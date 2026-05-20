@@ -253,6 +253,71 @@ class TestCollectorBonus(unittest.TestCase):
         self.assertGreater(rare_with, rare_without)
 
 
+class TestDynamiteHands(unittest.TestCase):
+    def _make_dynamite_fishing(self, state=None):
+        f = _make_fishing(state)
+
+        class _BotStub:
+            config = {"fishing": {"allowed_channels": ["#test"]}}
+
+            def __init__(self):
+                self.module_states = {"fishing": state.copy() if state else {}}
+
+            def get_user_id(self, username):
+                return f"user:{username.lower()}"
+
+            def title_for(self, username):
+                return f"Sir {username}"
+
+            def update_module_state(self, name, value):
+                self.module_states[name] = value.copy()
+
+        f.bot = _BotStub()
+        f._messages = []
+        f.safe_say = lambda text, target=None: f._messages.append((target, text))
+        f.safe_reply = lambda conn, evt, text: f._messages.append((evt.target, text))
+        return f
+
+    def _event(self):
+        return types.SimpleNamespace(target="#test")
+
+    def test_first_dynamite_disaster_costs_one_hand_without_ban(self):
+        f = self._make_dynamite_fishing({"players": {}, "active_casts": {}})
+        with unittest.mock.patch("modules.fishing.random.random", return_value=0.5), \
+                unittest.mock.patch("modules.fishing.random.choice", side_effect=lambda values: values[0]):
+            handled = f._cmd_dynamite(object(), self._event(), "!dynamite", "Alice", None)
+
+        self.assertTrue(handled)
+        player = f.get_state("players")["user:alice"]
+        self.assertEqual(player["dynamite_hands_lost"], 1)
+        self.assertIsNone(player["dynamite_banned_until"])
+        self.assertIn("one hand", f._messages[-1][1].lower())
+
+    def test_second_dynamite_disaster_bans_user_and_removes_cast(self):
+        state = {
+            "players": {
+                "user:alice": {
+                    "dynamite_hands_lost": 1,
+                    "dynamite_banned_until": None,
+                }
+            },
+            "active_casts": {
+                "user:alice": {"timestamp": "2026-05-20T00:00:00+00:00"}
+            },
+        }
+        f = self._make_dynamite_fishing(state)
+        with unittest.mock.patch("modules.fishing.random.random", return_value=0.5), \
+                unittest.mock.patch("modules.fishing.random.choice", side_effect=lambda values: values[0]):
+            handled = f._cmd_dynamite(object(), self._event(), "!dynamite", "Alice", None)
+
+        self.assertTrue(handled)
+        player = f.get_state("players")["user:alice"]
+        self.assertEqual(player["dynamite_hands_lost"], 2)
+        self.assertIsNotNone(player["dynamite_banned_until"])
+        self.assertNotIn("user:alice", f.get_state("active_casts"))
+        self.assertIn("No hands remain", f._messages[-1][1])
+
+
 class TestSeasonReset(unittest.TestCase):
     def _make_fishing_with_players(self):
         players = {

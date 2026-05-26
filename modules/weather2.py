@@ -261,6 +261,30 @@ class Weather2(SimpleCommandModule):
                 return cleaned[: -len(suffix)].strip() or None
         return None
 
+    @staticmethod
+    def _geocode_name_variants(name: str) -> list[str]:
+        """Return equivalent place-name spellings worth trying in order."""
+        normalized = re.sub(r"\s+", " ", name.strip())
+        if not normalized:
+            return []
+
+        variants = [normalized]
+
+        replacements = (
+            (r"\bst\b", "St."),
+            (r"\bst[.]?\b", "Saint"),
+            (r"\bsaint\b", "St"),
+            (r"\bsaint\b", "St."),
+        )
+        for pattern, replacement in replacements:
+            variant = re.sub(
+                pattern, replacement, normalized, flags=re.IGNORECASE
+            )
+            if variant not in variants:
+                variants.append(variant)
+
+        return variants
+
     # ------------------------------------------------------------------
 
     def _geocode(self, query: str) -> Optional[Dict[str, Any]]:
@@ -281,49 +305,58 @@ class Weather2(SimpleCommandModule):
             else query
         )
         result_count = 100 if state_query or country_query else 1
+        lookup_names = self._geocode_name_variants(lookup_name)
 
-        try:
-            data = self.http.get_json(
-                OPEN_METEO_GEO_URL,
-                params={
-                    "name": lookup_name,
-                    "count": result_count,
-                    "language": "en",
-                    "format": "json",
-                },
-            )
-        except Exception as exc:
-            self._record_error(f"Geocoding request failed for '{query}': {exc}")
+        result = None
+        for candidate_name in lookup_names:
+            params = {
+                "name": candidate_name,
+                "count": result_count,
+                "language": "en",
+                "format": "json",
+            }
+            if state_query or country_query:
+                params["countryCode"] = "US"
+
+            try:
+                data = self.http.get_json(OPEN_METEO_GEO_URL, params=params)
+            except Exception as exc:
+                self._record_error(
+                    f"Geocoding request failed for '{query}': {exc}"
+                )
+                return None
+
+            results = data.get("results")
+            if not results:
+                continue
+
+            if state_query:
+                _, state_name = state_query
+                result = next(
+                    (
+                        item for item in results
+                        if item.get("country_code", "").upper() == "US"
+                        and (item.get("admin1") or "").casefold() == state_name
+                    ),
+                    None,
+                )
+            elif country_query:
+                result = next(
+                    (
+                        item for item in results
+                        if item.get("country_code", "").upper() == "US"
+                    ),
+                    None,
+                )
+            else:
+                result = results[0]
+
+            if result is not None:
+                break
+
+        if result is None:
             return None
 
-        results = data.get("results")
-        if not results:
-            return None
-
-        if state_query:
-            _, state_name = state_query
-            result = next(
-                (
-                    item for item in results
-                    if item.get("country_code", "").upper() == "US"
-                    and (item.get("admin1") or "").casefold() == state_name
-                ),
-                None,
-            )
-            if result is None:
-                return None
-        elif country_query:
-            result = next(
-                (
-                    item for item in results
-                    if item.get("country_code", "").upper() == "US"
-                ),
-                None,
-            )
-            if result is None:
-                return None
-        else:
-            result = results[0]
         lat = str(result["latitude"])
         lon = str(result["longitude"])
         country_code = result.get("country_code", "us").upper()

@@ -22,6 +22,15 @@ FLORIDA_OVIEDO = {
     "admin1": "Florida",
 }
 
+PORT_SAINT_LUCIE = {
+    "name": "Port Saint Lucie",
+    "latitude": 27.29393,
+    "longitude": -80.35033,
+    "country_code": "US",
+    "country": "United States",
+    "admin1": "Florida",
+}
+
 
 class FakeHTTP:
     def __init__(self, results):
@@ -32,6 +41,8 @@ class FakeHTTP:
         self.calls.append((url, dict(params or {}), dict(headers or {})))
         if url != OPEN_METEO_GEO_URL:
             raise AssertionError(f"unexpected URL: {url}")
+        if isinstance(self.results, dict):
+            return {"results": self.results.get(params["name"], [])}
         return {"results": self.results}
 
 
@@ -103,6 +114,28 @@ class TestWeather2Geocoding(unittest.TestCase):
         _, params, _ = weather.http.calls[-1]
         self.assertEqual(params["name"], "oviedo")
         self.assertEqual(params["count"], 100)
+        self.assertEqual(params["countryCode"], "US")
+
+    def test_state_code_query_tries_saint_variant_for_st_city_names(self):
+        _, weather = make_weather(
+            {
+                "port st lucie": [],
+                "port Saint lucie": [PORT_SAINT_LUCIE],
+            }
+        )
+
+        geo = weather._geocode("port st lucie, fl")
+
+        self.assertIsNotNone(geo)
+        self.assertEqual(geo["short_name"], "Port Saint Lucie, Florida, US")
+        self.assertEqual(geo["user_input"], "port st lucie, fl")
+        self.assertEqual(
+            [call[1]["name"] for call in weather.http.calls],
+            ["port st lucie", "port St. lucie", "port Saint lucie"],
+        )
+        self.assertTrue(
+            all(call[1]["countryCode"] == "US" for call in weather.http.calls)
+        )
 
     def test_usa_query_searches_city_and_filters_country(self):
         _, weather = make_weather([SPAIN_OVIEDO, FLORIDA_OVIEDO])
@@ -115,6 +148,7 @@ class TestWeather2Geocoding(unittest.TestCase):
         _, params, _ = weather.http.calls[-1]
         self.assertEqual(params["name"], "oviedo")
         self.assertEqual(params["count"], 100)
+        self.assertEqual(params["countryCode"], "US")
 
     def test_comma_us_query_searches_city_and_filters_country(self):
         _, weather = make_weather([SPAIN_OVIEDO, FLORIDA_OVIEDO])
@@ -126,6 +160,7 @@ class TestWeather2Geocoding(unittest.TestCase):
         _, params, _ = weather.http.calls[-1]
         self.assertEqual(params["name"], "oviedo")
         self.assertEqual(params["count"], 100)
+        self.assertEqual(params["countryCode"], "US")
 
 
     def test_unqualified_query_keeps_open_meteo_top_result(self):

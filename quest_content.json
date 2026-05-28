@@ -1497,6 +1497,333 @@
         "return_message": "🦑 {username}: THE TIDE RISES AGAIN!",
         "defeat_announcement": "🎊 RITUAL DISRUPTED! 🎊"
       }
+    },
+    "pirate_caribbean": {
+      "theme": {
+        "name": "pirate_caribbean",
+        "background": "#07151f",
+        "foreground": "#f4ead2",
+        "accent": "#d8a23a",
+        "accent_text": "#101820",
+        "card_background": "#102531",
+        "card_border": "#d8a23a",
+        "table_header": "#173545",
+        "table_stripe": "#0c1d28",
+        "link": "#f0bd4f",
+        "link_hover": "#ffe08a",
+        "website_title": "Jeeves Quest: Caribbean Privateers",
+        "website_subtitle": "🏴‍☠️ Sail from Tortuga to Port Royal and claim your share ⚓",
+        "website_decoration_left": "🏴‍☠️",
+        "website_decoration_right": "⚓",
+        "website_footer": "🏴‍☠️ Powered by Jeeves IRC Bot | Quest System v6.0 ⚓",
+        "website_footer_tagline": "Every prize has a captain willing to fight for it...",
+        "prestige_tiers": [
+          {
+            "max": 3,
+            "icon": "🧭",
+            "class": "tier-compass",
+            "color": "#d8a23a",
+            "repeat": 3,
+            "banner": null
+          },
+          {
+            "max": 6,
+            "icon": "⚓",
+            "class": "tier-anchor",
+            "color": "#f4ead2",
+            "repeat": 3,
+            "banner": "wake"
+          },
+          {
+            "max": null,
+            "icon": "🏴‍☠️",
+            "class": "tier-jolly-roger",
+            "color": "#e0523f",
+            "repeat": 2,
+            "banner": "broadside"
+          }
+        ]
+      },
+      "world_lore": [
+        "Tortuga's taverns spill laughter, pistol smoke, and rumors of fat Spanish treasure fleets.",
+        "Port Royal grows rich on sugar, silver, and the quiet understanding that every harbor has a price.",
+        "The Windward Passage is crowded with cutters, frigates, sloops, and captains who trust cannon more than law.",
+        "A good chart is worth a purse of doubloons; a false chart is worth a grave at sea.",
+        "The Caribbean rewards a steady hand, a fast ship, and a crew that can keep its nerve under fire."
+      ],
+      "story_beats": {
+        "openers": [
+          "{user} steps onto a salt-stained quay in Tortuga and finds a {monster} blocking the gangplank.",
+          "At dawn off Hispaniola, {user} sights a {monster} bearing down under full canvas.",
+          "The tavern in Port Royal goes quiet when {user} calls out a {monster} over a stolen chart.",
+          "A prize ship cuts across the reef, and {user} spots a {monster} guarding the strongbox.",
+          "{user} follows a trail of wet bootprints through Nassau and corners a {monster} beside the powder magazine."
+        ],
+        "actions": [
+          "{user} braces against the rail, orders a clean broadside, and drives straight at the {monster}.",
+          "Cutlass drawn and coat snapping in the wind, {user} boards fast before the {monster} can reload.",
+          "{user} studies the tide, waits for the roll, and catches the {monster} off balance.",
+          "With the crew at their back, {user} swings over the gunwale and lands hard beside the {monster}.",
+          "{user} tosses the empty pistol aside, grips the belaying pin, and closes with the {monster}."
+        ]
+      },
+      "monsters": [
+        {
+          "name": "Dockside Pickpocket",
+          "min_level": 1,
+          "max_level": 3,
+          "xp_win_min": 15,
+          "xp_win_max": 30
+        },
+        {
+          "name": "Rum-Soaked Brawler",
+          "min_level": 2,
+          "max_level": 5,
+          "xp_win_min": 20,
+          "xp_win_max": 40
+        },
+        {
+          "name": "Harbor Press Gang",
+          "min_level": 4,
+          "max_level": 8,
+          "xp_win_min": 35,
+          "xp_win_max": 70
+        },
+        {
+          "name": "Spanish Customs Officer",
+          "min_level": 6,
+          "max_level": 10,
+          "xp_win_min": 50,
+          "xp_win_max": 100
+        },
+        {
+          "name": "Privateer Boarding Party",
+          "min_level": 8,
+          "max_level": 12,
+          "xp_win_min": 70,
+          "xp_win_max": 130
+        },
+        {
+          "name": "Royal Navy Lieutenant",
+          "min_level": 10,
+          "max_level": 15,
+          "xp_win_min": 100,
+          "xp_win_max": 180
+        },
+        {
+          "name": "Treasure Map Forger",
+          "min_level": 14,
+          "max_level": 18,
+          "xp_win_min": 150,
+          "xp_win_max": 250
+        },
+        {
+          "name": "Cannon Deck Gunner",
+          "min_level": 16,
+          "max_level": 22,
+          "xp_win_min": 200,
+          "xp_win_max": 350
+        },
+        {
+          "name": "Mutinous Quartermaster",
+          "min_level": 20,
+          "max_level": 28,
+          "xp_win_min": 300,
+          "xp_win_max": 500
+        },
+        {
+          "name": "Spanish Treasure Guard",
+          "min_level": 26,
+          "max_level": 32,
+          "xp_win_min": 400,
+          "xp_win_max": 650
+        },
+        {
+          "name": "Port Royal Magistrate",
+          "min_level": 30,
+          "max_level": 36,
+          "xp_win_min": 500,
+          "xp_win_max": 800
+        },
+        {
+          "name": "French Buccaneer Crew",
+          "min_level": 34,
+          "max_level": 40,
+          "xp_win_min": 600,
+          "xp_win_max": 950
+        },
+        {
+          "name": "Hardened Maroon Raider",
+          "min_level": 38,
+          "max_level": 44,
+          "xp_win_min": 700,
+          "xp_win_max": 1100
+        },
+        {
+          "name": "Man-of-War Captain",
+          "min_level": 42,
+          "max_level": 48,
+          "xp_win_min": 850,
+          "xp_win_max": 1300
+        },
+        {
+          "name": "Fleet Commodore",
+          "min_level": 46,
+          "max_level": 52,
+          "xp_win_min": 1000,
+          "xp_win_max": 1500
+        },
+        {
+          "name": "Admiralty Prize Court",
+          "min_level": 50,
+          "max_level": 58,
+          "xp_win_min": 1200,
+          "xp_win_max": 1800
+        }
+      ],
+      "boss_monsters": [
+        {
+          "name": "Blackbeard",
+          "min_level": 12,
+          "max_level": 22,
+          "xp_win_min": 900,
+          "xp_win_max": 1400
+        },
+        {
+          "name": "Anne Bonny",
+          "min_level": 18,
+          "max_level": 30,
+          "xp_win_min": 1300,
+          "xp_win_max": 1900
+        },
+        {
+          "name": "Bartholomew Roberts",
+          "min_level": 26,
+          "max_level": 40,
+          "xp_win_min": 1700,
+          "xp_win_max": 2400
+        }
+      ],
+      "classes": {
+        "captain": {
+          "description": "A sharp-eyed commander who keeps a fast ship, a loyal crew, and the weather gauge.",
+          "actions": [
+            "{user} calls for full sail, turns across the wind, and rakes the {monster} from stern to bow.",
+            "{user} points with a drawn cutlass; the crew surges forward before the {monster} can form ranks.",
+            "A crisp order from {user} brings the guns to bear, boxing the {monster} against the rail."
+          ]
+        },
+        "quartermaster": {
+          "description": "The crew's hard-nosed keeper of shares, discipline, powder, and provisions.",
+          "actions": [
+            "{user} checks the manifest, finds the missing cargo, and pins the theft on the {monster}.",
+            "{user} splits the crew into boarding teams and traps the {monster} between deck and hold.",
+            "With the articles in one hand and a pistol in the other, {user} forces the {monster} to answer."
+          ]
+        },
+        "navigator": {
+          "description": "A chart-wise sailor who reads shoals, stars, currents, and every captain's bad habit.",
+          "actions": [
+            "{user} marks the reef line, cuts inside the channel, and leaves the {monster} stranded in shallow water.",
+            "{user} reads the squall before it breaks, using wind and spray to blindside the {monster}.",
+            "Compass steady, {user} finds the only clean approach and strikes the {monster} where the deck is weakest."
+          ]
+        }
+      },
+      "injury_system": {
+        "enabled": true,
+        "injury_chance_on_loss": 0.5,
+        "injuries": [
+          {
+            "name": "Splinter Wound",
+            "description": "A cannonball smashed the rail and drove oak shards into your arm.",
+            "duration_hours": 2,
+            "effects": {
+              "xp_multiplier": 0.5
+            }
+          },
+          {
+            "name": "Powder Burn",
+            "description": "The gun deck flashed hot and left your hands blistered and shaking.",
+            "duration_hours": 4,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          },
+          {
+            "name": "Rum Fever",
+            "description": "Bad drink and worse judgment have left you sweating through your shirt.",
+            "duration_hours": 1,
+            "effects": {
+              "energy_regen_modifier": -1,
+              "xp_multiplier": 0.75
+            }
+          },
+          {
+            "name": "Rope Burn",
+            "description": "A snapped line tore across your palms during the boarding rush.",
+            "duration_hours": 3,
+            "effects": {
+              "xp_multiplier": 0.6
+            }
+          },
+          {
+            "name": "Cracked Ribs",
+            "description": "You hit the deck hard when the broadside rolled through.",
+            "duration_hours": 6,
+            "effects": {
+              "energy_regen_modifier": -1
+            }
+          }
+        ]
+      },
+      "boss_hunt": {
+        "bosses": [
+          {
+            "name": "Blackbeard",
+            "description": "Edward Teach, the feared captain whose reputation can empty a deck before the first shot.",
+            "max_hp": 560
+          },
+          {
+            "name": "Anne Bonny",
+            "description": "A fierce Irish pirate known for nerve, steel, and refusing to yield the quarterdeck.",
+            "max_hp": 620
+          },
+          {
+            "name": "Bartholomew Roberts",
+            "description": "Black Bart, a disciplined raider with a fleet's worth of prizes behind his name.",
+            "max_hp": 700
+          },
+          {
+            "name": "Calico Jack Rackham",
+            "description": "A flamboyant captain whose banner is recognized in every nervous harbor.",
+            "max_hp": 540
+          }
+        ],
+        "clue_messages": [
+          "recovers a torn chart marked with a Spanish convoy route",
+          "finds a tavern receipt signed by a wanted quartermaster",
+          "spots fresh tar on a skiff tied below the customs house",
+          "deciphers a harbor master's ledger of suspicious departures",
+          "salvages a powder keg stamped with a rival ship's mark",
+          "bribes a dockhand for the next tide's sailing orders",
+          "matches a captured flag to a notorious Caribbean captain"
+        ],
+        "haunting_messages": {
+          "injury": [
+            "🏴‍☠️ A black flag rises on the horizon, and the next shot lands too close.",
+            "🏴‍☠️ Word spreads through the taverns: your name is on a captain's list.",
+            "🏴‍☠️ The harbor goes quiet as a rival crew starts asking after you."
+          ],
+          "win": [
+            "🏴‍☠️ The prize is yours for now, but another sail is already turning toward you.",
+            "🏴‍☠️ A captured mate spits over the rail and swears their captain will hear of this.",
+            "🏴‍☠️ The crew cheers, though every lookout keeps scanning the horizon."
+          ]
+        },
+        "return_message": "🏴‍☠️ {username}: THE BLACK FLAG RETURNS! {boss_name} bears down under full sail!",
+        "defeat_announcement": "🎊 CAPTAIN DEFEATED! 🎊"
+      }
     }
   }
 }

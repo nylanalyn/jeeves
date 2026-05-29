@@ -13,6 +13,18 @@ matrix:
   # password: "${MATRIX_PASSWORD}"
   admin_user: ""                    # optional: "@you:example.com" — only accept commands from this user
 
+# --- Discord Admin Router Endpoint ---
+# Optional: exposes a localhost admin API that the shared ircbot_core
+# discord_admin.py router can call. Add a matching bot entry there, e.g.:
+#   jeeves:
+#     url: "http://127.0.0.1:9110"
+#     token: "${JEEVES_ADMIN_TOKEN}"
+discord:
+  enabled: false
+  host: "127.0.0.1"
+  port: 9110
+  token: "${JEEVES_ADMIN_TOKEN}"
+
 # --- Core Settings ---
 core:
     # A list of nicknames that are considered administrators.

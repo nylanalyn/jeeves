@@ -50,7 +50,9 @@ class TestWeather2Fallback(unittest.TestCase):
         if flavor:
             bot.pm.plugins["users"] = FlavorUsersStub()
         weather = Weather2(bot)
-        weather.http = FallbackHTTP(wttr_data)
+        fake_http = FallbackHTTP(wttr_data)
+        weather.forecast_http = fake_http
+        weather.fallback_http = fake_http
         return weather
 
     def test_current_weather_uses_wttr_after_open_meteo_failure(self):
@@ -69,10 +71,10 @@ class TestWeather2Fallback(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            weather.http.calls[-1][0],
+            weather.fallback_http.calls[-1][0],
             "https://wttr.in/27.95,-82.46",
         )
-        self.assertEqual(weather.http.calls[-1][1], {"format": "j1"})
+        self.assertEqual(weather.fallback_http.calls[-1][1], {"format": "j1"})
 
     def test_forecast_uses_basic_wttr_fallback_with_title(self):
         weather = self.make_weather(flavor=True)

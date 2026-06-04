@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 from .base import SimpleCommandModule
 from . import achievement_hooks
+from .http_utils import create_http_client
 
 
 # WMO Weather Code → Description mapping
@@ -70,6 +71,8 @@ class Weather2(SimpleCommandModule):
 
     def __init__(self, bot):
         super().__init__(bot)
+        self.forecast_http = create_http_client(timeout=8, max_retries=0)
+        self.fallback_http = create_http_client(timeout=8, max_retries=0)
 
         # Auto-migrate locations from the old 'weather' module on first load.
         if not self.get_state("user_locations"):
@@ -88,6 +91,12 @@ class Weather2(SimpleCommandModule):
             rf"tell\s+me\s+about\s+the)?\s*weather(?:[\s?]|$)",
             re.IGNORECASE,
         )
+
+    def on_unload(self) -> None:
+        """Close module-specific HTTP sessions and persist state."""
+        self.forecast_http.close()
+        self.fallback_http.close()
+        super().on_unload()
 
     # ------------------------------------------------------------------
     # Command registration
@@ -389,12 +398,8 @@ class Weather2(SimpleCommandModule):
         self, lat: str, lon: str
     ) -> Optional[Dict[str, Any]]:
         """Fetch current conditions from Open-Meteo forecast API."""
-        if self.http is None:
-            self._record_error("HTTP client not available")
-            return None
-
         try:
-            data = self.http.get_json(
+            data = self.forecast_http.get_json(
                 OPEN_METEO_FORECAST_URL,
                 params={
                     "latitude": lat,
@@ -406,7 +411,10 @@ class Weather2(SimpleCommandModule):
                 },
             )
         except Exception as exc:
-            self._record_error(f"Current weather request failed: {exc}")
+            self._record_error(
+                f"Open-Meteo current request failed; trying wttr.in: {exc}",
+                severity="WARNING",
+            )
             return None
 
         return data.get("current")
@@ -415,12 +423,8 @@ class Weather2(SimpleCommandModule):
         self, lat: str, lon: str
     ) -> Optional[Dict[str, Any]]:
         """Fetch daily forecast from Open-Meteo (today + 3 days)."""
-        if self.http is None:
-            self._record_error("HTTP client not available")
-            return None
-
         try:
-            data = self.http.get_json(
+            data = self.forecast_http.get_json(
                 OPEN_METEO_FORECAST_URL,
                 params={
                     "latitude": lat,
@@ -433,7 +437,10 @@ class Weather2(SimpleCommandModule):
                 },
             )
         except Exception as exc:
-            self._record_error(f"Forecast request failed: {exc}")
+            self._record_error(
+                f"Open-Meteo forecast request failed; trying wttr.in: {exc}",
+                severity="WARNING",
+            )
             return None
 
         return data.get("daily")
@@ -442,12 +449,8 @@ class Weather2(SimpleCommandModule):
         self, lat: str, lon: str
     ) -> Optional[Dict[str, Any]]:
         """Fetch basic current conditions from wttr.in."""
-        if self.http is None:
-            self._record_error("HTTP client not available for wttr.in fallback")
-            return None
-
         try:
-            data = self.http.get_json(
+            data = self.fallback_http.get_json(
                 f"{WTTR_URL}/{lat},{lon}",
                 params={"format": "j1"},
             )

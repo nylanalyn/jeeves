@@ -1,5 +1,5 @@
 # modules/weather2.py
-# Weather module using Open-Meteo as the sole backend (no API key required)
+# Weather module using Open-Meteo with wttr.in as an outage fallback
 
 import re
 import threading
@@ -46,6 +46,7 @@ WMO_CODES: Dict[int, str] = {
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 OPEN_METEO_GEO_URL = "https://geocoding-api.open-meteo.com/v1/search"
 NWS_ALERTS_URL = "https://api.weather.gov/alerts/active"
+WTTR_URL = "https://wttr.in"
 
 CURRENT_PARAMS = (
     "temperature_2m,relative_humidity_2m,apparent_temperature,"
@@ -59,7 +60,7 @@ DAILY_PARAMS = (
 
 
 class Weather2(SimpleCommandModule):
-    """Open-Meteo based weather module — no API key required."""
+    """Open-Meteo weather module with a basic wttr.in outage fallback."""
 
     name = "weather2"
     version = "1.0.0"
@@ -437,6 +438,29 @@ class Weather2(SimpleCommandModule):
 
         return data.get("daily")
 
+    def _fetch_wttr_current(
+        self, lat: str, lon: str
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch basic current conditions from wttr.in."""
+        if self.http is None:
+            self._record_error("HTTP client not available for wttr.in fallback")
+            return None
+
+        try:
+            data = self.http.get_json(
+                f"{WTTR_URL}/{lat},{lon}",
+                params={"format": "j1"},
+            )
+        except Exception as exc:
+            self._record_error(f"wttr.in fallback request failed: {exc}")
+            return None
+
+        conditions = data.get("current_condition", [])
+        if not conditions or not isinstance(conditions[0], dict):
+            self._record_error("wttr.in fallback response missing current conditions")
+            return None
+        return conditions[0]
+
     # ------------------------------------------------------------------
     # Formatting helpers
     # ------------------------------------------------------------------
@@ -567,6 +591,55 @@ class Weather2(SimpleCommandModule):
             return f"{title}, the forecast for {location_name}: {forecast_text}"
         return f"{location_name} forecast: {forecast_text}"
 
+    def _format_wttr_fallback(
+        self,
+        current: Dict[str, Any],
+        location_name: str,
+        requester: str,
+    ) -> str:
+        """Build a concise, explicitly labeled wttr.in fallback report."""
+        descriptions = current.get("weatherDesc", [])
+        condition = (
+            descriptions[0].get("value")
+            if descriptions and isinstance(descriptions[0], dict)
+            else None
+        )
+
+        parts = []
+        if condition:
+            parts.append(f"{condition}.")
+
+        temp_f = current.get("temp_F")
+        temp_c = current.get("temp_C")
+        if temp_f not in (None, "") and temp_c not in (None, ""):
+            parts.append(f"Temp: {temp_f}°F/{temp_c}°C.")
+
+        feels_f = current.get("FeelsLikeF")
+        feels_c = current.get("FeelsLikeC")
+        if feels_f not in (None, "") and feels_c not in (None, ""):
+            parts.append(f"Feels like: {feels_f}°F/{feels_c}°C.")
+
+        humidity = current.get("humidity")
+        if humidity not in (None, ""):
+            parts.append(f"Humidity: {humidity}%.")
+
+        wind_mph = current.get("windspeedMiles")
+        wind_kph = current.get("windspeedKmph")
+        if wind_mph not in (None, "") and wind_kph not in (None, ""):
+            parts.append(f"Wind: {wind_mph} mph / {wind_kph} km/h.")
+
+        report = " ".join(parts) or "Basic current conditions are unavailable."
+        if self.has_flavor_enabled(requester):
+            return (
+                f"Open-Meteo appears to be broken, "
+                f"{self.bot.title_for(requester)}. I can offer this temporary "
+                f"replacement from wttr.in for {location_name}: {report}"
+            )
+        return (
+            f"Open-Meteo appears to be broken. Temporary wttr.in replacement "
+            f"for {location_name}: {report}"
+        )
+
     def _error_msg(self, requester: str) -> str:
         if self.has_flavor_enabled(requester):
             return (
@@ -654,6 +727,28 @@ class Weather2(SimpleCommandModule):
     # Async reply helpers
     # ------------------------------------------------------------------
 
+    def _reply_with_wttr_fallback(
+        self,
+        connection,
+        event,
+        location_obj: Dict[str, Any],
+        location_name: str,
+        requester: str,
+    ) -> bool:
+        """Send a basic wttr.in report after an Open-Meteo failure."""
+        current = self._fetch_wttr_current(
+            location_obj["lat"], location_obj["lon"]
+        )
+        if not current:
+            return False
+
+        self.safe_reply(
+            connection,
+            event,
+            self._format_wttr_fallback(current, location_name, requester),
+        )
+        return True
+
     def _reply_with_weather(
         self, connection, event, location_obj: Dict[str, Any],
         requester: str, target_user: Optional[str] = None,
@@ -681,6 +776,10 @@ class Weather2(SimpleCommandModule):
             self.safe_reply(connection, event, report)
             achievement_hooks.record_weather_check(self.bot, requester)
         else:
+            if self._reply_with_wttr_fallback(
+                connection, event, location_obj, location_name, requester
+            ):
+                return
             if self.has_flavor_enabled(requester):
                 self.safe_reply(
                     connection,
@@ -715,6 +814,10 @@ class Weather2(SimpleCommandModule):
 
             self.safe_reply(connection, event, report)
         else:
+            if self._reply_with_wttr_fallback(
+                connection, event, location_obj, location_name, requester
+            ):
+                return
             if self.has_flavor_enabled(requester):
                 self.safe_reply(
                     connection,

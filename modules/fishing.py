@@ -1646,7 +1646,9 @@ class Fishing(SimpleCommandModule):
                 )
                 return True
             else:
+                # Ban expired — hands have regrown, reset counter
                 player["dynamite_banned_until"] = None
+                player["dynamite_hands_lost"] = 0
                 self._save_player(user_id, player)
 
         roll = random.random()

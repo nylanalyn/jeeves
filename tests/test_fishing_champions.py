@@ -1,5 +1,6 @@
 import threading
 import unittest
+import unittest.mock
 import types
 import sys
 
@@ -316,6 +317,44 @@ class TestDynamiteHands(unittest.TestCase):
         self.assertIsNotNone(player["dynamite_banned_until"])
         self.assertNotIn("user:alice", f.get_state("active_casts"))
         self.assertIn("No hands remain", f._messages[-1][1])
+
+    def test_cast_after_expired_dynamite_ban_regrows_both_hands_for_next_cycle(self):
+        state = {
+            "players": {
+                "user:alice": {
+                    "level": 0,
+                    "total_casts": 0,
+                    "furthest_cast": 0.0,
+                    "dynamite_hands_lost": 2,
+                    "dynamite_banned_until": "2000-01-01T00:00:00+00:00",
+                }
+            },
+            "active_casts": {},
+        }
+        f = self._make_dynamite_fishing(state)
+        with unittest.mock.patch("modules.fishing.random.random", return_value=0.5), \
+                unittest.mock.patch("modules.fishing.random.choice", side_effect=lambda values: values[0]):
+            handled = f._cmd_cast(
+                object(), self._event(), "!cast", "Alice",
+                types.SimpleNamespace(group=lambda index: None)
+            )
+
+        self.assertTrue(handled)
+        player = f.get_state("players")["user:alice"]
+        self.assertIsNone(player["dynamite_banned_until"])
+        self.assertEqual(player["dynamite_hands_lost"], 0)
+        self.assertIn("user:alice", f.get_state("active_casts"))
+
+        f.set_state("active_casts", {})
+        with unittest.mock.patch("modules.fishing.random.random", return_value=0.5), \
+                unittest.mock.patch("modules.fishing.random.choice", side_effect=lambda values: values[0]):
+            handled = f._cmd_dynamite(object(), self._event(), "!dynamite", "Alice", None)
+
+        self.assertTrue(handled)
+        player = f.get_state("players")["user:alice"]
+        self.assertEqual(player["dynamite_hands_lost"], 1)
+        self.assertIsNone(player["dynamite_banned_until"])
+        self.assertIn("one hand", f._messages[-1][1].lower())
 
 
 class TestSeasonReset(unittest.TestCase):

@@ -319,6 +319,19 @@ class Fishing(SimpleCommandModule):
         self.set_state("players", players)
         self.save_state()
 
+    def _active_dynamite_ban_until(self, user_id: str, player: Dict[str, Any]) -> Optional[datetime]:
+        """Return future dynamite ban expiry; clear expired bans and regrow both hands."""
+        banned_until = player.get("dynamite_banned_until")
+        if not banned_until:
+            return None
+        ban_dt = datetime.fromisoformat(banned_until)
+        if datetime.now(UTC) < ban_dt:
+            return ban_dt
+        player["dynamite_banned_until"] = None
+        player["dynamite_hands_lost"] = 0
+        self._save_player(user_id, player)
+        return None
+
     @staticmethod
     def _compute_season_champions(players: Dict[str, Any]) -> Dict[str, Any]:
         """Compute the three season champions from player data. Pure function."""
@@ -608,26 +621,21 @@ class Fishing(SimpleCommandModule):
         player = self._get_player(user_id)
 
         # Check dynamite ban
-        banned_until = player.get("dynamite_banned_until")
-        if banned_until:
-            ban_dt = datetime.fromisoformat(banned_until)
-            if datetime.now(UTC) < ban_dt:
-                days_left = (ban_dt - datetime.now(UTC)).days + 1
-                stump_messages = [
-                    f"{self.bot.title_for(username)} stares at the fishing hole wistfully, "
-                    f"with no hands left to hold a rod. ({days_left} day(s) remaining on the ban)",
-                    f"{self.bot.title_for(username)} gazes longingly at the water, "
-                    f"a single tear rolling down their cheek. The stumps itch. ({days_left} day(s) remaining)",
-                    f"{self.bot.title_for(username)} approaches the water's edge, holds up both stumps "
-                    f"in quiet contemplation, and shuffles back home. ({days_left} day(s) remaining)",
-                    f"{self.bot.title_for(username)} tries to grip a rod with no hands at all. "
-                    f"The physics are not promising. ({days_left} day(s) remaining)",
-                ]
-                self.safe_reply(connection, event, random.choice(stump_messages))
-                return True
-            else:
-                player["dynamite_banned_until"] = None
-                self._save_player(user_id, player)
+        ban_dt = self._active_dynamite_ban_until(user_id, player)
+        if ban_dt:
+            days_left = (ban_dt - datetime.now(UTC)).days + 1
+            stump_messages = [
+                f"{self.bot.title_for(username)} stares at the fishing hole wistfully, "
+                f"with no hands left to hold a rod. ({days_left} day(s) remaining on the ban)",
+                f"{self.bot.title_for(username)} gazes longingly at the water, "
+                f"a single tear rolling down their cheek. The stumps itch. ({days_left} day(s) remaining)",
+                f"{self.bot.title_for(username)} approaches the water's edge, holds up both stumps "
+                f"in quiet contemplation, and shuffles back home. ({days_left} day(s) remaining)",
+                f"{self.bot.title_for(username)} tries to grip a rod with no hands at all. "
+                f"The physics are not promising. ({days_left} day(s) remaining)",
+            ]
+            self.safe_reply(connection, event, random.choice(stump_messages))
+            return True
 
         # Check if location argument was provided
         location_arg = match.group(1)
@@ -1634,22 +1642,15 @@ class Fishing(SimpleCommandModule):
         player = self._get_player(user_id)
 
         # Check if already banned
-        banned_until = player.get("dynamite_banned_until")
-        if banned_until:
-            ban_dt = datetime.fromisoformat(banned_until)
-            if datetime.now(UTC) < ban_dt:
-                days_left = (ban_dt - datetime.now(UTC)).days + 1
-                self.safe_reply(
-                    connection, event,
-                    f"{self.bot.title_for(username)} reaches into the tackle box with no hands left. "
-                    f"There's no dynamite there. There's no plausible way to light it either. ({days_left} day(s) remaining)"
-                )
-                return True
-            else:
-                # Ban expired — hands have regrown, reset counter
-                player["dynamite_banned_until"] = None
-                player["dynamite_hands_lost"] = 0
-                self._save_player(user_id, player)
+        ban_dt = self._active_dynamite_ban_until(user_id, player)
+        if ban_dt:
+            days_left = (ban_dt - datetime.now(UTC)).days + 1
+            self.safe_reply(
+                connection, event,
+                f"{self.bot.title_for(username)} reaches into the tackle box with no hands left. "
+                f"There's no dynamite there. There's no plausible way to light it either. ({days_left} day(s) remaining)"
+            )
+            return True
 
         roll = random.random()
 
